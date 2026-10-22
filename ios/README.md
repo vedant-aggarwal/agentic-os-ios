@@ -1,9 +1,9 @@
 # Agentic OS iOS layer (2.0.0)
 
 Capacitor 8 app `com.norrita.agenticos` with a native layer in Swift. There is no Mac in the loop: everything builds on
-GitHub Actions (`.github/workflows/ios.yml`, account `ajay252551`, repo `ajay252551/agentic-os-app`). The JS side of every
-native feature is `app/js/svc/native-plugins.js`; the contract (snapshot JSON, methods, events, links) is in
-`agentic-jobs/v2/notes/native.md`.
+GitHub Actions (`.github/workflows/ios.yml`) in the public build repo `vedant-aggarwal/agentic-os-ios`, which holds only
+the iOS layer and its tooling (the web app is a placeholder there). The JS side of every native feature is
+`app/js/svc/native-plugins.js`; the contract (snapshot JSON, methods, events, links) is in the v2 notes (`native.md`).
 
 ## Targets
 
@@ -33,12 +33,19 @@ native event (breath, voice, live, alarm, notify, geofence, screentime) comes th
 
 ## Building
 
+Commit on `v2` in the phone worktree, then copy the committed iOS paths to the public repo and start a check run (the
+sync script refuses to publish anything personal or secret; build logs are public, so never print a secret):
+
 ```
-$env:GH_TOKEN = gh auth token -u ajay252551
-git -c credential.helper= push https://x-access-token:$env:GH_TOKEN@github.com/ajay252551/agentic-os-app.git <branch>
-gh workflow run ios.yml -R ajay252551/agentic-os-app --ref <branch> -f upload=false -f check=true
+pwsh -File <agentic-jobs>\v2\tools\sync-public-build.ps1 -Check -Message "<what changed>"
+$env:GH_TOKEN = gh auth token -u vedant-aggarwal
+gh run watch -R vedant-aggarwal/agentic-os-ios <run id>
+gh run view -R vedant-aggarwal/agentic-os-ios <run id> --log-failed
+gh workflow run ios.yml -R vedant-aggarwal/agentic-os-ios --ref main -f check=true -f upload=false -f family_controls=true
 Remove-Item Env:GH_TOKEN
 ```
+
+The `build-log` artifact of a check run has the full xcodebuild output.
 
 Inputs: `check` (unsigned compile, nothing made in the Apple account), `upload` (TestFlight), `family_controls`
 (Screen Time, below), `probe` (saves the SDK's Swift interfaces of the newer frameworks as an artifact).
@@ -60,7 +67,7 @@ Soul's blocker keeps running in the app.
    distribution request form).
 2. Once approved, build with the input on:
    ```
-   gh workflow run ios.yml -R ajay252551/agentic-os-app --ref <branch> -f family_controls=true -f upload=true
+   gh workflow run ios.yml -R vedant-aggarwal/agentic-os-ios --ref main -f family_controls=true -f upload=true
    ```
    To make it the default, the one-line change is `default: false` → `default: true` under `family_controls` in
    `.github/workflows/ios.yml`.

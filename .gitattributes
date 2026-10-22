@@ -3,3 +3,4 @@
 *.pbxproj text eol=lf
 *.plist text eol=lf
 *.swift text eol=lf
+app.bin binary

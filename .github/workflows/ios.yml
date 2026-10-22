@@ -65,6 +65,11 @@ jobs:
       - uses: actions/setup-node@v4
         with: {node-version: 24, cache: npm}
       - run: npm ci --no-audit --no-fund
+      - name: Web app (app.bin, encrypted in the public repo)
+        env:
+          APP_KEY: ${{ secrets.APP_KEY }}
+          REQUIRED: ${{ !inputs.check }}
+        run: node scripts/unpack-app.mjs
       - run: node scripts/build-www.mjs && npx cap sync ios
       - name: App Store Connect key
         if: ${{ !inputs.check }}
@@ -145,8 +150,8 @@ jobs:
             -exportOptionsPlist $RUNNER_TEMP/export.plist -exportPath $RUNNER_TEMP/out \
             -authenticationKeyPath $ASC_KEY_PATH \
             -authenticationKeyID ${{ secrets.ASC_KEY_ID }} -authenticationKeyIssuerID ${{ secrets.ASC_ISSUER_ID }}
-      - uses: actions/upload-artifact@v4
-        if: ${{ !inputs.upload && !inputs.check }}
+      - uses: actions/upload-artifact@v4   # a public repo's artifacts are public, and the IPA holds the web app
+        if: ${{ !inputs.upload && !inputs.check && github.event.repository.private }}
         with: {name: AgenticOS-ipa, path: '${{ runner.temp }}/out/*.ipa'}
       - name: Remove the run's certificate and profiles
         if: ${{ always() && !inputs.check }}

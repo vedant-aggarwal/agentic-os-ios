@@ -10,4 +10,5 @@ The workflow in `.github/workflows/ios.yml` compiles everything on a macOS runne
 App Store Connect for TestFlight (`upload`). `ios/README.md` explains the targets, the plugins and the flags (Screen Time
 ships switched off until Apple grants the Family Controls entitlement).
 
-The web app is added to the build at release time. All rights reserved until a licence is chosen.
+The web app is not published in the clear: `app.bin` holds it encrypted, and the build decrypts it with a repo secret
+(`scripts/unpack-app.mjs`). All rights reserved until a licence is chosen.

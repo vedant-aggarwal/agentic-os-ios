@@ -2,7 +2,8 @@
 
 Capacitor 8 app `com.norrita.agenticos` with a native layer in Swift. There is no Mac in the loop: everything builds on
 GitHub Actions (`.github/workflows/ios.yml`) in the public build repo `vedant-aggarwal/agentic-os-ios`, which holds only
-the iOS layer and its tooling (the web app is a placeholder there). The JS side of every native feature is
+the iOS layer and its tooling. The web app goes there only encrypted, as `app.bin` (`-App` on the sync script; the
+build decrypts it with the `APP_KEY` secret through `scripts/unpack-app.mjs`). The JS side of every native feature is
 `app/js/svc/native-plugins.js`; the contract (snapshot JSON, methods, events, links) is in the v2 notes (`native.md`).
 
 ## Targets

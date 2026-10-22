@@ -217,11 +217,17 @@ def cleanup():
             print(e)
 
 
+def masked(email):
+    """An email as a public run log may show it: the first letter and the domain."""
+    name, _, domain = (email or "").partition("@")
+    return f"{name[:1]}***@{domain}" if domain else "***"
+
+
 def users():
-    """Who can be an internal tester: the team's App Store Connect users (email and roles)."""
+    """Who can be an internal tester: the team's App Store Connect users (email, masked, and roles)."""
     for u in call("GET", "/users?limit=50")["data"]:
         a = u["attributes"]
-        print(f"user {a.get('username')} roles {','.join(a.get('roles', []))}")
+        print(f"user {masked(a.get('username'))} roles {','.join(a.get('roles', []))}")
 
 
 def testers():
@@ -240,11 +246,11 @@ def testers():
         print("Created internal group Me")
     found = call("GET", f"/betaGroups/{group['id']}/betaTesters?limit=200")["data"]
     if any(t["attributes"].get("email", "").lower() == email.lower() for t in found):
-        print(f"{email} is already a tester")
+        print(f"{masked(email)} is already a tester")
     else:
         call("POST", "/betaTesters", {"data": {"type": "betaTesters", "attributes": {"email": email},
             "relationships": {"betaGroups": {"data": [{"type": "betaGroups", "id": group["id"]}]}}}})
-        print(f"Added {email}; TestFlight emails an invite")
+        print(f"Added {masked(email)}; TestFlight emails an invite")
     builds = call("GET", f"/builds?filter[app]={app}&sort=-uploadedDate&limit=3")["data"]
     for b in builds:
         a = b["attributes"]

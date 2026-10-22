@@ -1,23 +1,23 @@
 # Puts a person on the internal TestFlight group "Me", which gets every build. Runs on Linux, no Mac minutes.
+# The tester's Apple ID email is the TESTER_EMAIL secret, not an input: the build repo is public, so run inputs and
+# logs are too (gh secret set TESTER_EMAIL -R <repo>, then run this).
 name: TestFlight testers
 on:
   workflow_dispatch:
-    inputs:
-      email:
-        description: Apple ID email of the tester (must be a user in App Store Connect)
-        required: true
 jobs:
   testers:
     runs-on: ubuntu-latest
     env:
       BUNDLE_ID: com.norrita.agenticos
-      TESTER_EMAIL: ${{ inputs.email }}
+      TESTER_EMAIL: ${{ secrets.TESTER_EMAIL }}
       ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
       ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
     steps:
       - uses: actions/checkout@v4
-      - run: |
-          mkdir -p ~/keys && echo "${{ secrets.ASC_KEY_P8 }}" > ~/keys/key.p8
+      - env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          mkdir -p ~/keys && printf '%s\n' "$ASC_KEY_P8" > ~/keys/key.p8
           echo "ASC_KEY_PATH=$HOME/keys/key.p8" >> $GITHUB_ENV
           python3 -m pip install --quiet pyjwt cryptography
       - run: python3 scripts/ios_signing.py users || true

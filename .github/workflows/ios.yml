@@ -68,10 +68,13 @@ jobs:
       - run: node scripts/build-www.mjs && npx cap sync ios
       - name: App Store Connect key
         if: ${{ !inputs.check }}
+        env:   # through env, not inlined: the public repo's logs show each step's script
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
         run: |
           mkdir -p ~/.appstoreconnect/private_keys
-          echo "${{ secrets.ASC_KEY_P8 }}" > ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8
-          echo "ASC_KEY_PATH=$HOME/.appstoreconnect/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8" >> $GITHUB_ENV
+          printf '%s\n' "$ASC_KEY_P8" > ~/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8
+          echo "ASC_KEY_PATH=$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8" >> $GITHUB_ENV
       - name: Signing certificate and profiles
         if: ${{ !inputs.check }}
         env:

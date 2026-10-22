@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Talk to Claude and Nora, record ideas, and dictate from the Agentic OS keyboard in any app.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>The Agentic OS keyboard reads your latest screenshot to draft a reply. Photos are only sent when you tap Latest screenshot.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Turns what you say into text on this iPhone: tasks by voice, and free calls with your agent.</string>
+	<key>AppIdentifierPrefix</key>
+	<string>$(AppIdentifierPrefix)</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Scan receipts, documents, food and books, and take photos for your agent to file.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Unlock private pages, like Romance and Soul's Clean, with Face ID.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Read steps, sleep, workouts, heart rate and weight from Health, so Body and your agent see how you're doing.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Agentic OS only reads from Health today. If you let it save your workouts there later, this is what it asks for.</string>
+	<key>NSAlarmKitUsageDescription</key>
+	<string>Ring real alarms for your wake-up and the streak savers you set with your agent.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Show the events in your iPhone's calendars on your day plan.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>Show the events in your iPhone's calendars on your day plan.</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>Bring your Reminders into your task list.</string>
+	<key>NSRemindersUsageDescription</key>
+	<string>Bring your Reminders into your task list.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>Add people from your contacts to Family and Friends.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Notice when you reach places you choose, like the gym, to start your workout.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Notice when you arrive at places you choose, like the gym or the shop, even when the app is closed.</string>
+	<key>AOSFamilyControls</key>
+	<string>$(AOS_FAMILY_CONTROLS)</string>
+	<key>INAlternativeAppNames</key>
+	<array>
+		<dict>
+			<key>INAlternativeAppName</key>
+			<string>Agentic</string>
+		</dict>
+	</array>
+	<key>UIApplicationShortcutItems</key>
+	<array>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>com.norrita.agenticos.scan</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Scan</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>doc.viewfinder</string>
+			<key>UIApplicationShortcutItemUserInfo</key>
+			<dict>
+				<key>url</key>
+				<string>agenticos://scan</string>
+			</dict>
+		</dict>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>com.norrita.agenticos.ask</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Ask the agent</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>bubble.left.and.text.bubble.right</string>
+			<key>UIApplicationShortcutItemUserInfo</key>
+			<dict>
+				<key>url</key>
+				<string>agenticos://ask</string>
+			</dict>
+		</dict>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>com.norrita.agenticos.task</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Add task</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>checkmark.circle</string>
+			<key>UIApplicationShortcutItemUserInfo</key>
+			<dict>
+				<key>url</key>
+				<string>agenticos://capture?type=task</string>
+			</dict>
+		</dict>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>com.norrita.agenticos.expense</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Log expense</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>indianrupeesign.circle</string>
+			<key>UIApplicationShortcutItemUserInfo</key>
+			<dict>
+				<key>url</key>
+				<string>agenticos://money/expense</string>
+			</dict>
+		</dict>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+		<string>voip</string>
+		<string>remote-notification</string>
+	</array>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+	<key>NSSupportsLiveActivitiesFrequentUpdates</key>
+	<true/>
+	<key>NSUserActivityTypes</key>
+	<array>
+		<string>INStartCallIntent</string>
+	</array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.norrita.agenticos</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>agenticos</string>
+			</array>
+		</dict>
+	</array>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>UIStatusBarStyle</key>
+	<string>UIStatusBarStyleDefault</string>
+	<key>UIRequiresFullScreen</key>
+	<true/>
+  <key>CAPACITOR_DEBUG</key>
+	<string>$(CAPACITOR_DEBUG)</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>Agentic OS</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+    <false/>
+    <key>UISceneConfigurations</key>
+    <dict>
+      <key>UIWindowSceneSessionRoleApplication</key>
+      <array>
+        <dict>
+            <key>UISceneConfigurationName</key>
+            <string>Default Configuration</string>
+            <key>UISceneDelegateClassName</key>
+            <string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
+            <key>UISceneStoryboardFile</key>
+            <string>Main</string>
+        </dict>
+      </array>
+    </dict>
+	</dict>
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
+	<key>UIMainStoryboardFile</key>
+	<string>Main</string>
+	<key>UIRequiredDeviceCapabilities</key>
+	<array>
+		<string>armv7</string>
+	</array>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UIViewControllerBasedStatusBarAppearance</key>
+	<true/>
+</dict>
+</plist>

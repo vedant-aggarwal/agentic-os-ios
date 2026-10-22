@@ -1,0 +1,11 @@
+{
+  "appId": "com.norrita.agenticos",
+  "appName": "Agentic OS",
+  "webDir": "www",
+  "backgroundColor": "#f4f6f8",
+  "ios": { "contentInset": "never", "scrollEnabled": false, "backgroundColor": "#f4f6f8" },
+  "plugins": {
+    "SplashScreen": { "launchShowDuration": 400, "backgroundColor": "#0b0c12", "showSpinner": false },
+    "Keyboard": { "resize": "native" }
+  }
+}

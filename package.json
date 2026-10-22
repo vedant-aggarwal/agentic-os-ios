@@ -1,0 +1,25 @@
+{
+  "name": "agentic-os-app",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "www": "node scripts/build-www.mjs",
+    "ios": "node scripts/build-www.mjs && npx cap sync ios",
+    "server": "bun server/index.ts"
+  },
+  "dependencies": {
+    "@agentclientprotocol/claude-agent-acp": "^0.94.0",
+    "@agentclientprotocol/sdk": "^2.0.0",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/core": "^8.5.3",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/ios": "^8.5.3",
+    "@capacitor/keyboard": "^8.0.6",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.4",
+    "@anthropic-ai/claude-agent-sdk": "^0.3.303"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.3"
+  }
+}

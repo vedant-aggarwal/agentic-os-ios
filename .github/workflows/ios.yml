@@ -1,0 +1,153 @@
+# Builds the signed Agentic OS IPA on a GitHub macOS runner and uploads it to App Store Connect (TestFlight).
+# Needs repo secrets: APPLE_TEAM_ID, ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8 (contents of the .p8 key).
+# Signing does not use Apple's cloud signing (Admin keys only): scripts/ios_signing.py makes a short-lived
+# distribution certificate and App Store profiles (app, widgets, share sheet, keyboard, and the Screen Time extensions
+# when family_controls is on) for this run, and removes them afterwards. scripts/add_targets.rb adds the extensions
+# and the native files to the Xcode project first; then ios_signing.py entitlements keeps in each target's entitlements
+# only what its profile grants, so a capability Apple hasn't approved never breaks signing.
+# check: compile everything without signing (for branches; nothing is uploaded and nothing is made in the account).
+# family_controls: Screen Time blocking (FamilyControls, DeviceActivity, ManagedSettings). Off until Apple approves the
+#   Family Controls (Distribution) entitlement for the app; see ios/README.md.
+# probe: saves the iOS SDK's Swift interfaces for the newer frameworks as an artifact (for writing against exact APIs).
+name: iOS build
+on:
+  workflow_dispatch:
+    inputs:
+      upload:
+        description: Upload to App Store Connect
+        type: boolean
+        default: true
+      check:
+        description: Compile only, no signing or upload
+        type: boolean
+        default: false
+      family_controls:
+        description: Screen Time blocking (needs Apple's Family Controls entitlement)
+        type: boolean
+        default: false
+      probe:
+        description: Save the SDK interfaces of the newer frameworks as an artifact
+        type: boolean
+        default: false
+env:
+  BUNDLE_ID: com.norrita.agenticos
+  FAMILY_CONTROLS: ${{ inputs.family_controls && 'true' || 'false' }}
+jobs:
+  ios:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Xcode 26 or newer
+        run: |
+          major() { xcodebuild -version | head -1 | awk '{print $2}' | cut -d. -f1; }
+          if [ "$(major)" -lt 26 ]; then
+            pick=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+            [ -n "$pick" ] || { echo "No Xcode 26 on this runner"; exit 1; }
+            sudo xcode-select -s "$pick/Contents/Developer"
+          fi
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+      - name: SDK interfaces (probe)
+        if: ${{ inputs.probe }}
+        run: |
+          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+          OUT=$RUNNER_TEMP/probe
+          mkdir -p $OUT
+          for f in AlarmKit FoundationModels Speech ActivityKit AppIntents WidgetKit FamilyControls ManagedSettings ManagedSettingsUI DeviceActivity CoreSpotlight HealthKit VisionKit LocalAuthentication CoreHaptics EventKit; do
+            file=$(find "$SDK/System/Library/Frameworks/$f.framework" -name "arm64e-apple-ios.swiftinterface" 2>/dev/null | head -1)
+            [ -z "$file" ] && file=$(find "$SDK/System/Library/Frameworks/$f.framework" -name "*.swiftinterface" 2>/dev/null | head -1)
+            [ -n "$file" ] && cp "$file" "$OUT/$f.swiftinterface" && echo "$f: $file"
+          done
+          ls -la $OUT
+      - uses: actions/upload-artifact@v4
+        if: ${{ inputs.probe }}
+        with: {name: sdk-interfaces, path: '${{ runner.temp }}/probe'}
+      - uses: actions/setup-node@v4
+        with: {node-version: 24, cache: npm}
+      - run: npm ci --no-audit --no-fund
+      - run: node scripts/build-www.mjs && npx cap sync ios
+      - name: App Store Connect key
+        if: ${{ !inputs.check }}
+        run: |
+          mkdir -p ~/.appstoreconnect/private_keys
+          echo "${{ secrets.ASC_KEY_P8 }}" > ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8
+          echo "ASC_KEY_PATH=$HOME/.appstoreconnect/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8" >> $GITHUB_ENV
+      - name: Signing certificate and profiles
+        if: ${{ !inputs.check }}
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          python3 -m pip install --quiet --break-system-packages pyjwt cryptography
+          python3 scripts/ios_signing.py setup
+      - name: Extensions, native files and signing for all targets
+        env:
+          TEAM: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          gem list -i xcodeproj >/dev/null || sudo gem install xcodeproj --no-document
+          ruby scripts/add_targets.rb
+      - name: Entitlements the profiles grant
+        if: ${{ !inputs.check }}
+        run: python3 scripts/ios_signing.py entitlements
+      - name: Compile check
+        if: ${{ inputs.check }}
+        working-directory: ios/App
+        run: |
+          xcodebuild -project App.xcodeproj -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build > $RUNNER_TEMP/build.log 2>&1 && ok=0 || ok=$?
+          grep -E "error:|BUILD (SUCCEEDED|FAILED)" $RUNNER_TEMP/build.log | sort -u | head -200 || true
+          grep -E "warning:" $RUNNER_TEMP/build.log | grep -E "ios/App/(App|Shared|Agentic[A-Za-z]+)/" | sort -u | head -120 || true
+          exit $ok
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() && inputs.check }}
+        with: {name: build-log, path: '${{ runner.temp }}/build.log'}
+      - name: Archive
+        if: ${{ !inputs.check }}
+        working-directory: ios/App
+        run: |
+          xcodebuild -project App.xcodeproj -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath $RUNNER_TEMP/AgenticOS.xcarchive \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            archive
+      - name: Export and upload
+        if: ${{ !inputs.check }}
+        working-directory: ios/App
+        run: |
+          DEST=${{ inputs.upload && 'upload' || 'export' }}
+          EXTRA=""
+          if [ "$FAMILY_CONTROLS" = "true" ]; then
+            EXTRA="<key>${BUNDLE_ID}.monitor</key><string>$PROFILE_MONITOR</string>
+              <key>${BUNDLE_ID}.shield</key><string>$PROFILE_SHIELD</string>
+              <key>${BUNDLE_ID}.shieldaction</key><string>$PROFILE_SHIELDACTION</string>"
+          fi
+          cat > $RUNNER_TEMP/export.plist <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>$DEST</string>
+            <key>teamID</key><string>${{ secrets.APPLE_TEAM_ID }}</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>signingCertificate</key><string>Apple Distribution</string>
+            <key>provisioningProfiles</key><dict>
+              <key>${{ env.BUNDLE_ID }}</key><string>$PROFILE_APP</string>
+              <key>${{ env.BUNDLE_ID }}.widgets</key><string>$PROFILE_WIDGETS</string>
+              <key>${{ env.BUNDLE_ID }}.share</key><string>$PROFILE_SHARE</string>
+              <key>${{ env.BUNDLE_ID }}.keyboard</key><string>$PROFILE_KEYBOARD</string>
+              $EXTRA
+            </dict>
+          </dict></plist>
+          PLIST
+          xcodebuild -exportArchive -archivePath $RUNNER_TEMP/AgenticOS.xcarchive \
+            -exportOptionsPlist $RUNNER_TEMP/export.plist -exportPath $RUNNER_TEMP/out \
+            -authenticationKeyPath $ASC_KEY_PATH \
+            -authenticationKeyID ${{ secrets.ASC_KEY_ID }} -authenticationKeyIssuerID ${{ secrets.ASC_ISSUER_ID }}
+      - uses: actions/upload-artifact@v4
+        if: ${{ !inputs.upload && !inputs.check }}
+        with: {name: AgenticOS-ipa, path: '${{ runner.temp }}/out/*.ipa'}
+      - name: Remove the run's certificate and profiles
+        if: ${{ always() && !inputs.check }}
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: python3 scripts/ios_signing.py cleanup || true

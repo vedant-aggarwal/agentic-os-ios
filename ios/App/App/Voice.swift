@@ -775,6 +775,7 @@ public class AosVoicePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "voices", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "mode", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "permissions", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setSpeaker", returnType: CAPPluginReturnPromise),
     ]
     private var loop: VoiceLoop?
     private let speaker = AVSpeechSynthesizer()
@@ -831,6 +832,34 @@ public class AosVoicePlugin: CAPPlugin, CAPBridgedPlugin {
         DispatchQueue.main.async {
             self.loop?.muted = muted
             call.ok(["muted": muted])
+        }
+    }
+
+    /// The call screen's Speaker button: { on } routes her voice to the loudspeaker or back to the earpiece. Works for the
+    /// native loop and for the web view's WebRTC call (both play through the app's audio session). { end: true } only
+    /// clears the override when the call is over.
+    @objc func setSpeaker(_ call: CAPPluginCall) {
+        let on = call.flag("on", true)
+        let ending = call.flag("end", false)
+        DispatchQueue.main.async {
+            let s = AVAudioSession.sharedInstance()
+            do {
+                if !ending && s.category != .playAndRecord {
+                    try s.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth])
+                    try s.setActive(true)
+                }
+                try s.overrideOutputAudioPort(on && !ending ? .speaker : .none)
+            } catch { return call.fail("The audio route didn't change.") }
+            let out = s.currentRoute.outputs.first?.portType
+            let route: String
+            switch out {
+            case .builtInSpeaker?: route = "speaker"
+            case .builtInReceiver?: route = "earpiece"
+            case .bluetoothA2DP?, .bluetoothHFP?, .bluetoothLE?: route = "bluetooth"
+            case .headphones?, .usbAudio?: route = "wired"
+            default: route = "other"
+            }
+            call.ok(["speaker": route == "speaker", "route": route])
         }
     }
 

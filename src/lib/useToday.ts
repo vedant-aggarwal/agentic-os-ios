@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { api, ApiError, loadToken, setToken } from './api';
+import { DEMO, demoData } from './demo';
 import { deriveToday, type Area, type LifePayload, type Task, type TodayPayload, type TodayView } from './today';
 
 type State =
@@ -18,6 +19,7 @@ export function useToday() {
   useEffect(() => { live.current = state; }, [state]);
 
   const load = useCallback(async () => {
+    if (DEMO) return setState((s) => (s.status === 'ready' ? s : { status: 'ready', ...demoData() }));
     if (!(await loadToken())) return setState({ status: 'signedOut' });
     try {
       const [today, life, areas] = await Promise.all([
@@ -58,6 +60,7 @@ export function useToday() {
     if (!before) return;
     const done = before.status !== 'done';
     patchTask(id, done ? { status: 'done', completedAt: new Date().toISOString() } : { status: 'todo', completedAt: null });
+    if (DEMO) return;
     try {
       await api(`/tasks/${id}`, { method: 'PATCH', body: { status: done ? 'done' : 'todo' } });
     } catch (e) {

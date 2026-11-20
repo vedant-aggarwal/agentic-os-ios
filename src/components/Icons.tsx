@@ -1,31 +1,62 @@
-import Svg, { Circle, Path, Rect } from 'react-native-svg';
-import { C } from '@/theme';
+import Svg, { Circle, Path } from 'react-native-svg';
+import { ASPECT_COLOR, C } from '@/theme';
 
-type P = { size?: number; color?: string; width?: number };
-const base = (size: number, color: string, width: number) => ({
-  width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: color,
-  strokeWidth: width, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const,
-});
+// The canvas icon set (UI2-Icons): duotone on the 256 Phosphor grid, a soft fill under a rounded
+// 16-unit line. Colour follows the aspect; app controls that belong to no aspect stay neutral.
+type P = { size?: number; color?: string };
 
-export const ToPc = ({ size = 22, color = C.textSoft, width = 1.7 }: P) => (
-  <Svg {...base(size, color, width)}><Rect x={3} y={4} width={18} height={12} rx={2} /><Path d="M9 20h6M12 16v4M12 13V7.5M9.5 10L12 7.5l2.5 2.5" /></Svg>
+const rr = (x: number, y: number, w: number, h: number) =>
+  `M${x + 8} ${y}h${w - 16}a8 8 0 0 1 8 8v${h - 16}a8 8 0 0 1-8 8h-${w - 16}a8 8 0 0 1-8-8v-${h - 16}a8 8 0 0 1 8-8z`;
+const CIRCLE = 'M128 32a96 96 0 1 1-0.01 0z';
+const SCREEN = rr(24, 40, 208, 144);
+const MIC = 'M128 24a40 40 0 0 1 40 40v64a40 40 0 0 1-80 0V64a40 40 0 0 1 40-40z';
+
+function Duo({ size, color, line, fill, tint, soft, stroke = 16, children }: {
+  size: number; color: string; line: string; fill?: string; tint?: string; soft?: number; stroke?: number; children?: React.ReactNode;
+}) {
+  // neutral icons take a lighter fill, as on the board's Type key
+  const opacity = soft ?? (color === C.text ? 0.16 : 0.24);
+  return (
+    <Svg width={size} height={size} viewBox="0 0 256 256">
+      {fill ? <Path d={fill} fill={tint ?? color} opacity={opacity} /> : null}
+      <Path d={line} fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round" />
+      {children}
+    </Svg>
+  );
+}
+
+export const ToPc = ({ size = 22, color = C.text }: P) => (
+  <Duo size={size} color={color} fill={SCREEN} line={`${SCREEN} M96 224h64 M128 184v40 M128 148V84 M100 112l28-28 28 28`} />
 );
-export const PcMic = ({ size = 22, color = C.textSoft, width = 1.7 }: P) => (
-  <Svg {...base(size, color, width)}><Rect x={9} y={3} width={6} height={11} rx={3} /><Path d="M18.5 11a6.5 6.5 0 0 1-13 0M12 17.5V21" /></Svg>
+export const PcMic = ({ size = 22, color = C.text }: P) => (
+  <Duo size={size} color={color} fill={MIC} line={`${MIC} M200 128a72 72 0 0 1-144 0 M128 200v32`} />
 );
-export const Remote = ({ size = 22, color = C.textSoft, width = 1.7 }: P) => (
-  <Svg {...base(size, color, width)}><Rect x={3} y={4} width={18} height={12} rx={2} /><Path d="M9 20h6M12 16v4" />
-    <Path d="M10 7.5l5 3.5-2.2.5 1.3 2.4-1 .6-1.3-2.4-1.8 1.5z" fill={color} /></Svg>
+export const Remote = ({ size = 22, color = C.text }: P) => (
+  <Duo size={size} color={color} fill={SCREEN} line={`${SCREEN} M96 224h64 M128 184v40`}>
+    <Path d="M104 72l72 48-32 8 18 32-14 8-18-32-26 20z" fill={color} stroke={color} strokeWidth={8} strokeLinejoin="round" />
+  </Duo>
 );
-export const Voices = ({ size = 22, color = C.textSoft, width = 1.7 }: P) => (
-  <Svg {...base(size, color, width)}><Path d="M4 10v4M8 7v10M12 4v16M16 7.5v9M20 10v4" /></Svg>
+export const Voices = ({ size = 22, color = C.text }: P) => (
+  <Duo size={size} color={color} line="M48 112v32 M88 80v96 M128 48v160 M168 84v88 M208 112v32" />
 );
-export const Mood = ({ size = 22, color = C.textSoft, width = 1.8 }: P) => (
-  <Svg {...base(size, color, width)}><Circle cx={12} cy={12} r={9} /><Path d="M8.5 14.5c1.8 2 5.2 2 7 0M9 9.5v.5M15 9.5v.5" /></Svg>
+export const Mood = ({ size = 22, color = ASPECT_COLOR.mind }: P) => (
+  <Duo size={size} color={color} fill={CIRCLE} line={`${CIRCLE} M88 152c20 24 60 24 80 0 M96 100v8 M160 100v8`} />
 );
-export const Lock = ({ size = 22, color = C.textSoft, width = 1.8 }: P) => (
-  <Svg {...base(size, color, width)}><Rect x={5} y={10.5} width={14} height={10} rx={2.5} /><Path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" /></Svg>
+/** Your reason, sealed: white lock, warm body and keyhole, as on the Today board. */
+export const Lock = ({ size = 22, color = C.text }: P) => (
+  <Duo size={size} color={color} tint="#FF8A4C" soft={0.24} fill={rr(40, 88, 176, 128)} line={`${rr(40, 88, 176, 128)} M92 88V56a36 36 0 0 1 72 0v32`}>
+    <Circle cx={128} cy={152} r={14} fill="#FF8A4C" />
+  </Duo>
 );
-export const Check = ({ size = 14, color = '#0A0B0D', width = 3.2 }: P) => (
-  <Svg {...base(size, color, width)}><Path d="M5 12.5l4.5 4.5L19 7.5" /></Svg>
+export const Plus = ({ size = 24, color = C.text }: P) => (
+  <Duo size={size} color={color} stroke={20} line="M40 128h176 M128 40v176" />
+);
+export const Keyboard = ({ size = 24, color = C.text }: P) => (
+  <Duo size={size} color={color} fill={rr(24, 56, 208, 144)} line={`${rr(24, 56, 208, 144)} M64 96h8 M104 96h8 M144 96h8 M184 96h8 M80 152h96`} />
+);
+/** The tick inside a filled checkbox. */
+export const Check = ({ size = 14, color = '#0A0B0D' }: P) => (
+  <Svg width={size} height={size} viewBox="0 0 256 256" fill="none" stroke={color} strokeWidth={32} strokeLinecap="round" strokeLinejoin="round">
+    <Path d="M56 136l48 48 96-104" />
+  </Svg>
 );

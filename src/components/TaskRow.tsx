@@ -7,10 +7,11 @@ import { Check } from './Icons';
 
 function TaskRow({ row, onToggle }: { row: Row; onToggle: (id: string) => void }) {
   const color = row.color ?? '#9CA3AF';
+  const done = row.done;
   const fill = useAnimatedStyle(() => ({
-    opacity: withTiming(row.done ? 1 : 0, { duration: 160 }),
-    transform: [{ scale: withSpring(row.done ? 1 : 0.6, SPRING) }],
-  }), [row.done]);
+    opacity: withTiming(done ? 1 : 0, { duration: 160 }),
+    transform: [{ scale: withSpring(done ? 1 : 0.6, SPRING) }],
+  }));
   return (
     <Pressable
       accessibilityRole="checkbox" accessibilityState={{ checked: row.done }} accessibilityLabel={row.title}

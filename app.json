@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "agenticos",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "dark",
     "ios": {
       "bundleIdentifier": "com.norrita.agenticos",
       "buildNumber": "100",
@@ -36,7 +36,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#ffffff",
+          "backgroundColor": "#0A0C10",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76,
           "dark": {
@@ -44,7 +44,8 @@
           }
         }
       ],
-      "expo-font"
+      "expo-font",
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true,

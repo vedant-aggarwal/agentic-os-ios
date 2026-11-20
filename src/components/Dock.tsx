@@ -6,21 +6,22 @@ import { Platform, Pressable, StyleSheet, View } from 'react-native';
 import Animated, {
   Easing, ReduceMotion, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withSpring, withTiming,
 } from 'react-native-reanimated';
-import Svg, { Circle, Defs, G, LinearGradient, Path, RadialGradient, Rect, Stop } from 'react-native-svg';
+import Svg, { Circle, Defs, Ellipse, G, LinearGradient, Path, RadialGradient, Rect, Stop } from 'react-native-svg';
 import type { AspectProgress } from '@/lib/today';
 import { ASPECT_COLOR, C, type AspectKey } from '@/theme';
 
-// The Nora bar from the Today prototype: quick add, the orb in its life-wheel arc, type to Nora.
-// Prototype sizes (64 bar, 48 buttons, 96 orb); width trimmed from 360 so the buttons sit nearer the orb.
+// The Nora bar, drawn to the canvas board "C. Nora" (UI1-Nora): a 240 x 64 glass pill, quick add and
+// type-to-Nora as clear 48 pt buttons, the 72 pt orb raised 16 pt above the pill's centre.
+// The orb keeps its life-wheel arc and Nora's light.
 const BAR_H = 64;
-const BAR_MAX_W = 320;
+const BAR_W = 240;
 const BTN = 48;
 const ORB = 96; // canvas incl. arc
-const ORB_R = 34; // the ball
-const ARC_R = 44;
-const ORB_TOP = -30; // rises out of the bar
-const HALO = 240;
-const GLOW = 120;
+const ORB_R = 36; // the ball
+const ARC_R = 42;
+const ORB_TOP = BAR_H / 2 - 16 - ORB / 2; // orb centre 16 above the pill's centre
+const HALO = 220;
+const GLOW = 112;
 
 // Liquid Glass is iOS 26+. Older iOS, web and Android get blur with a drawn rim.
 const LIQUID = (() => {
@@ -62,9 +63,9 @@ function Arc({ aspects }: { aspects: AspectProgress }) {
   return (
     <>
       {/* group opacity, so overlapping slices don't stack into dots at their joints */}
-      <G opacity={0.26}>{SLICES.map((s) => <Path key={s.a0} d={s.d} stroke={s.c} strokeWidth={3} fill="none" />)}</G>
-      <G opacity={0.22}>{lit.map((s) => <Path key={`h${s.a0}`} d={s.d} stroke={s.c} strokeWidth={9} fill="none" />)}</G>
-      {lit.map((s) => <Path key={`l${s.a0}`} d={s.d} stroke={s.c} strokeWidth={3} fill="none" />)}
+      <G opacity={0.26}>{SLICES.map((s) => <Path key={s.a0} d={s.d} stroke={s.c} strokeWidth={2.5} fill="none" />)}</G>
+      <G opacity={0.22}>{lit.map((s) => <Path key={`h${s.a0}`} d={s.d} stroke={s.c} strokeWidth={8} fill="none" />)}</G>
+      {lit.map((s) => <Path key={`l${s.a0}`} d={s.d} stroke={s.c} strokeWidth={2.5} fill="none" />)}
     </>
   );
 }
@@ -85,7 +86,7 @@ function Round({ label, onPress, children }: { label: string; onPress: () => voi
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} onPressIn={p.onPressIn} onPressOut={p.onPressOut} hitSlop={6}>
       {({ pressed }) => (
-        <Animated.View style={[s.round, p.style, pressed && { backgroundColor: 'rgba(255,255,255,0.12)' }]}>{children}</Animated.View>
+        <Animated.View style={[s.round, p.style, pressed && { backgroundColor: 'rgba(255,255,255,0.1)' }]}>{children}</Animated.View>
       )}
     </Pressable>
   );
@@ -136,19 +137,19 @@ function Material({ w }: { w: number }) {
   }
   return (
     <View style={[StyleSheet.absoluteFill, s.radius, { overflow: 'hidden' }]}>
-      <BlurView intensity={70} tint="dark" style={StyleSheet.absoluteFill} />
-      <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(40,38,34,0.5)' }]} />
-      {/* light catching the material: bright top edge, faint sheen, a softer return along the bottom */}
+      <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} />
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(31,31,31,0.6)' }]} />
+      {/* the board's hairline edge, a touch brighter where light catches the top */}
       <Svg width={w} height={BAR_H} style={StyleSheet.absoluteFill}>
         <Defs>
           <LinearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor="#FFFFFF" stopOpacity={0.08} />
+            <Stop offset="0" stopColor="#FFFFFF" stopOpacity={0.05} />
             <Stop offset="0.5" stopColor="#FFFFFF" stopOpacity={0} />
           </LinearGradient>
           <LinearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor="#FFFFFF" stopOpacity={0.22} />
-            <Stop offset="0.5" stopColor="#FFFFFF" stopOpacity={0.05} />
-            <Stop offset="1" stopColor="#FFFFFF" stopOpacity={0.1} />
+            <Stop offset="0" stopColor="#FFFFFF" stopOpacity={0.16} />
+            <Stop offset="0.5" stopColor="#FFFFFF" stopOpacity={0.06} />
+            <Stop offset="1" stopColor="#FFFFFF" stopOpacity={0.08} />
           </LinearGradient>
         </Defs>
         <Rect width={w} height={BAR_H} rx={BAR_H / 2} fill="url(#sheen)" />
@@ -161,7 +162,7 @@ function Material({ w }: { w: number }) {
 export function Dock({ bottom, width, aspects, onNotBuilt }: {
   bottom: number; width: number; aspects: AspectProgress; onNotBuilt: (what: string) => void;
 }) {
-  const w = Math.min(width - 32, BAR_MAX_W);
+  const w = Math.min(width - 32, BAR_W);
   const orb = usePress(0.93);
   return (
     <View pointerEvents="box-none" style={[s.wrap, { width: w, bottom: Math.max(bottom, 12) + 12 }]}>
@@ -170,11 +171,14 @@ export function Dock({ bottom, width, aspects, onNotBuilt }: {
       <View style={[s.bar, { width: w }]}>
         <Material w={w} />
         <Round label="Quick add" onPress={() => onNotBuilt('Quick add')}>
-          <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke={C.text} strokeWidth={2} strokeLinecap="round"><Path d="M12 5v14M5 12h14" /></Svg>
+          <Svg width={24} height={24} viewBox="0 0 256 256" fill="none" stroke={C.text} strokeWidth={20} strokeLinecap="round">
+            <Path d="M40 128h176M128 40v176" />
+          </Svg>
         </Round>
         <Round label="Type to Nora" onPress={() => onNotBuilt('Typing to Nora')}>
-          <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke={C.text} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-            <Path d="M4.5 5.5h15a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-15a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2zM6.5 9.5h.01M10 9.5h.01M14 9.5h.01M17.5 9.5h.01M8 14.5h8" />
+          <Svg width={24} height={24} viewBox="0 0 256 256" fill="none" stroke={C.text} strokeWidth={16} strokeLinecap="round" strokeLinejoin="round">
+            <Rect x={24} y={56} width={208} height={144} rx={8} />
+            <Path d="M64 96h8M104 96h8M144 96h8M184 96h8M80 160h96" />
           </Svg>
         </Round>
       </View>
@@ -187,20 +191,13 @@ export function Dock({ bottom, width, aspects, onNotBuilt }: {
         <Animated.View style={[s.ball, orb.style]}>
           <Svg width={ORB_R * 2} height={ORB_R * 2}>
             <Defs>
-              <RadialGradient id="orb" cx="0.34" cy="0.28" r="0.8" fx="0.34" fy="0.28">
-                <Stop offset="0" stopColor="#FFE3B0" /><Stop offset="0.28" stopColor="#FFA15C" />
-                <Stop offset="0.62" stopColor="#F0457A" /><Stop offset="1" stopColor="#6E1A55" />
-              </RadialGradient>
-              <RadialGradient id="orbShade" cx="0.72" cy="0.82" r="0.62">
-                <Stop offset="0" stopColor="#6E1A55" stopOpacity={0.6} /><Stop offset="1" stopColor="#6E1A55" stopOpacity={0} />
-              </RadialGradient>
-              <RadialGradient id="orbLift" cx="0.3" cy="0.24" r="0.42">
-                <Stop offset="0" stopColor="#FFE3B0" stopOpacity={0.55} /><Stop offset="1" stopColor="#FFE3B0" stopOpacity={0} />
+              <RadialGradient id="orb" cx="0.36" cy="0.32" r="0.72">
+                <Stop offset="0" stopColor="#FFE3B0" /><Stop offset="0.32" stopColor="#FFA15C" />
+                <Stop offset="0.72" stopColor="#F0457A" /><Stop offset="1" stopColor="#6E1A55" />
               </RadialGradient>
             </Defs>
             <Circle cx={ORB_R} cy={ORB_R} r={ORB_R} fill="url(#orb)" />
-            <Circle cx={ORB_R} cy={ORB_R} r={ORB_R} fill="url(#orbShade)" />
-            <Circle cx={ORB_R} cy={ORB_R} r={ORB_R} fill="url(#orbLift)" />
+            <Ellipse cx={ORB_R * (28 / 36)} cy={ORB_R * (25 / 36)} rx={10} ry={6} fill="#FFFFFF" opacity={0.32} />
           </Svg>
         </Animated.View>
       </Pressable>
@@ -215,13 +212,12 @@ const s = StyleSheet.create({
   bar: {
     position: 'absolute', top: 0, height: BAR_H, borderRadius: BAR_H / 2,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8,
-    // deep shadow under the whole bar plus the orb's warm under-glow (prototype values)
-    boxShadow: '0 28px 56px -10px rgba(0,0,0,0.8), 0 10px 24px rgba(0,0,0,0.5), 0 20px 56px -14px rgba(255,138,76,0.45)',
+    boxShadow: '0 16px 40px rgba(0,0,0,0.5)',
   },
-  round: { width: BTN, height: BTN, borderRadius: BTN / 2, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.06)' },
+  round: { width: BTN, height: BTN, borderRadius: BTN / 2, alignItems: 'center', justifyContent: 'center' },
   orbWrap: { position: 'absolute', top: ORB_TOP, width: ORB, height: ORB, alignItems: 'center', justifyContent: 'center' },
   ball: {
     width: ORB_R * 2, height: ORB_R * 2, borderRadius: ORB_R, backgroundColor: '#F0457A',
-    boxShadow: '0 0 22px rgba(255,138,76,0.6), 0 10px 24px rgba(0,0,0,0.5)',
+    boxShadow: '0 8px 24px rgba(240,69,122,0.35)',
   },
 });

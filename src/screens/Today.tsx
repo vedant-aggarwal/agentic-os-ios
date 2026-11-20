@@ -148,7 +148,7 @@ export default function Today() {
         <Rect width={width} height={180} fill="url(#fade)" />
       </Svg>
       <Notice text={local ?? t.notice} bottom={insets.bottom + 112} onClear={clear} />
-      <Dock bottom={insets.bottom} onNotBuilt={notBuilt} />
+      <Dock bottom={insets.bottom} width={width} aspects={v.aspects} onNotBuilt={notBuilt} />
     </View>
   );
 }

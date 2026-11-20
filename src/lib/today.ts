@@ -25,9 +25,12 @@ export type Moment = {
   color: string | null; taskId: string | null; then: string | null;
 };
 export type Family = { key: FamilyKey; done: number; total: number };
+export type AspectProgress = Partial<Record<AspectKey, { done: number; total: number }>>;
 export type TodayView = {
   dateLabel: string;
   families: Family[];
+  /** Today's plan per aspect: lights the orb's life-wheel arc. */
+  aspects: AspectProgress;
   done: number; total: number;
   moment: Moment | null;
   groups: Group[];
@@ -69,6 +72,14 @@ export function deriveToday(t: TodayPayload, life: LifePayload, areas: Area[]): 
     const mineF = counted.filter((x) => { const a = aspectOf(x.area); return a && familyOf.get(a) === key; });
     return { key, total: mineF.length, done: mineF.filter((x) => x.status === 'done').length };
   });
+  const aspects: AspectProgress = {};
+  for (const x of counted) {
+    const a = aspectOf(x.area);
+    if (!a) continue;
+    const p = (aspects[a] ??= { done: 0, total: 0 });
+    p.total += 1;
+    if (x.status === 'done') p.done += 1;
+  }
 
   const row = (x: Task, right: string, rightStrong = false): Row => ({
     id: x.id, title: x.title, sub: x.area ? areaName.get(x.area) ?? x.area : null,
@@ -118,6 +129,7 @@ export function deriveToday(t: TodayPayload, life: LifePayload, areas: Area[]): 
   return {
     dateLabel: dateLabel(t.date),
     families,
+    aspects,
     done: counted.filter((x) => x.status === 'done').length,
     total: counted.length,
     moment,

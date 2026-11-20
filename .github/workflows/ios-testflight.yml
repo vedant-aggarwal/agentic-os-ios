@@ -1,0 +1,123 @@
+# Builds the Content OS iPhone app (Expo, Release) on a macOS runner and uploads it to TestFlight.
+# Runs on every push to the content-os branch: a Release build bundles the JS, so any change needs a build.
+#
+# Signing doesn't use Apple's cloud signing (App Manager key): scripts/ios_signing.py makes a short-lived
+# distribution certificate and App Store profile for this run and removes them afterwards.
+# Repo secrets: APPLE_TEAM_ID, ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8, CONTENT_OS_API_URL, CONTENT_OS_API_TOKEN.
+# They reach scripts through env only: this repo is public, so its logs are public.
+name: Content OS TestFlight
+on:
+  push:
+    branches: [content-os]
+  workflow_dispatch:
+concurrency:
+  group: content-os-testflight
+  cancel-in-progress: true
+env:
+  BUNDLE_ID: com.norrita.contentos
+jobs:
+  ios:
+    runs-on: macos-26
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build number
+        run: echo "BUILD_NUMBER=${{ github.run_number }}" >> $GITHUB_ENV
+      - name: App Store Connect key
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+        run: |
+          mkdir -p ~/.appstoreconnect/private_keys
+          printf '%s\n' "$ASC_KEY_P8" > ~/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8
+          echo "ASC_KEY_PATH=$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8" >> $GITHUB_ENV
+          python3 -m pip install --quiet --break-system-packages pyjwt cryptography
+      - name: App Store Connect app exists
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: python3 scripts/ios_signing.py check_app
+      - name: Xcode 26 or newer
+        run: |
+          major() { xcodebuild -version | head -1 | awk '{print $2}' | cut -d. -f1; }
+          if [ "$(major)" -lt 26 ]; then
+            pick=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+            [ -n "$pick" ] || { echo "No Xcode 26 on this runner"; exit 1; }
+            sudo xcode-select -s "$pick/Contents/Developer"
+          fi
+          xcodebuild -version
+      - uses: actions/setup-node@v4
+        with: {node-version: 24, cache: npm}
+      - run: npm ci --no-audit --no-fund
+      - name: Expo prebuild (iOS)
+        run: |
+          IOS_BUILD_NUMBER=$BUILD_NUMBER npx expo prebuild --platform ios --no-install
+          PROJ=$(ls -d ios/*.xcodeproj | grep -v Pods | head -1)
+          NAME=$(basename "$PROJ" .xcodeproj)
+          echo "APP_NAME=$NAME" >> $GITHUB_ENV
+          echo "Project $NAME"
+      - name: CocoaPods
+        working-directory: ios
+        run: pod install
+      - name: Signing certificate and profile
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: python3 scripts/ios_signing.py setup
+      - name: Manual signing on the app target
+        env:
+          TEAM: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          ruby scripts/ios_manual_signing.rb
+          python3 scripts/ios_signing.py entitlements
+      - name: Archive (Release)
+        env:
+          EXPO_PUBLIC_API_URL: ${{ secrets.CONTENT_OS_API_URL }}
+          EXPO_PUBLIC_API_TOKEN: ${{ secrets.CONTENT_OS_API_TOKEN }}
+        run: |
+          set -o pipefail
+          [ -n "$EXPO_PUBLIC_API_URL" ] && [ -n "$EXPO_PUBLIC_API_TOKEN" ] || { echo "API secrets missing"; exit 1; }
+          xcodebuild -workspace "ios/$APP_NAME.xcworkspace" -scheme "$APP_NAME" -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/ContentOS.xcarchive" \
+            CURRENT_PROJECT_VERSION=$BUILD_NUMBER COMPILER_INDEX_STORE_ENABLE=NO \
+            archive > "$RUNNER_TEMP/archive.log" 2>&1 && ok=0 || ok=$?
+          grep -E "error:|\*\* ARCHIVE (SUCCEEDED|FAILED)" "$RUNNER_TEMP/archive.log" | sort -u | head -100 || true
+          [ $ok -eq 0 ] || { tail -80 "$RUNNER_TEMP/archive.log" | grep -v "EXPO_PUBLIC"; exit $ok; }
+      - name: Export and upload to App Store Connect
+        env:
+          TEAM: ${{ secrets.APPLE_TEAM_ID }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          cat > "$RUNNER_TEMP/export.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>$TEAM</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>signingCertificate</key><string>Apple Distribution</string>
+            <key>provisioningProfiles</key><dict>
+              <key>$BUNDLE_ID</key><string>$PROFILE_APP</string>
+            </dict>
+            <key>uploadSymbols</key><false/>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict></plist>
+          PLIST
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/ContentOS.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/export.plist" -exportPath "$RUNNER_TEMP/out" \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+      - name: Wait for App Store Connect to list the build
+        continue-on-error: true
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: python3 scripts/ios_signing.py wait_build
+      - name: Remove the run's certificate and profile
+        if: ${{ always() }}
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: python3 scripts/ios_signing.py cleanup || true

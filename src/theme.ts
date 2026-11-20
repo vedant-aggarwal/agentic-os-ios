@@ -1,8 +1,13 @@
 // Today (Gem) tokens. One light source in the scene; colour only where it carries an aspect.
 export const C = {
-  scene: '#0A0C10',
-  sceneTop: '#161A21',
-  sheet: '#111317',
+  scene: '#11141C',
+  sheet: 'rgba(17,20,28,0.66)', // translucent, so the app background shows through
+  // App background, from the voice-note board on the canvas: near-black, cool at the top,
+  // plum at the bottom, a warm glow rising from the bottom edge.
+  bgTop: '#11141C',
+  bgMid: '#1A1C26',
+  bgBottom: '#251F2B',
+  bgGlow: '#BA623A',
   raised: '#1F2228',
   glass: 'rgba(255,255,255,0.06)',
   text: '#F3F4F6',

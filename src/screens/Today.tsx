@@ -1,7 +1,8 @@
 import { useCallback, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Defs, LinearGradient, Polygon, RadialGradient, Rect, Stop } from 'react-native-svg';
+import Svg, { Defs, LinearGradient, Polygon, Stop } from 'react-native-svg';
+import { Backdrop, EdgeGlow } from '@/components/Backdrop';
 import { Crystals } from '@/components/Crystals';
 import { Dock } from '@/components/Dock';
 import { Lock, Mood, PcMic, Remote, ToPc, Voices } from '@/components/Icons';
@@ -13,21 +14,17 @@ import { signOut } from '@/lib/api';
 import { useToday } from '@/lib/useToday';
 import { C, F } from '@/theme';
 
-/** The scene: dark stone, one light falling from above onto the crystals. */
+/** One light falling from above onto the crystals, over the app background. */
 function Scene({ width }: { width: number }) {
   const h = 640, cx = width / 2;
   return (
     <Svg pointerEvents="none" width={width} height={h} style={StyleSheet.absoluteFill}>
       <Defs>
-        <RadialGradient id="room" cx="0.5" cy="0" r="0.9">
-          <Stop offset="0" stopColor={C.sceneTop} /><Stop offset="0.65" stopColor={C.scene} />
-        </RadialGradient>
         <LinearGradient id="beam" x1="0" y1="0" x2="0" y2="1">
           <Stop offset="0" stopColor="#D6E2FF" stopOpacity={0.12} /><Stop offset="0.6" stopColor="#D6E2FF" stopOpacity={0.04} />
           <Stop offset="1" stopColor="#D6E2FF" stopOpacity={0} />
         </LinearGradient>
       </Defs>
-      <Rect width={width} height={h} fill="url(#room)" />
       <Polygon points={`${cx - 30},0 ${cx + 30},0 ${cx + 150},${h - 80} ${cx - 150},${h - 80}`} fill="url(#beam)" />
       <Polygon points={`${cx - 18},0 ${cx + 18},0 ${cx + 110},${h - 120} ${cx - 110},${h - 120}`} fill="url(#beam)" />
     </Svg>
@@ -69,6 +66,7 @@ export default function Today() {
   if (t.state.status === 'error' || !t.view) {
     return (
       <View style={[s.screen, s.center]}>
+        <Backdrop />
         <Text style={s.errTitle}>Today didn&apos;t load</Text>
         <Text style={s.errBody}>{t.state.status === 'error' ? t.state.message : ''}</Text>
         <Pressable accessibilityRole="button" onPress={t.reload} style={s.retry}><Text style={s.retryText}>Try again</Text></Pressable>
@@ -80,6 +78,7 @@ export default function Today() {
   const empty = !v.groups.length && !v.carried;
   return (
     <View style={s.screen}>
+      <Backdrop />
       <Scene width={width} />
       <ScrollView
         contentContainerStyle={{ flexGrow: 1, paddingTop: insets.top + 4 }}
@@ -139,14 +138,7 @@ export default function Today() {
         </View>
       </ScrollView>
 
-      <Svg pointerEvents="none" width={width} height={180} style={s.fade}>
-        <Defs>
-          <LinearGradient id="fade" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor={C.sheet} stopOpacity={0} /><Stop offset="0.7" stopColor={C.sheet} stopOpacity={0.95} />
-          </LinearGradient>
-        </Defs>
-        <Rect width={width} height={180} fill="url(#fade)" />
-      </Svg>
+      <EdgeGlow height={insets.bottom + 260} />
       <Notice text={local ?? t.notice} bottom={insets.bottom + 112} onClear={clear} />
       <Dock bottom={insets.bottom} width={width} aspects={v.aspects} onNotBuilt={notBuilt} />
     </View>
@@ -179,7 +171,6 @@ const s = StyleSheet.create({
   more: { minHeight: 44, justifyContent: 'center' },
   moreText: { fontFamily: F.medium, fontSize: 14, lineHeight: 20, color: C.textSoft },
   emptyText: { fontFamily: F.regular, fontSize: 16, lineHeight: 24, color: C.muted },
-  fade: { position: 'absolute', left: 0, bottom: 0 },
   errTitle: { fontFamily: F.semibold, fontSize: 24, lineHeight: 32, color: C.text },
   errBody: { fontFamily: F.regular, fontSize: 16, lineHeight: 24, color: C.muted, textAlign: 'center' },
   retry: { height: 48, paddingHorizontal: 24, borderRadius: 24, backgroundColor: C.text, alignItems: 'center', justifyContent: 'center' },

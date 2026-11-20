@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Backdrop } from '@/components/Backdrop';
 import { signIn } from '@/lib/api';
 import { C, F } from '@/theme';
 
@@ -21,6 +22,7 @@ export function SignIn({ onDone }: { onDone: () => void }) {
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={s.screen}>
+      <Backdrop />
       <View style={s.form}>
         <Text style={s.title}>Sign in to your PC</Text>
         <Text style={s.body}>Same account as agentic.norrita.com. Today reads and writes your real agentos tasks.</Text>

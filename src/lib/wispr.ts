@@ -9,37 +9,46 @@ import { api, ApiError } from './api';
 //   Press volume down              hands-free: it keeps listening after you let go
 //   Hold up, then tap down         turns the hold into hands-free
 //   Any volume press in hands-free stops it
+//   Double-press volume up, hold the second  command mode: what you say goes to the PC agent (pc-agent.ts)
 // iOS reports a held button as a step now and then auto-repeat steps, never a release, so a release is the
 // steps stopping: QUIET_FIRST after a lone step, QUIET_REPEAT once repeats have started.
 const QUIET_FIRST = 650;
 const QUIET_REPEAT = 320;
 const BEAT = 2000; // keep-alive while holding; the PC lets go by itself after 6 s without one
 const SENT_FOR = 1600; // how long "Sent" stays up
+// A second step this soon after the first is a second press, not auto-repeat (iOS repeats a held button only
+// after about half a second). Step timings go to the PC with each release (/pc/keys ticks) to tune this.
+const DOUBLE_MS = 420;
 
-export type Phase = 'idle' | 'listening' | 'handsfree' | 'sent';
+export type Phase = 'idle' | 'listening' | 'handsfree' | 'sent' | 'command';
+export type MicSource = 'pc' | 'phone';
 type Native = { start(): void; stop(): void; addListener(e: 'onPress', cb: (p: { button: 'up' | 'down' }) => void): { remove(): void } };
 const native = Platform.OS === 'ios' ? requireOptionalNativeModule<Native>('VolumeButtons') : null;
 export const volumeButtonsAvailable = !!native;
 
-type Action = 'ptt-down' | 'ptt-up' | 'handsfree' | 'stop' | 'beat';
+type Action = 'ptt-down' | 'ptt-up' | 'handsfree' | 'stop' | 'beat' | 'cmd-down' | 'cmd-up' | 'say-down' | 'say-up';
 const haptic = (s: Haptics.ImpactFeedbackStyle) => { if (Platform.OS !== 'web') Haptics.impactAsync(s).catch(() => {}); };
 
 export function useWispr(enabled: boolean) {
   const [phase, setPhase] = useState<Phase>('idle');
   const [error, setError] = useState<string | null>(null);
   const [since, setSince] = useState(0); // when the phase began
+  const [command, setCommand] = useState(false); // the command view is open (from the first command until closed)
+  const [source, setSourceState] = useState<MicSource>('pc');
+  const [sourceNote, setSourceNote] = useState<string | null>(null);
   // gesture state, read and written only in handlers and timers
   const g = useRef({
-    mode: 'idle' as 'idle' | 'ptt' | 'hfHeld' | 'handsfree' | 'stopHeld',
+    mode: 'idle' as 'idle' | 'ptt' | 'hfHeld' | 'handsfree' | 'stopHeld' | 'cmd',
+    ticks: [] as number[], t0: 0, // this press sequence's step times, ms from its first step
     steps: 0, quiet: null as ReturnType<typeof setTimeout> | null, beat: null as ReturnType<typeof setInterval> | null,
     sent: null as ReturnType<typeof setTimeout> | null,
   });
 
   const show = useCallback((p: Phase) => { setPhase(p); setSince(Date.now()); }, []);
 
-  const send = useCallback(async (action: Action) => {
+  const send = useCallback(async (action: Action, ticks?: number[]) => {
     try {
-      await api('/pc/keys', { method: 'POST', body: { action } });
+      await api('/pc/keys', { method: 'POST', body: ticks ? { action, ticks } : { action } });
       if (action !== 'beat') setError(null);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Couldn't reach your PC.");
@@ -77,7 +86,7 @@ export function useWispr(enabled: boolean) {
 
   const endTalk = useCallback(() => {
     if (g.current.mode !== 'ptt') return;
-    send('ptt-up');
+    send('ptt-up', g.current.ticks.length ? g.current.ticks : undefined);
     haptic(Haptics.ImpactFeedbackStyle.Light);
     toIdle(true);
   }, [send, toIdle]);
@@ -99,9 +108,32 @@ export function useWispr(enabled: boolean) {
     if (held) st.mode = 'stopHeld'; // swallow the rest of this press
   }, [send, toIdle]);
 
+  // ---- command mode ----
+  const startCommand = useCallback((follow: boolean) => {
+    const st = g.current;
+    if (st.mode !== 'idle' && st.mode !== 'ptt') return;
+    if (!st.beat) st.beat = setInterval(() => send('beat'), BEAT);
+    st.mode = 'cmd';
+    send(follow ? 'say-down' : 'cmd-down');
+    setCommand(true);
+    show('command');
+    haptic(Haptics.ImpactFeedbackStyle.Heavy);
+  }, [send, show]);
+
+  const endCommand = useCallback((follow: boolean) => {
+    const st = g.current;
+    if (st.mode !== 'cmd') return;
+    send(follow ? 'say-up' : 'cmd-up', st.ticks.length ? st.ticks : undefined);
+    haptic(Haptics.ImpactFeedbackStyle.Light);
+    toIdle(false);
+  }, [send, toIdle]);
+
   // ---- volume steps ----
   const onStep = useCallback((button: 'up' | 'down') => {
     const st = g.current;
+    const now = Date.now();
+    if (st.mode === 'idle') { st.t0 = now; st.ticks = []; }
+    if (st.ticks.length < 60) st.ticks.push(now - st.t0);
     st.steps += 1;
     const quietAfter = (ms: number, fn: () => void) => {
       if (st.quiet) clearTimeout(st.quiet);
@@ -120,7 +152,16 @@ export function useWispr(enabled: boolean) {
         break;
       case 'ptt':
         if (button === 'down') { handsFree(true); quietAfter(QUIET_FIRST, () => { st.mode = 'handsfree'; }); }
+        else if (st.steps === 2 && now - st.t0 < DOUBLE_MS) {
+          // the second press of a double press: the hold becomes a command
+          startCommand(false);
+          st.steps = 1;
+          quietAfter(QUIET_FIRST, () => endCommand(false));
+        }
         else quietAfter(st.steps > 1 ? QUIET_REPEAT : QUIET_FIRST, endTalk);
+        break;
+      case 'cmd':
+        if (button === 'up') quietAfter(st.steps > 1 ? QUIET_REPEAT : QUIET_FIRST, () => endCommand(false));
         break;
       case 'hfHeld':
         quietAfter(QUIET_REPEAT, () => { st.mode = 'handsfree'; });
@@ -133,7 +174,7 @@ export function useWispr(enabled: boolean) {
         quietAfter(QUIET_REPEAT, () => { st.mode = 'idle'; st.steps = 0; });
         break;
     }
-  }, [startTalk, endTalk, handsFree, stopHandsFree]);
+  }, [startTalk, endTalk, handsFree, stopHandsFree, startCommand, endCommand]);
 
   // Listen only while asked to and the app is in front.
   useEffect(() => {
@@ -151,7 +192,11 @@ export function useWispr(enabled: boolean) {
   }, [enabled, onStep]);
 
   // Leaving with a hold still on lets it go.
-  useEffect(() => () => { if (g.current.mode === 'ptt') send('ptt-up'); clearTimers(); }, [send, clearTimers]);
+  useEffect(() => () => {
+    if (g.current.mode === 'ptt') send('ptt-up');
+    if (g.current.mode === 'cmd') send('stop');
+    clearTimers();
+  }, [send, clearTimers]);
 
   const toggleHandsFree = useCallback(() => {
     const st = g.current;
@@ -159,5 +204,15 @@ export function useWispr(enabled: boolean) {
     else if (st.mode === 'idle' || st.mode === 'ptt') handsFree(false);
   }, [handsFree, stopHandsFree]);
 
-  return { phase, since, error, startTalk, endTalk, toggleHandsFree };
+  // The Talk button in the command view: hold to say more to the agent.
+  const sayIn = useCallback(() => { g.current.ticks = []; startCommand(true); }, [startCommand]);
+  const sayOut = useCallback(() => endCommand(true), [endCommand]);
+  const closeCommand = useCallback(() => setCommand(false), []);
+  // Phone mic streams this phone's microphone to the PC for Wispr; it needs native audio capture (next build).
+  const setSource = useCallback((v: MicSource) => {
+    if (v === 'phone') { setSourceNote('Phone mic arrives with the next app build.'); return; }
+    setSourceState(v); setSourceNote(null);
+  }, []);
+
+  return { phase, since, error, command, source, sourceNote, setSource, startTalk, endTalk, toggleHandsFree, sayIn, sayOut, closeCommand };
 }

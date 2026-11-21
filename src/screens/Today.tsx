@@ -117,10 +117,11 @@ export default function Today() {
       <Notice text={local ?? t.notice} bottom={insets.bottom + 112} onClear={clear} />
       <Dock bottom={insets.bottom} width={width} aspects={v.aspects} onNotBuilt={notBuilt} />
       {/* opens by itself while a volume press has Wispr going, and closes once it has sent */}
-      <PcMicSheet open={micOpen || mic.phase !== 'idle'} origin={micCenter(insets.top, width)} phase={mic.phase} since={mic.since}
-        error={mic.error}
-        onClose={() => { setMicOpen(false); if (mic.phase === 'handsfree') mic.toggleHandsFree(); }}
-        onTalkIn={mic.startTalk} onTalkOut={mic.endTalk} onHandsFree={mic.toggleHandsFree} />
+      <PcMicSheet open={micOpen || mic.phase !== 'idle' || mic.command} origin={micCenter(insets.top, width)} phase={mic.phase}
+        since={mic.since} error={mic.error} command={mic.command} source={mic.source} sourceNote={mic.sourceNote} onSource={mic.setSource}
+        onClose={() => { setMicOpen(false); mic.closeCommand(); if (mic.phase === 'handsfree') mic.toggleHandsFree(); }}
+        onTalkIn={mic.startTalk} onTalkOut={mic.endTalk} onHandsFree={mic.toggleHandsFree}
+        onSayIn={mic.sayIn} onSayOut={mic.sayOut} onCloseCommand={mic.closeCommand} />
     </View>
   );
 }

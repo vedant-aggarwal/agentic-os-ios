@@ -33,8 +33,9 @@ const FADE = ['#00000000', '#0000000A', '#00000029', '#0000005C', '#000000A3', '
 
 export function EdgeBlur({ height, strength = 40 }: EdgeBlurProps) {
   if (Variable) {
-    // strength 40 -> 16 pt of blur at the bottom edge, ramping as t^2 from nothing at the top
-    return <Variable pointerEvents="none" radius={strength * 0.4} curve={2} style={[s.edge, { height }]} />;
+    // strength 25 -> 10 pt of blur at the bottom edge, growing as t^1.8 from nothing at the top: barely there
+    // for the first third, then a long steady build rather than a jump near the bottom
+    return <Variable pointerEvents="none" radius={strength * 0.4} curve={1.8} style={[s.edge, { height }]} />;
   }
   if (!ui) return <BlurStack height={height} strength={strength} />;
   const { Host, Mask, Rectangle } = ui.UI;

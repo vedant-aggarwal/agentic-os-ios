@@ -9,7 +9,10 @@ import { C, F } from '@/theme';
 // A trackpad for the PC. One finger moves the cursor; two fingers scroll (natural direction, like a Mac);
 // a quick tap clicks, a two-finger tap right-clicks. The two buttons below press and hold like real ones,
 // so holding Left while moving drags. No labels: left is left.
-const GAIN = 1.6; // PC pixels per finger point, before Windows' own pointer acceleration
+// PC pixels per finger point, before Windows' own acceleration: slow strokes stay precise, quick ones travel.
+const GAIN_SLOW = 1.2;
+const GAIN_FAST = 2.4;
+const FAST = 1.2; // pt per ms at which the gain is fully fast
 const SCROLL = 5; // wheel units per point (120 is one notch)
 const TAP_MS = 220;
 const TAP_PT = 8;
@@ -39,19 +42,22 @@ function ClickButton({ label, onDown, onUp }: { label: string; onDown: () => voi
 
 export function Trackpad({ active }: { active: boolean }) {
   const pc = usePointer(active);
-  const g = useRef({ x: 0, y: 0, n: 0, maxN: 0, t0: 0, travel: 0 });
+  const g = useRef({ x: 0, y: 0, n: 0, maxN: 0, t0: 0, travel: 0, t: 0, speed: 0 });
 
   const grant = (e: GestureResponderEvent) => {
     const c = centroid(e);
-    g.current = { x: c.x, y: c.y, n: c.n, maxN: c.n, t0: Date.now(), travel: 0 };
+    g.current = { x: c.x, y: c.y, n: c.n, maxN: c.n, t0: Date.now(), travel: 0, t: Date.now(), speed: 0 };
   };
   const move = (e: GestureResponderEvent) => {
     const st = g.current, c = centroid(e);
     if (c.n !== st.n) { st.x = c.x; st.y = c.y; st.n = c.n; st.maxN = Math.max(st.maxN, c.n); return; } // a finger landed or lifted: no jump
-    const dx = c.x - st.x, dy = c.y - st.y;
-    st.x = c.x; st.y = c.y; st.travel += Math.hypot(dx, dy);
-    if (c.n >= 2) pc.scroll(-dx * SCROLL, dy * SCROLL);
-    else pc.move(dx * GAIN, dy * GAIN);
+    const dx = c.x - st.x, dy = c.y - st.y, now = Date.now(), d = Math.hypot(dx, dy);
+    // finger speed, smoothed so one uneven touch sample doesn't jerk the gain
+    st.speed = st.speed * 0.6 + (d / Math.max(now - st.t, 4)) * 0.4;
+    st.x = c.x; st.y = c.y; st.t = now; st.travel += d;
+    if (c.n >= 2) { pc.scroll(-dx * SCROLL, dy * SCROLL); return; }
+    const gain = GAIN_SLOW + (GAIN_FAST - GAIN_SLOW) * Math.min(st.speed / FAST, 1);
+    pc.move(dx * gain, dy * gain);
   };
   const release = () => {
     const st = g.current;

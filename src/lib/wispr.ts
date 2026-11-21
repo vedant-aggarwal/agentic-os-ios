@@ -6,14 +6,13 @@ import { api, ApiError } from './api';
 
 // The phone's volume buttons drive Wispr Flow on the PC (server: POST /pc/keys).
 //   Hold volume up                 hold Wispr's talk keys; let go and it stops and pastes
-//   Hold up, then tap down         hands-free: it keeps listening after you let go
-//   Press up and down together     hands-free too
+//   Press volume down              hands-free: it keeps listening after you let go
+//   Hold up, then tap down         turns the hold into hands-free
 //   Any volume press in hands-free stops it
 // iOS reports a held button as a step now and then auto-repeat steps, never a release, so a release is the
 // steps stopping: QUIET_FIRST after a lone step, QUIET_REPEAT once repeats have started.
 const QUIET_FIRST = 650;
 const QUIET_REPEAT = 320;
-const BOTH = 220; // up and down this close together count as pressed together
 const BEAT = 2000; // keep-alive while holding; the PC lets go by itself after 6 s without one
 const SENT_FOR = 1600; // how long "Sent" stays up
 
@@ -31,7 +30,7 @@ export function useWispr(enabled: boolean) {
   const [since, setSince] = useState(0); // when the phase began
   // gesture state, read and written only in handlers and timers
   const g = useRef({
-    mode: 'idle' as 'idle' | 'ptt' | 'downFirst' | 'hfHeld' | 'handsfree' | 'stopHeld',
+    mode: 'idle' as 'idle' | 'ptt' | 'hfHeld' | 'handsfree' | 'stopHeld',
     steps: 0, quiet: null as ReturnType<typeof setTimeout> | null, beat: null as ReturnType<typeof setInterval> | null,
     sent: null as ReturnType<typeof setTimeout> | null,
   });
@@ -115,13 +114,9 @@ export function useWispr(enabled: boolean) {
           startTalk();
           quietAfter(QUIET_FIRST, endTalk);
         } else {
-          st.mode = 'downFirst'; // up may follow within BOTH: pressed together
-          quietAfter(BOTH, () => { st.mode = 'stopHeld'; quietAfter(QUIET_FIRST, () => { st.mode = 'idle'; st.steps = 0; }); });
+          handsFree(true); // volume down on its own: straight into hands-free
+          quietAfter(QUIET_FIRST, () => { st.mode = 'handsfree'; });
         }
-        break;
-      case 'downFirst':
-        if (button === 'up') { handsFree(true); quietAfter(QUIET_FIRST, () => { st.mode = 'handsfree'; }); }
-        else quietAfter(BOTH, () => { st.mode = 'stopHeld'; quietAfter(QUIET_FIRST, () => { st.mode = 'idle'; st.steps = 0; }); });
         break;
       case 'ptt':
         if (button === 'down') { handsFree(true); quietAfter(QUIET_FIRST, () => { st.mode = 'handsfree'; }); }

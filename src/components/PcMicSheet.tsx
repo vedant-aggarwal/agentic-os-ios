@@ -157,7 +157,7 @@ const s = StyleSheet.create({
   kicker: { fontFamily: F.medium, fontSize: 14, lineHeight: 20, color: C.muted },
   close: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.08)' },
   closeX: { fontFamily: F.medium, fontSize: 22, lineHeight: 24, color: C.text },
-  top: { alignItems: 'center', gap: 4, paddingTop: 4, paddingBottom: 16 },
+  top: { alignItems: 'center', gap: 4, paddingTop: 0, paddingBottom: 12 },
   orbBox: { width: 168, height: 168, alignItems: 'center', justifyContent: 'center' },
   ring: { position: 'absolute', width: 112, height: 112, borderRadius: 56, borderWidth: 2 },
   orb: { width: 112, height: 112, borderRadius: 56, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },

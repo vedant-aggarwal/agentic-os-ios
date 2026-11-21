@@ -18,12 +18,13 @@ const OPTICAL = { laptop: 34, mic: 25, cursor: 27, wave: 27, person: 24 } as con
 /** Space the bar takes from the top of the screen, below the safe area. */
 export const TOP_GAP = 6;
 
-/** Where the PC mic button sits on screen: the PC mic screen grows out of it. */
-export function micCenter(top: number, width: number) {
+/** Where the pill's button `i` (0 To PC, 1 PC mic, 2 Remote, 3 Voices) sits on screen: its page grows out of it. */
+export function pillCenter(i: number, top: number, width: number) {
   const pill = width - 32 - 2 * (TOP_H + G);
   const gap = (pill - 4 * BTN) / 5; // the pill spaces its four buttons evenly
-  return { x: 16 + 2 * gap + 1.5 * BTN, y: top + TOP_GAP + TOP_H / 2 };
+  return { x: 16 + (i + 1) * gap + (i + 0.5) * BTN, y: top + TOP_GAP + TOP_H / 2 };
 }
+export const micCenter = (top: number, width: number) => pillCenter(1, top, width);
 
 function PillButton({ label, onPress, children }: { label: string; onPress: () => void; children: React.ReactNode }) {
   const p = useScale(0.86);
@@ -53,8 +54,8 @@ function RoundButton({ label, onPress, children }: { label: string; onPress: () 
   );
 }
 
-export function TopBar({ top, width, live, onMic, onRemote, onNotBuilt }: {
-  top: number; width: number; live: boolean; onMic: () => void; onRemote: () => void; onNotBuilt: (what: string) => void;
+export function TopBar({ top, width, live, onMic, onRemote, onVoices, onNotBuilt }: {
+  top: number; width: number; live: boolean; onMic: () => void; onRemote: () => void; onVoices: () => void; onNotBuilt: (what: string) => void;
 }) {
   const pill = width - 32 - 2 * (TOP_H + G);
   return (
@@ -67,7 +68,7 @@ export function TopBar({ top, width, live, onMic, onRemote, onNotBuilt }: {
           {live ? <View style={s.liveDot} /> : null}
         </PillButton>
         <PillButton label="Remote PC" onPress={onRemote}><Sym name="cursorarrow.rays" size={OPTICAL.cursor} fallback={<Remote size={GLYPH} />} /></PillButton>
-        <PillButton label="Voices" onPress={() => onNotBuilt('Voices')}><Sym name="waveform" size={OPTICAL.wave} fallback={<Voices size={GLYPH} />} /></PillButton>
+        <PillButton label="Voices" onPress={onVoices}><Sym name="waveform" size={OPTICAL.wave} fallback={<Voices size={GLYPH} />} /></PillButton>
       </View>
       <RoundButton label="Log mood" onPress={() => onNotBuilt('Mood')}><Smiley size={30} /></RoundButton>
       <RoundButton label="Your account" onPress={() => onNotBuilt('Account')}><Sym name="person.fill" size={OPTICAL.person} fallback={<Account size={GLYPH + 2} />} /></RoundButton>

@@ -34,7 +34,7 @@ const native = Platform.OS !== 'web';
 // Two rows of four: YouTube on top, Instagram below.
 const ORDER: Slot[] = [...YOUTUBE, ...INSTAGRAM];
 
-type Chat = { role: 'you' | 'kai'; text: string; error?: string };
+type Chat = { role: 'you' | 'kai'; text: string; error?: string; tools?: string[] };
 const key = (v: number, i: number) => `${v}:${i}`;
 
 /** Everything one channel's page holds. Each channel keeps its own, so switching channels mid-draft loses nothing. */
@@ -133,13 +133,23 @@ export default function ConceptGenerator() {
     return () => y.removeListener(id);
   }, [y]);
 
-  const close = () => {
+  // Anything worth keeping on any channel: closing asks first (swipe down, backdrop tap or the X).
+  const [confirm, setConfirm] = useState(false);
+  const dirty = Object.values(boards).some((b) => b.versions.length > 0 || b.chat.length > 0 || (b.raw.trim() !== '' && b.raw !== seedIdea));
+  const close = (force = false) => {
     if (flying) return;
     Keyboard.dismiss();
+    if (dirty && !force) {
+      Animated.spring(y, { toValue: 0, damping: 30, stiffness: 300, useNativeDriver: native }).start();
+      setConfirm(true);
+      return;
+    }
     Animated.timing(y, { toValue: SHEET, duration: 230, easing: Easing.in(Easing.quad), useNativeDriver: native }).start(() =>
       router.canGoBack() ? router.back() : router.replace('/'),
     );
   };
+  const closeRef = useRef(close);
+  closeRef.current = close;
 
   const pan = useMemo(() => {
     let start = 0;
@@ -154,7 +164,7 @@ export default function ConceptGenerator() {
         y.setValue(next < 0 ? next * 0.25 : next); // rubber band past the top
       },
       onPanResponderRelease: (_, g) => {
-        if (pos.current + g.vy * 160 > 140) return close();
+        if (pos.current + g.vy * 160 > 140) return closeRef.current();
         Animated.spring(y, { toValue: 0, velocity: g.vy, damping: 30, stiffness: 300, useNativeDriver: native }).start();
       },
       onPanResponderTerminate: () => Animated.spring(y, { toValue: 0, useNativeDriver: native }).start(),
@@ -244,6 +254,7 @@ export default function ConceptGenerator() {
     const reply = (f: (m: Chat) => Chat) => upd(ch, (b) => ({ chat: b.chat.map((m, j) => (j === turn + 1 ? f(m) : m)) }));
     cancels.current[ch] = live('refine', { sessionId: `${sessionId}:${ch}`, channelId: ch, message, concepts: base, ...direction() }, {
       onText: (t) => reply((m) => ({ ...m, text: m.text + t })),
+      onTool: (label) => reply((m) => ({ ...m, tools: [...(m.tools || []), label] })),
       onConcept: (c) => {
         if (first) {
           first = false;
@@ -287,7 +298,7 @@ export default function ConceptGenerator() {
   return (
     <View style={StyleSheet.absoluteFill}>
       <Animated.View style={[styles.backdrop, { opacity: shade }]}>
-        <Pressable style={{ flex: 1 }} onPress={close} accessibilityLabel="Close" />
+        <Pressable style={{ flex: 1 }} onPress={() => close()} accessibilityLabel="Close" />
       </Animated.View>
 
       <Animated.View
@@ -314,7 +325,7 @@ export default function ConceptGenerator() {
           </View>
           <View style={styles.head}>
             <Text style={styles.title}>Concept Generator</Text>
-            <Press style={styles.close} scale={0.9} onPress={close} accessibilityLabel="Close">
+            <Press style={styles.close} scale={0.9} onPress={() => close()} accessibilityLabel="Close">
               <View style={{ transform: [{ rotate: '45deg' }] }}>
                 <Plus size={20} />
               </View>
@@ -419,12 +430,17 @@ export default function ConceptGenerator() {
                           >
                             {chat.length ? (
                               chat.map((m, i) => (
-                                <View key={i} style={[styles.bubble, m.role === 'you' ? styles.mine : styles.theirs]}>
-                                  {m.role === 'kai' && !m.text && !m.error ? (
-                                    <ActivityIndicator size="small" color={C.muted} />
-                                  ) : (
-                                    <Text style={[styles.bubbleText, m.role === 'you' && { color: '#fff' }, m.error && { color: '#B4232F' }]}>{m.error ? m.error : m.text.trim()}</Text>
-                                  )}
+                                <View key={i} style={{ gap: 4 }}>
+                                  {m.tools?.map((t, j) => (
+                                    <Text key={j} style={styles.toolLine}>{t}</Text>
+                                  ))}
+                                  <View style={[styles.bubble, m.role === 'you' ? styles.mine : styles.theirs]}>
+                                    {m.role === 'kai' && !m.text.trim() && !m.error ? (
+                                      <ActivityIndicator size="small" color={C.muted} />
+                                    ) : (
+                                      <Text style={[styles.bubbleText, m.role === 'you' && { color: '#fff' }, m.error && { color: '#B4232F' }]}>{m.error ? m.error : m.text.trim()}</Text>
+                                    )}
+                                  </View>
                                 </View>
                               ))
                             ) : (
@@ -469,6 +485,24 @@ export default function ConceptGenerator() {
           </Svg>
         </Animated.View>
       </Animated.View>
+
+      {confirm ? (
+        <View style={styles.confirmWrap}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setConfirm(false)} accessibilityLabel="Continue editing" />
+          <View style={styles.confirmCard}>
+            <Text style={styles.confirmTitle}>Discard your concepts?</Text>
+            <Text style={styles.confirmSub}>The drafts, versions and chat in the Concept Generator will be lost.</Text>
+            <View style={styles.confirmRow}>
+              <Press style={[styles.confirmBtn, { backgroundColor: C.card }]} scale={0.97} onPress={() => { setConfirm(false); close(true); }} accessibilityLabel="Discard">
+                <Text style={[styles.confirmBtnText, { color: '#B4232F' }]}>Discard</Text>
+              </Press>
+              <Press style={[styles.confirmBtn, { backgroundColor: C.ink }]} scale={0.97} onPress={() => setConfirm(false)} accessibilityLabel="Continue">
+                <Text style={[styles.confirmBtnText, { color: '#fff' }]}>Continue</Text>
+              </Press>
+            </View>
+          </View>
+        </View>
+      ) : null}
 
       {editing && versions[editing.v]?.[editing.i] ? (
         <ConceptEditor
@@ -628,6 +662,14 @@ const styles = StyleSheet.create({
   cWhy: { marginTop: 8, fontFamily: F.m, fontSize: 13, lineHeight: 18, color: C.growInk },
   tick: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: C.empty, alignItems: 'center', justifyContent: 'center' },
   tickOn: { backgroundColor: C.ink, borderColor: C.ink },
+  toolLine: { marginLeft: 4, fontFamily: F.m, fontSize: 12, lineHeight: 16, color: C.growInk },
+  confirmWrap: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(20,20,20,0.45)', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  confirmCard: { width: '100%', maxWidth: 360, padding: 20, borderRadius: 26, backgroundColor: C.bg },
+  confirmTitle: { fontFamily: F.b, fontSize: 19, lineHeight: 24, color: C.ink },
+  confirmSub: { marginTop: 6, fontFamily: F.r, fontSize: 15, lineHeight: 21, color: C.muted },
+  confirmRow: { marginTop: 18, flexDirection: 'row', gap: 10 },
+  confirmBtn: { flex: 1, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  confirmBtnText: { fontFamily: F.b, fontSize: 15 },
   chatBox: { marginBottom: 8, borderRadius: 20, backgroundColor: C.card, overflow: 'hidden' },
   chatScroll: { maxHeight: 220 },
   chatHint: { padding: 4, fontFamily: F.r, fontSize: 14, lineHeight: 20, color: C.muted },

@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { live, resetSession, type KaiAction } from './live';
+import { api } from './api';
+import { live, type KaiAction } from './live';
 
 // Kai's chat lives here, outside any screen, so it survives tab switches and the hold-to-talk button
 // can start a conversation from anywhere.
@@ -53,10 +54,30 @@ export function sendToKai(text: string, opts: { voice?: boolean; context?: KaiCo
 }
 
 export function newKaiChat() {
-  resetSession('kai:' + sessionId);
+  if (state.busy) return;
   sessionId = newSession();
   set({ messages: [], busy: false });
 }
+
+export type KaiChatSummary = { id: string; title: string; updated: string; count: number; last: string };
+
+/** Past chats, newest first (kept on the PC in app/data/kai). */
+export async function listKaiChats() {
+  return (await api<{ chats: KaiChatSummary[] }>('/api/kai/chats')).chats;
+}
+
+/** Reopen a past chat. Kai picks the conversation up where it left off. */
+export async function openKaiChat(id: string) {
+  if (state.busy || id === sessionId) return;
+  const { chat } = await api<{ chat: { id: string; messages: { role: 'user' | 'kai'; text: string; tools?: string[]; voice?: boolean; error?: string }[] } }>('/api/kai/chat?id=' + encodeURIComponent(id));
+  sessionId = chat.id;
+  set({
+    busy: false,
+    messages: chat.messages.map((m, i) => ({ id: `${m.role}${i}`, role: m.role, text: m.text || '', tools: m.tools || [], voice: m.voice, error: m.error, done: true })),
+  });
+}
+
+export const currentKaiChat = () => sessionId;
 
 export function attachToKai(a: Attachment) {
   if (state.attachments.some((x) => x.kind === a.kind && x.id === a.id)) return;

@@ -144,9 +144,9 @@ export const Check = ({ size = 14, color = '#fff' }: P) => (
 
 /** Kai in the dock: a sparkle drawn at the same size and stroke as the other tab icons. */
 export const KaiIcon = ({ size = 22, color = '#5E6169' }: P) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.7} strokeLinejoin="round">
-    <Path d="M10.5 3c.5 4.4 2.2 6.6 7 7.4-4.8.8-6.5 3-7 7.4-.5-4.4-2.2-6.6-7-7.4 4.8-.8 6.5-3 7-7.4z" />
-    <Path d="M18.5 14.6c.25 2 1 3 3 3.4-2 .4-2.75 1.4-3 3.4-.25-2-1-3-3-3.4 2-.4 2.75-1.4 3-3.4z" />
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.9} strokeLinejoin="round">
+    <Path d="M10.5 3.5C11.3 9 13.5 11.7 19.5 12.5 13.5 13.3 11.3 16 10.5 21.5 9.7 16 7.5 13.3 1.5 12.5 7.5 11.7 9.7 9 10.5 3.5Z" />
+    <Path d="M19.5 1.6C19.8 3.5 20.4 4.2 22.4 4.5 20.4 4.8 19.8 5.5 19.5 7.4 19.2 5.5 18.6 4.8 16.6 4.5 18.6 4.2 19.2 3.5 19.5 1.6Z" />
   </Svg>
 );
 

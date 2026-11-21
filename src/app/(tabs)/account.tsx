@@ -34,6 +34,8 @@ export default function Account() {
           sub={dirs ? `${dirs.directions.length} ways of making content` : 'Ways of making content'}
           onPress={() => router.push('/directions')}
         />
+        <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(20,20,20,0.08)', marginLeft: 16 }} />
+        <Row title="Learnings" sub="What Kai remembers, per channel and for all" onPress={() => router.push('/learnings')} />
       </View>
 
       <View style={styles.about}>

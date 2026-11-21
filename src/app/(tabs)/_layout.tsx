@@ -205,7 +205,9 @@ function Dock({ state, navigateToTab }: BottomTabBarProps) {
         <Animated.View entering={FadeIn.duration(120)} exiting={FadeOut.duration(160)} pointerEvents="box-none" style={styles.bubble}>
           <View style={styles.bubbleHead}>
             {talk === 'sending' ? <ActivityIndicator size="small" color="#fff" /> : <View style={[styles.dot, zone === 'cancel' && { opacity: 0.3 }]} />}
-            <Text style={styles.bubbleTitle}>{talk === 'sending' ? 'Sending to Kai' : talk === 'locked' ? 'Locked' : 'Listening'}</Text>
+            <Text style={styles.bubbleTitle}>
+              {talk === 'sending' ? 'Sending to Kai' : talk === 'locked' ? 'Locked. Tap the arrow to send' : zone === 'cancel' ? 'Release to cancel' : zone === 'lock' ? 'Release to lock' : 'Release to send'}
+            </Text>
             {talk === 'locked' ? <LockIcon size={14} color="rgba(255,255,255,0.7)" /> : null}
             <View style={{ flex: 1 }} />
             {talk === 'locked' ? (

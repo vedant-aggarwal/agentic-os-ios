@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, type ComponentRef } from 'react';
-import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Chevron, Plus, SparkIcon } from '@/components/Icons';
 import { Press } from '@/components/Press';
 import { VoiceField } from '@/components/VoiceField';
-import { detachFromKai, newKaiChat, sendToKai, setKaiDraft, useKai } from '@/lib/kai';
+import { currentKaiChat, detachFromKai, listKaiChats, newKaiChat, openKaiChat, sendToKai, setKaiDraft, useKai, type KaiChatSummary } from '@/lib/kai';
 import { C, F } from '@/theme';
 
 const STARTERS = [
@@ -18,6 +18,7 @@ export default function KaiScreen() {
   const insets = useSafeAreaInsets();
   const { messages, busy, attachments, draft } = useKai();
   const [kb, setKb] = useState(false);
+  const [history, setHistory] = useState(false);
   const list = useRef<ComponentRef<typeof ScrollView>>(null);
 
   useEffect(() => {
@@ -47,13 +48,17 @@ export default function KaiScreen() {
           <SparkIcon size={18} color="#fff" />
         </View>
         <Text style={styles.title}>Kai</Text>
+        <Press style={styles.newChat} scale={0.94} onPress={() => setHistory(true)} accessibilityLabel="Past chats">
+          <Text style={styles.newText}>Chats</Text>
+        </Press>
         {messages.length ? (
           <Press style={styles.newChat} scale={0.94} onPress={newKaiChat} accessibilityLabel="New chat">
             <Plus size={16} />
-            <Text style={styles.newText}>New chat</Text>
+            <Text style={styles.newText}>New</Text>
           </Press>
         ) : null}
       </View>
+      {history ? <History onClose={() => setHistory(false)} /> : null}
 
       <ScrollView ref={list} style={{ flex: 1 }} contentContainerStyle={{ padding: 16, gap: 10, flexGrow: 1 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
         {!messages.length ? (
@@ -132,7 +137,77 @@ export default function KaiScreen() {
   );
 }
 
+/** Every past chat with Kai, newest first. Tap one to carry on where it left off. */
+function History({ onClose }: { onClose: () => void }) {
+  const insets = useSafeAreaInsets();
+  const [chats, setChats] = useState<KaiChatSummary[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const current = currentKaiChat();
+  useEffect(() => {
+    listKaiChats().then(setChats, (e) => setError(e instanceof Error ? e.message : String(e)));
+  }, []);
+  const open = async (id: string) => {
+    try {
+      await openKaiChat(id);
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+  return (
+    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Close" />
+      <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+        <View style={styles.sheetHead}>
+          <Text style={styles.sheetTitle}>Chats</Text>
+          <Press
+            style={styles.newChat}
+            scale={0.94}
+            onPress={() => {
+              newKaiChat();
+              onClose();
+            }}
+            accessibilityLabel="New chat"
+          >
+            <Plus size={16} />
+            <Text style={styles.newText}>New chat</Text>
+          </Press>
+        </View>
+        <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 4, gap: 8 }}>
+          {error ? <Text style={[styles.helloSub, { color: '#B4232F' }]}>{error}</Text> : null}
+          {!chats && !error ? <ActivityIndicator color={C.muted} style={{ marginTop: 24 }} /> : null}
+          {chats && !chats.length ? <Text style={styles.helloSub}>No chats yet. Everything you say to Kai is kept here.</Text> : null}
+          {chats?.map((c) => (
+            <Press key={c.id} style={[styles.chatRow, c.id === current && { borderColor: C.ink }]} scale={0.98} onPress={() => open(c.id)} accessibilityLabel={`Open chat: ${c.title}`}>
+              <Text numberOfLines={1} style={styles.chatTitle}>{c.title}</Text>
+              {c.last ? <Text numberOfLines={2} style={styles.chatLast}>{c.last}</Text> : null}
+              <Text style={styles.chatWhen}>{when(c.updated)} · {Math.ceil(c.count / 2)} {c.count > 2 ? 'messages' : 'message'}</Text>
+            </Press>
+          ))}
+        </ScrollView>
+      </View>
+    </Modal>
+  );
+}
+
+function when(iso: string) {
+  const d = new Date(iso);
+  const mins = Math.round((Date.now() - d.getTime()) / 60000);
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return `${mins} min ago`;
+  if (mins < 24 * 60) return `${Math.round(mins / 60)} h ago`;
+  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+}
+
 const styles = StyleSheet.create({
+  backdrop: { flex: 1, backgroundColor: 'rgba(20,20,20,0.4)' },
+  sheet: { maxHeight: '80%', backgroundColor: C.bg, borderTopLeftRadius: 28, borderTopRightRadius: 28 },
+  sheetHead: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 },
+  sheetTitle: { flex: 1, fontFamily: F.b, fontSize: 22, color: C.ink },
+  chatRow: { padding: 14, borderRadius: 18, backgroundColor: C.card, borderWidth: 2, borderColor: 'transparent', gap: 3 },
+  chatTitle: { fontFamily: F.s, fontSize: 15, lineHeight: 20, color: C.ink },
+  chatLast: { fontFamily: F.r, fontSize: 13, lineHeight: 18, color: C.muted },
+  chatWhen: { marginTop: 2, fontFamily: F.m, fontSize: 12, color: C.faint },
   head: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingBottom: 8 },
   mark: { width: 34, height: 34, borderRadius: 17, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' },
   title: { flex: 1, fontFamily: F.b, fontSize: 28, lineHeight: 34, letterSpacing: -0.5, color: C.ink },

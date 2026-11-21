@@ -1,6 +1,6 @@
 {
   "name": "agentic-os-mobile",
-  "version": "3.0.0",
+  "version": "4.1.0",
   "main": "expo-router/entry",
   "dependencies": {
     "@expo-google-fonts/geist": "^0.4.2",

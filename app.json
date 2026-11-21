@@ -64,6 +64,14 @@
           "recordAudioAndroid": false,
           "enableBackgroundRecording": true
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Agentic OS sends the photos and videos you pick to your PC.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
       ]
     ],
     "experiments": {

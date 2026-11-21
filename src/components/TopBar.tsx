@@ -54,15 +54,15 @@ function RoundButton({ label, onPress, children }: { label: string; onPress: () 
   );
 }
 
-export function TopBar({ top, width, live, onMic, onRemote, onVoices, onNotBuilt }: {
-  top: number; width: number; live: boolean; onMic: () => void; onRemote: () => void; onVoices: () => void; onNotBuilt: (what: string) => void;
+export function TopBar({ top, width, live, onFiles, onMic, onRemote, onVoices, onNotBuilt }: {
+  top: number; width: number; live: boolean; onFiles: () => void; onMic: () => void; onRemote: () => void; onVoices: () => void; onNotBuilt: (what: string) => void;
 }) {
   const pill = width - 32 - 2 * (TOP_H + G);
   return (
     <View pointerEvents="box-none" style={[s.row, { top: top + TOP_GAP }]}>
       <View style={[s.pill, { width: pill }]}>
         <Glass radius={TOP_H / 2} />
-        <PillButton label="Send to PC" onPress={() => onNotBuilt('To PC')}><Sym name="laptopcomputer.and.arrow.down" size={OPTICAL.laptop} fallback={<ToPc size={GLYPH} />} /></PillButton>
+        <PillButton label="Files to and from the PC" onPress={onFiles}><Sym name="laptopcomputer.and.arrow.down" size={OPTICAL.laptop} fallback={<ToPc size={GLYPH} />} /></PillButton>
         <PillButton label="PC mic" onPress={onMic}>
           <Sym name="mic.fill" size={OPTICAL.mic} fallback={<PcMic size={GLYPH} />} />
           {live ? <View style={s.liveDot} /> : null}

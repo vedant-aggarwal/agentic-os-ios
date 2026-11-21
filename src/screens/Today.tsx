@@ -12,6 +12,7 @@ import { SignIn } from '@/components/SignIn';
 import { TaskGroup } from '@/components/TaskRow';
 import { PcMicSheet } from '@/components/PcMicSheet';
 import { VoicesSheet } from '@/components/VoicesSheet';
+import { FilesSheet } from '@/components/FilesSheet';
 import { useAgent } from '@/lib/agent';
 import { micCenter, pillCenter, TOP_GAP, TOP_H, TopBar } from '@/components/TopBar';
 import { api, signOut } from '@/lib/api';
@@ -45,6 +46,7 @@ export default function Today() {
   const [allCarried, setAllCarried] = useState(false);
   const [micOpen, setMicOpen] = useState(false); // opened by tapping the PC mic button
   const [voicesOpen, setVoicesOpen] = useState(false); // the top bar's waveform button
+  const [filesOpen, setFilesOpen] = useState(false); // the top bar's To PC button
   // volume buttons drive Wispr on the PC while Today is up
   const mic = useWispr(!!t.view);
   const agent = useAgent(!!t.view);
@@ -127,7 +129,7 @@ export default function Today() {
       <EdgeBlur edge="top" height={insets.top + TOP_GAP + TOP_H + 28} strength={30} curve={2} />
       <TopBar top={insets.top} width={width} live={live} onMic={() => { setClosedLive(false); setMicOpen(true); }}
         onRemote={() => { setWant((w) => ({ view: 'screen', n: (w?.n ?? 0) + 1 })); setClosedLive(false); setMicOpen(true); }}
-        onVoices={() => setVoicesOpen(true)} onNotBuilt={notBuilt} />
+        onVoices={() => setVoicesOpen(true)} onFiles={() => setFilesOpen(true)} onNotBuilt={notBuilt} />
       <EdgeBlur height={insets.bottom + 150} strength={35} curve={2.6} />
       <EdgeGlow height={insets.bottom + 200} orb={orb} />
       <Notice text={local ?? t.notice} bottom={insets.bottom + 112} onClear={clear} />
@@ -139,6 +141,7 @@ export default function Today() {
         onTalkIn={mic.startTalk} onTalkOut={mic.endTalk} onHandsFree={mic.toggleHandsFree}
         onSayIn={mic.sayIn} onSayOut={mic.sayOut} onSayLock={mic.sayLock} onSayToggle={mic.sayToggle} sayLocked={mic.locked} agent={agent} live={mic.live} offline={mic.offline}
         onStop={() => { agent.stop(); mic.cancel(); api('/pc/keys', { method: 'POST', body: { action: 'stop' } }).catch(() => {}); }} />
+      <FilesSheet open={filesOpen} origin={pillCenter(0, insets.top, width)} onClose={() => setFilesOpen(false)} />
       <VoicesSheet open={voicesOpen} origin={pillCenter(3, insets.top, width)} onClose={() => setVoicesOpen(false)} />
     </View>
   );

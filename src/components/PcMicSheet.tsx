@@ -11,6 +11,7 @@ import { LockHint } from '@/components/HoldLock';
 import { PcMic } from '@/components/Icons';
 import { Sym } from '@/components/Sym';
 import { PcKeysPad, PcTypePad, usePcKeys } from '@/components/PcKeyboard';
+import { RemoteScreen } from '@/components/RemoteScreen';
 import { Trackpad } from '@/components/Trackpad';
 import type { useAgent } from '@/lib/agent';
 import { usePointer } from '@/lib/pointer';
@@ -116,9 +117,9 @@ function SourceSwitch({ value, onChange, note }: { value: MicSource; onChange: (
   );
 }
 
-type View4 = 'chat' | 'pad' | 'type' | 'keys';
-type ToggleIcon = 'cursorarrow.rays' | 'keyboard' | 'command';
-const TOGGLE_FALLBACK: Record<ToggleIcon, string> = { 'cursorarrow.rays': '↖', keyboard: '⌨', command: '⌘' };
+type View4 = 'chat' | 'screen' | 'pad' | 'type' | 'keys';
+type ToggleIcon = 'display' | 'cursorarrow.rays' | 'keyboard' | 'command';
+const TOGGLE_FALLBACK: Record<ToggleIcon, string> = { display: '▭', 'cursorarrow.rays': '↖', keyboard: '⌨', command: '⌘' };
 
 /** A square toggle in the mic row: trackpad, phone keyboard, or PC keys. */
 function Toggle({ on, label, icon, onPress }: { on: boolean; label: string; icon: ToggleIcon; onPress: () => void }) {
@@ -194,7 +195,9 @@ export function PcMicSheet({
           hasItems={agent.items.length > 0} onStop={onStop} onFresh={agent.fresh} />
 
         <View style={s.main}>
-          {view === 'pad' ? (
+          {view === 'screen' ? (
+            <RemoteScreen key="screen" pc={pc} />
+          ) : view === 'pad' ? (
             <Animated.View key="pad" entering={FadeIn.duration(200)} style={{ flex: 1 }}><Trackpad pc={pc} /></Animated.View>
           ) : view === 'keys' ? (
             <PcKeysPad key="keys" kb={kb} />
@@ -212,6 +215,7 @@ export function PcMicSheet({
             <View style={s.titleRow}>
               <Text style={[s.title, { color: phase === 'idle' ? C.text : tone }]} numberOfLines={1}>{TITLE[phase]}</Text>
               <View style={{ flex: 1 }} />
+              <Toggle on={view === 'screen'} label="PC screen" icon="display" onPress={() => flip('screen')} />
               <Toggle on={view === 'pad'} label="Trackpad" icon="cursorarrow.rays" onPress={() => flip('pad')} />
               <Toggle on={view === 'type'} label="Type on the PC" icon="keyboard" onPress={() => flip('type')} />
               <Toggle on={view === 'keys'} label="PC keys" icon="command" onPress={() => flip('keys')} />
@@ -267,7 +271,7 @@ const s = StyleSheet.create({
   title: { fontFamily: F.semibold, fontSize: 19, lineHeight: 24, letterSpacing: -0.4, flexShrink: 1 },
   elapsed: { fontFamily: F.medium, fontSize: 11, lineHeight: 14, color: C.muted, fontVariant: ['tabular-nums'], marginTop: 1 },
   toggle: {
-    width: 40, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
+    width: 36, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.14)',
   },
   toggleOn: { backgroundColor: LIVE },

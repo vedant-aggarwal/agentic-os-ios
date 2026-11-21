@@ -1,18 +1,18 @@
 import type { BottomTabBarProps } from 'expo-router/build/layouts/Tabs';
 import { BlurView } from 'expo-blur';
-import { Tabs } from 'expo-router';
+import { router, Tabs } from 'expo-router';
 import { Fragment } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BulbIcon, CalIcon, DocIcon, GridIcon, Plus } from '@/components/Icons';
+import { AccountIcon, BulbIcon, CalIcon, GridIcon, Plus } from '@/components/Icons';
 import { Press } from '@/components/Press';
 import { C, F } from '@/theme';
 
 const ITEMS: Record<string, { label: string; Icon: typeof GridIcon }> = {
   index: { label: 'Channels', Icon: GridIcon },
   ideas: { label: 'Ideas', Icon: BulbIcon },
-  scripts: { label: 'Scripts', Icon: DocIcon },
   calendar: { label: 'Calendar', Icon: CalIcon },
+  account: { label: 'Account', Icon: AccountIcon },
 };
 
 const CAPTURE = 70;
@@ -52,8 +52,12 @@ function Dock({ state, navigateToTab }: BottomTabBarProps) {
           style={styles.capture}
           scale={0.9}
           accessibilityRole="button"
-          accessibilityLabel="Capture an idea"
-          onPress={() => Alert.alert('Capture', 'Quick notes come in the next build.')}
+          accessibilityLabel="New reel"
+          onPress={() => {
+            // Open over the Channels grid so the finished sheet can fly into its channel's tile.
+            if (state.routes[state.index]?.name !== 'index') navigateToTab(state.routes[0].key);
+            router.push('/new');
+          }}
         >
           <Plus size={34} weight={2.6} color="#FFFFFF" />
         </Press>
@@ -67,8 +71,8 @@ export default function TabsLayout() {
     <Tabs tabBar={(p) => <Dock {...p} />} screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: C.bg } }}>
       <Tabs.Screen name="index" />
       <Tabs.Screen name="ideas" />
-      <Tabs.Screen name="scripts" />
       <Tabs.Screen name="calendar" />
+      <Tabs.Screen name="account" />
     </Tabs>
   );
 }

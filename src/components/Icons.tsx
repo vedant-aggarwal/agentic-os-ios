@@ -113,3 +113,31 @@ export const CalIcon = ({ size = 22, color = '#5E6169' }: P) => (
     <Path d="M3.5 10h17M8 3v4M16 3v4" />
   </Svg>
 );
+
+export const MicIcon = ({ size = 20, color = '#141414' }: P) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <Rect x={9} y={3} width={6} height={11} rx={3} fill={color} />
+    <Path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" />
+  </Svg>
+);
+
+export const AccountIcon = ({ size = 22, color = '#5E6169' }: P) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.7} strokeLinecap="round">
+    <Circle cx={12} cy={12} r={9} />
+    <Circle cx={12} cy={10} r={3.2} />
+    <Path d="M6.2 18.4c1.3-2 3.4-3.1 5.8-3.1s4.5 1.1 5.8 3.1" />
+  </Svg>
+);
+
+export const SparkIcon = ({ size = 18, color = '#141414' }: P) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+    <Path d="M12 2.5c.4 3.9 1.9 6.6 6.2 7.3-4.3.8-5.8 3.4-6.2 7.3-.4-3.9-1.9-6.5-6.2-7.3 4.3-.7 5.8-3.4 6.2-7.3z" />
+    <Path d="M18.5 14.5c.2 1.9.9 3 2.9 3.4-2 .4-2.7 1.5-2.9 3.4-.2-1.9-.9-3-2.9-3.4 2-.4 2.7-1.5 2.9-3.4z" />
+  </Svg>
+);
+
+export const Check = ({ size = 14, color = '#fff' }: P) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
+    <Path d="M5 12.5l4.5 4.5L19 7.5" />
+  </Svg>
+);

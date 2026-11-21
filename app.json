@@ -32,7 +32,17 @@
           "imageWidth": 120
         }
       ],
-      "expo-font"
+      "expo-font",
+      [
+        "@siteed/audio-studio",
+        {
+          "enablePhoneStateHandling": false,
+          "enableNotifications": false,
+          "enableBackgroundAudio": false,
+          "enableDeviceDetection": false,
+          "iosConfig": { "microphoneUsageDescription": "Content OS listens while the mic button is on, so you can speak ideas instead of typing them." }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": false,

@@ -1,14 +1,16 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Alert, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar } from '@/components/Avatar';
-import { Chevron, InstagramMark, YouTubeMark } from '@/components/Icons';
+import { DaySheet } from '@/components/DaySheet';
+import { Chevron, Eye, Heart, InstagramMark, Person, YouTubeMark } from '@/components/Icons';
 import { Press } from '@/components/Press';
-import { Empty, ErrorBox, Loading } from '@/components/States';
+import { ErrorBox, Loading } from '@/components/States';
 import { isLive } from '@/components/Tile';
-import { addDays, compact, slotsFor, useHome, weekStart, type Channel } from '@/lib/api';
-import { slotFor } from '@/lib/lineup';
+import { addDays, compact, slotsFor, useHome, useReels, weekOf, weekStart, type Channel, type SlotState } from '@/lib/api';
+import { slotFor, type Slot } from '@/lib/lineup';
+import { nextStage, STAGE_INFO } from '@/lib/reels';
 import { C, F } from '@/theme';
 
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
@@ -20,6 +22,7 @@ export default function ChannelScreen() {
   const insets = useSafeAreaInsets();
   const { data, error, loading, reload } = useHome();
   const [offset, setOffset] = useState(0);
+  const [day, setDay] = useState<string | null>(null);
   const slot = slotFor(String(id));
   const ch = data?.channels.find((c) => c.id === id);
   const today = data?.today || new Date().toISOString().slice(0, 10);
@@ -34,75 +37,188 @@ export default function ChannelScreen() {
       contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: 16, paddingBottom: insets.bottom + 32 }}
       refreshControl={<RefreshControl refreshing={loading && !!data} onRefresh={reload} tintColor={C.ink} />}
     >
-      <View style={styles.header}>
+      <View style={styles.bar}>
         <Press style={styles.round} scale={0.92} accessibilityLabel="Back to channels" onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}>
           <Chevron />
         </Press>
-        <View style={styles.titleRow}>
-          {slot.platform === 'youtube' ? <YouTubeMark /> : <InstagramMark size={20} />}
-          <Text numberOfLines={1} style={styles.title}>{slot.name}</Text>
+        <View style={styles.platform}>
+          {slot.platform === 'youtube' ? <YouTubeMark size={26} /> : <InstagramMark size={21} />}
+          <Text style={styles.platformName}>{slot.platform === 'youtube' ? 'YouTube' : 'Instagram'}</Text>
         </View>
-        <Avatar slot={slot} size={44} live={live} ringBg={C.bg} />
+        <View style={{ width: 44 }} />
       </View>
 
       {error && !data ? (
         <View style={{ marginTop: 16 }}>
           <ErrorBox message={error} onRetry={reload} />
         </View>
-      ) : !data || !ch ? (
+      ) : !data ? (
         <Loading />
-      ) : !live ? (
-        <View style={{ marginTop: 16, gap: 12 }}>
-          <Empty title={slot.setupNote || 'Not started'} body="This channel has no posting schedule yet. Set its slots in Content OS and its calendar will show here." />
-          <Pipeline ch={ch} />
-        </View>
+      ) : !live || !ch ? (
+        <>
+          <Hero slot={slot} />
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>No posting schedule yet</Text>
+            <Text style={styles.body}>Once this channel has daily posting slots, its week and calendar show up here.</Text>
+          </View>
+        </>
       ) : (
         <>
-          <Stats ch={ch} platform={slot.platform} />
-          <Calendar ch={ch} today={today} color={color} offset={offset} setOffset={setOffset} />
-          <Pipeline ch={ch} />
-          <Press
-            style={styles.cta}
-            onPress={() => Alert.alert(ctaText(ch, slot.name), 'This action gets wired up next.')}
-          >
-            <Text style={styles.ctaText}>{ctaText(ch, slot.name)}</Text>
-          </Press>
+          <Hero slot={slot} ch={ch} today={today} />
+          <Today ch={ch} today={today} color={color} onOpen={() => setDay(today)} />
+          <InProduction channelId={slot.channelId} />
+          <Calendar
+            ch={ch}
+            today={today}
+            color={color}
+            offset={offset}
+            setOffset={setOffset}
+            onDay={(d) => router.push({ pathname: '/day/[id]', params: { id: slot.channelId, date: d } })}
+          />
+          <DaySheet key={day || 'closed'} ch={ch} date={day} today={today} onClose={() => setDay(null)} />
         </>
       )}
     </ScrollView>
   );
 }
 
-function ctaText(ch: Channel, name: string) {
-  if (ch.pipeline.edit) return `Review ${ch.pipeline.edit} edits`;
-  if (ch.pipeline.scripts) return `Review ${ch.pipeline.scripts} scripts`;
-  return `Find ideas for ${name}`;
-}
+// Mirrors the home tile, laid out sideways: ringed picture on the left, name and numbers on the right.
+// Tapping the picture opens the week's highlights.
+function Hero({ slot, ch, today }: { slot: Slot; ch?: Channel; today?: string }) {
+  const week = ch && today ? weekOf(ch, today) : null;
+  const handle = ch?.handle ? (ch.handle.startsWith('@') ? ch.handle : '@' + ch.handle) : null;
 
-function Stats({ ch, platform }: { ch: Channel; platform: 'youtube' | 'instagram' }) {
-  const s = ch.stats;
-  const cells: [string, string][] = [
-    [compact(s.followers), platform === 'youtube' ? 'Subscribers' : 'Followers'],
-    s.weekViews != null
-      ? [compact(s.weekViews), 'Views, 7 days']
-      : s.weekLikes != null
-        ? [compact(s.weekLikes), 'Likes, 7 days']
-        : [compact(s.totalViews), 'Views'],
-    [s.weekPosts != null ? `${s.weekPosts}/${s.weekTarget ?? ch.perDay * 7}` : '–', 'Posts, 7 days'],
-  ];
-  return (
-    <View style={styles.stats}>
-      {cells.map(([n, l], i) => (
-        <View key={l} style={[styles.statCell, i === 1 && styles.statMid]}>
-          <Text style={styles.statNum}>{n}</Text>
-          <Text style={styles.statLabel}>{l}</Text>
+  if (!ch || !week) {
+    return (
+      <View style={styles.hero}>
+        <Avatar slot={slot} size={88} live={false} />
+        <View style={styles.side}>
+          <Text numberOfLines={1} style={[styles.name, { color: C.muted }]}>{slot.name}</Text>
+          <Text style={styles.handle}>{slot.setupNote || 'Not started'}</Text>
         </View>
-      ))}
+      </View>
+    );
+  }
+
+  const s = ch.stats;
+  const reach =
+    s.weekViews != null
+      ? { Icon: Eye, value: s.weekViews, text: 'views, 7 days' }
+      : s.weekLikes != null
+        ? { Icon: Heart, value: s.weekLikes, text: 'likes, 7 days' }
+        : s.totalViews != null
+          ? { Icon: Eye, value: s.totalViews, text: 'views' }
+          : null;
+
+  return (
+    <View style={styles.hero}>
+      <Press scale={0.94} onPress={() => router.push(`/wrapped/${slot.channelId}`)} accessibilityLabel={`${slot.name}: see this week's highlights`}>
+        <Avatar slot={slot} size={104} live week={week.days} glow />
+      </Press>
+      <View style={styles.side}>
+        <Text numberOfLines={1} style={styles.name}>{slot.name}</Text>
+        {handle ? <Text numberOfLines={1} style={styles.handle}>{handle}</Text> : null}
+        <View style={styles.statList}>
+          <View style={styles.statRow}>
+            <Person size={13} />
+            <Text style={styles.statNum}>{compact(s.followers)}</Text>
+            {s.followersDelta ? (
+              <View style={styles.chip}>
+                <Text style={styles.chipText}>+{compact(s.followersDelta)}</Text>
+              </View>
+            ) : (
+              <Text style={styles.statLabel}>{slot.platform === 'youtube' ? 'subscribers' : 'followers'}</Text>
+            )}
+          </View>
+          {reach ? (
+            <View style={styles.statRow}>
+              <reach.Icon size={13} />
+              <Text style={styles.statNum}>{compact(reach.value)}</Text>
+              <Text style={styles.statLabel}>{reach.text}</Text>
+            </View>
+          ) : null}
+          <View style={styles.statRow}>
+            <Text style={styles.statNum}>
+              {week.posted}
+              <Text style={{ color: C.faint }}>/{week.target}</Text>
+            </Text>
+            <Text style={styles.statLabel}>this week</Text>
+          </View>
+        </View>
+      </View>
     </View>
   );
 }
 
-function Calendar({ ch, today, color, offset, setOffset }: { ch: Channel; today: string; color: string; offset: number; setOffset: (n: number) => void }) {
+// Reels started for this channel that aren't ready yet, newest first. Hidden when there are none.
+function InProduction({ channelId }: { channelId: string }) {
+  const { reels } = useReels();
+  const mine = (reels || []).filter((r) => r.channelId === channelId && r.stage !== 'ready');
+  if (!mine.length) return null;
+  return (
+    <View style={styles.card}>
+      <Text style={styles.cardTitle}>In production</Text>
+      {mine.map((r) => {
+        const next = nextStage(r.stage);
+        return (
+          <Press key={r.id} style={styles.reelRow} onPress={() => router.push(`/reel/${r.id}`)} accessibilityLabel={`${r.title}, next: ${next ? STAGE_INFO[next].name : 'done'}`}>
+            <View style={{ flex: 1 }}>
+              <Text numberOfLines={1} style={styles.reelTitle}>{r.title}</Text>
+              <Text style={styles.body}>
+                {r.working ? `Building ${r.working}…` : r.error ? 'Needs a retry' : next ? `Next: ${STAGE_INFO[next].name}` : 'Done'}
+              </Text>
+            </View>
+            <Chevron size={16} dir="right" color={C.muted} />
+          </Press>
+        );
+      })}
+    </View>
+  );
+}
+
+const SLOT_TEXT: Record<SlotState, string> = { posted: 'Posted', queued: 'Queued', missed: 'Missed', open: 'Due' };
+
+function Today({ ch, today, color, onOpen }: { ch: Channel; today: string; color: string; onOpen: () => void }) {
+  const { states, extra } = slotsFor(ch, today, today);
+  const open = states.filter((s) => s === 'open').length;
+  const posted = states.filter((s) => s === 'posted').length;
+  const line = open
+    ? `${open} ${open === 1 ? 'post' : 'posts'} still due`
+    : posted === states.length
+      ? 'All done for today'
+      : 'Everything for today is queued';
+
+  return (
+    <Press style={styles.card} onPress={onOpen} accessibilityLabel={`Today: ${line}. Show today's posts`}>
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' }}>
+        <Text style={styles.cardTitle}>Today</Text>
+        <Text style={[styles.body, open ? { color: C.ink, fontFamily: F.s } : null]}>{line}</Text>
+      </View>
+      <View style={styles.slots}>
+        {states.map((st, i) => (
+          <View
+            key={i}
+            style={[
+              styles.slot,
+              st === 'posted' && { backgroundColor: color },
+              st === 'queued' && { backgroundColor: color + '24' },
+              st === 'open' && styles.slotOpen,
+            ]}
+          >
+            <Text style={[styles.slotText, st === 'posted' && { color: '#fff' }, st === 'queued' && { color }]}>{SLOT_TEXT[st]}</Text>
+          </View>
+        ))}
+        {extra ? (
+          <View style={[styles.slot, { flex: 0, paddingHorizontal: 12, backgroundColor: C.growBg }]}>
+            <Text style={[styles.slotText, { color: C.growInk }]}>+{extra}</Text>
+          </View>
+        ) : null}
+      </View>
+    </Press>
+  );
+}
+
+function Calendar({ ch, today, color, offset, setOffset, onDay }: { ch: Channel; today: string; color: string; offset: number; setOffset: (n: number) => void; onDay: (d: string) => void }) {
   // One week of history, this week, then two ahead.
   const start = addDays(weekStart(today), -7 + offset * 28);
   const days = Array.from({ length: 28 }, (_, i) => addDays(start, i));
@@ -128,9 +244,11 @@ function Calendar({ ch, today, color, offset, setOffset }: { ch: Channel; today:
           const { states, extra } = slotsFor(ch, d, today);
           const past = d < today;
           return (
-            <View
+            <Press
               key={d}
-              accessibilityLabel={`${label(d)}: ${states.filter((s) => s === 'posted').length} of ${states.length} posted`}
+              scale={0.92}
+              onPress={() => onDay(d)}
+              accessibilityLabel={`${label(d)}: ${states.filter((s) => s === 'posted').length} of ${states.length} posted. Open day`}
               style={[styles.cell, d === today && styles.cellToday]}
             >
               <View style={styles.cellTop}>
@@ -151,7 +269,7 @@ function Calendar({ ch, today, color, offset, setOffset }: { ch: Channel; today:
                   />
                 ))}
               </View>
-            </View>
+            </Press>
           );
         })}
       </View>
@@ -174,39 +292,30 @@ function Legend({ swatch, text }: { swatch: object; text: string }) {
   );
 }
 
-function Pipeline({ ch }: { ch: Channel }) {
-  const stages: [string, number][] = [
-    ['Ideas', ch.pipeline.ideas],
-    ['Scripts', ch.pipeline.scripts],
-    ['Shoot', ch.pipeline.shoot],
-    ['Edit', ch.pipeline.edit],
-    ['Ready', ch.pipeline.ready],
-  ];
-  return (
-    <View>
-      <Text style={[styles.h2, { marginTop: 24, marginBottom: 8 }]}>Pipeline</Text>
-      <View style={styles.pipeline}>
-        {stages.map(([name, n]) => (
-          <View key={name} style={[styles.stage, n > 0 && { backgroundColor: C.ink }]}>
-            <Text style={[styles.stageNum, { color: n > 0 ? '#fff' : '#B9BCC3' }]}>{compact(n)}</Text>
-            <Text style={[styles.stageLabel, { color: n > 0 ? '#fff' : '#6B6E76' }]}>{name}</Text>
-          </View>
-        ))}
-      </View>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  header: { flexDirection: 'row', alignItems: 'center', height: 44 },
+  bar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', height: 44 },
   round: { width: 44, height: 44, borderRadius: 22, backgroundColor: C.card, alignItems: 'center', justifyContent: 'center' },
-  titleRow: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 8 },
-  title: { fontFamily: F.b, fontSize: 18, lineHeight: 28, color: C.ink },
-  stats: { marginTop: 16, height: 72, borderRadius: 20, backgroundColor: C.card, flexDirection: 'row', alignItems: 'center' },
-  statCell: { flex: 1, alignItems: 'center' },
-  statMid: { borderLeftWidth: 1, borderRightWidth: 1, borderColor: C.line },
-  statNum: { fontFamily: F.b, fontSize: 20, lineHeight: 28, color: C.ink },
-  statLabel: { fontFamily: F.r, fontSize: 12, lineHeight: 16, color: '#6B6E76' },
+  platform: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  platformName: { fontFamily: F.b, fontSize: 18, lineHeight: 24, letterSpacing: -0.3, color: C.ink },
+  hero: { marginTop: 12, borderRadius: 24, backgroundColor: C.card, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 16 },
+  side: { flex: 1, minWidth: 0 },
+  name: { fontFamily: F.b, fontSize: 22, lineHeight: 28, letterSpacing: -0.3, color: C.ink },
+  handle: { fontFamily: F.m, fontSize: 14, lineHeight: 20, color: C.muted },
+  statList: { marginTop: 8, gap: 4 },
+  statRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  statNum: { fontFamily: F.b, fontSize: 17, lineHeight: 22, letterSpacing: -0.2, color: C.ink },
+  statLabel: { fontFamily: F.r, fontSize: 13, lineHeight: 18, color: C.muted },
+  chip: { height: 20, paddingHorizontal: 6, borderRadius: 10, backgroundColor: C.growBg, justifyContent: 'center' },
+  chipText: { fontFamily: F.b, fontSize: 11.5, color: C.growInk },
+  reelRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 2 },
+  reelTitle: { fontFamily: F.s, fontSize: 15, lineHeight: 20, color: C.ink },
+  card: { marginTop: 12, backgroundColor: C.card, borderRadius: 24, padding: 16, gap: 12 },
+  cardTitle: { fontFamily: F.s, fontSize: 16, lineHeight: 20, color: C.ink },
+  body: { fontFamily: F.r, fontSize: 14, lineHeight: 20, color: C.muted },
+  slots: { flexDirection: 'row', gap: 8 },
+  slot: { flex: 1, height: 40, borderRadius: 12, backgroundColor: C.missed, alignItems: 'center', justifyContent: 'center' },
+  slotOpen: { backgroundColor: 'transparent', borderWidth: 1.5, borderStyle: 'dashed', borderColor: C.dash },
+  slotText: { fontFamily: F.s, fontSize: 14, color: C.ink2 },
   h2: { fontFamily: F.s, fontSize: 18, lineHeight: 28, color: C.ink },
   calHead: { marginTop: 24, flexDirection: 'row', alignItems: 'center', gap: 4 },
   arrow: { width: 36, height: 36, borderRadius: 18, backgroundColor: C.card, alignItems: 'center', justifyContent: 'center' },
@@ -223,10 +332,4 @@ const styles = StyleSheet.create({
   pipOpen: { borderWidth: 1.5, borderStyle: 'dashed', borderColor: C.dash },
   legend: { marginTop: 12, flexDirection: 'row', gap: 14 },
   legendText: { fontFamily: F.r, fontSize: 12, color: C.muted },
-  pipeline: { flexDirection: 'row', gap: 4, padding: 6, borderRadius: 20, backgroundColor: C.card },
-  stage: { flex: 1, height: 64, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  stageNum: { fontFamily: F.b, fontSize: 20, lineHeight: 28 },
-  stageLabel: { fontFamily: F.m, fontSize: 12, lineHeight: 16 },
-  cta: { marginTop: 12, height: 48, borderRadius: 24, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' },
-  ctaText: { fontFamily: F.s, fontSize: 16, color: '#fff' },
 });

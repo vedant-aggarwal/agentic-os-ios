@@ -20,7 +20,7 @@ type Props = {
   glow?: boolean;
 };
 
-/** Profile picture with a platform ring: red for YouTube, the gradient for Instagram, grey when not live. */
+/** Profile picture with a platform ring: red for YouTube, the gradient for Instagram. */
 export function Avatar({ slot, size, live, ringBg = '#fff', week, glow }: Props) {
   const ring = week ? 4 : size >= 56 ? 3 : 2;
   const gap = 2;
@@ -50,7 +50,7 @@ export function Avatar({ slot, size, live, ringBg = '#fff', week, glow }: Props)
           <WeekRing size={size} ring={ring} week={week} color={color} />
         ) : (
           <>
-            <Circle cx={size / 2} cy={size / 2} r={size / 2} fill={!live ? C.empty : color} />
+            <Circle cx={size / 2} cy={size / 2} r={size / 2} fill={color} />
             <Circle cx={size / 2} cy={size / 2} r={size / 2 - ring} fill={ringBg} />
           </>
         )}
@@ -59,7 +59,7 @@ export function Avatar({ slot, size, live, ringBg = '#fff', week, glow }: Props)
         {slot.image ? (
           <Image
             source={slot.image}
-            style={{ width: inner, height: inner, borderRadius: inner / 2, opacity: live ? 1 : 0.55 }}
+            style={{ width: inner, height: inner, borderRadius: inner / 2, opacity: 1 }}
             contentFit="cover"
             transition={150}
           />

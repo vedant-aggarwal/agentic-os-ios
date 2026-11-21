@@ -1,9 +1,12 @@
 import { router } from 'expo-router';
+import { useEffect, useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { Avatar, type WeekDay } from './Avatar';
+import Animated, { useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from 'react-native-reanimated';
+import { Avatar } from './Avatar';
 import { Eye, Heart, Person } from './Icons';
 import { Press } from './Press';
-import { addDays, compact, slotsFor, weekStart, type Channel } from '@/lib/api';
+import { compact, weekOf, type Channel } from '@/lib/api';
+import { onLand, registerTile } from '@/lib/flight';
 import type { Slot } from '@/lib/lineup';
 import { C, F } from '@/theme';
 
@@ -13,14 +16,36 @@ export function isLive(slot: Slot, ch?: Channel) {
   return !slot.setupNote && ch?.status === 'live';
 }
 
-export function Tile({ slot, ch, today }: Props) {
+/** A home grid tile. It registers where it sits so a finished Concept Generator page can fly into it, and bounces when one lands. */
+export function Tile(props: Props) {
+  const ref = useRef<any>(null); // eslint-disable-line @typescript-eslint/no-explicit-any
+  const bump = useSharedValue(1);
+  useEffect(() => {
+    registerTile(props.slot.channelId, ref.current);
+    const off = onLand(props.slot.channelId, () => {
+      bump.value = withSequence(withTiming(1.07, { duration: 140 }), withSpring(1, { damping: 9, stiffness: 220 }));
+    });
+    return () => {
+      off();
+      registerTile(props.slot.channelId, null);
+    };
+  }, [props.slot.channelId, bump]);
+  const style = useAnimatedStyle(() => ({ transform: [{ scale: bump.value }] }));
+  return (
+    <Animated.View ref={ref} collapsable={false} style={[{ flex: 1 }, style]}>
+      <TileBody {...props} />
+    </Animated.View>
+  );
+}
+
+function TileBody({ slot, ch, today }: Props) {
   const live = isLive(slot, ch);
 
   if (!live) {
     return (
-      <Press style={[styles.tile, styles.idle]} onPress={() => router.push(`/channel/${slot.channelId}`)} accessibilityLabel={`${slot.name}, not started`}>
-        <Avatar slot={slot} size={60} live={false} ringBg="#F8F8F9" />
-        <Text numberOfLines={1} style={[styles.name, { color: C.muted }]}>{slot.name}</Text>
+      <Press style={[styles.tile, { backgroundColor: C.card }]} onPress={() => router.push(`/channel/${slot.channelId}`)} accessibilityLabel={`${slot.name}, not started`}>
+        <Avatar slot={slot} size={60} live={false} />
+        <Text numberOfLines={1} style={styles.name}>{slot.name}</Text>
         <Text style={styles.note}>{slot.setupNote || 'Not started'}</Text>
       </Press>
     );
@@ -29,19 +54,7 @@ export function Tile({ slot, ch, today }: Props) {
   const s = ch!.stats;
   const views = s.weekViews ?? s.totalViews ?? null;
   const second = views != null ? { Icon: Eye, value: views } : s.weekLikes != null ? { Icon: Heart, value: s.weekLikes } : null;
-  const start = weekStart(today);
-  let posted = 0;
-  const week: WeekDay[] = Array.from({ length: 7 }, (_, i) => {
-    const d = addDays(start, i);
-    if (d > today) return { state: 'future', today: false };
-    const st = slotsFor(ch!, d, today).states;
-    const done = st.filter((x) => x === 'posted').length;
-    posted += done;
-    return { state: done === 0 ? 'none' : done >= st.length ? 'full' : 'part', today: d === today };
-  });
-  const target = Math.max(ch!.perDay, 1) * 7;
-  // Needs you: a post is due today and nothing is posted or queued for it yet.
-  const due = slotsFor(ch!, today, today).states.filter((x) => x === 'open').length;
+  const { days: week, posted, target, due } = weekOf(ch!, today);
 
   return (
     <Press
@@ -80,13 +93,12 @@ export function Tile({ slot, ch, today }: Props) {
 
 const styles = StyleSheet.create({
   tile: { flex: 1, minHeight: 136, borderRadius: 24, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 12 },
-  idle: { backgroundColor: 'rgba(255,255,255,0.5)' },
   top: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   side: { flex: 1, alignItems: 'flex-end', gap: 3 },
   chip: { height: 20, paddingHorizontal: 7, borderRadius: 10, backgroundColor: C.growBg, justifyContent: 'center' },
   chipText: { fontFamily: F.b, fontSize: 11.5, color: C.growInk },
   name: { marginTop: 8, fontFamily: F.s, fontSize: 16, lineHeight: 20, color: C.ink },
-  note: { marginTop: 2, fontFamily: F.r, fontSize: 14, lineHeight: 20, color: '#6B6E76' },
+  note: { marginTop: 2, fontFamily: F.r, fontSize: 14, lineHeight: 20, color: C.muted },
   stat: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   big: { fontFamily: F.b, fontSize: 18, lineHeight: 22, letterSpacing: -0.3, color: C.ink },
   weekLine: { marginTop: 2, fontFamily: F.m, fontSize: 13, lineHeight: 18, color: C.muted },

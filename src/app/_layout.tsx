@@ -20,7 +20,12 @@ export default function Root() {
   return (
     <SafeAreaProvider>
       <StatusBar style="dark" />
-      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: C.bg } }} />
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: C.bg } }}>
+        {/* Set here, not inside the screen: changing presentation after the screen mounts makes iOS dismiss and re-present it. */}
+        {/* Transparent so the home grid stays visible behind the Concept Generator sheet, which flies into a tile when done. */}
+        <Stack.Screen name="new" options={{ presentation: 'transparentModal', animation: 'none', contentStyle: { backgroundColor: 'transparent' } }} />
+        <Stack.Screen name="wrapped/[id]" options={{ presentation: 'fullScreenModal', animation: 'fade', contentStyle: { backgroundColor: '#141414' } }} />
+      </Stack>
     </SafeAreaProvider>
   );
 }

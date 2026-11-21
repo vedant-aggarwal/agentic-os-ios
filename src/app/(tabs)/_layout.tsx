@@ -15,35 +15,37 @@ const ITEMS: Record<string, { label: string; Icon: typeof GridIcon }> = {
   calendar: { label: 'Calendar', Icon: CalIcon },
 };
 
-const CAPTURE = 60;
+const CAPTURE = 70;
 
 function Dock({ state, navigateToTab }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   return (
-    <View pointerEvents="box-none" style={[styles.wrap, { bottom: Math.max(insets.bottom - 12, 8) }]}>
-      <BlurView intensity={60} tint="light" style={styles.dock}>
-        {state.routes.map((r, i) => {
-          const item = ITEMS[r.name];
-          if (!item) return null;
-          const on = state.index === i;
-          const color = on ? C.ink : C.muted;
-          return (
-            <Fragment key={r.key}>
-              {i === 2 && <View style={styles.item} />}
-              <Press
-                scale={0.92}
-                style={styles.item}
-                accessibilityRole="tab"
-                accessibilityState={{ selected: on }}
-                onPress={() => !on && navigateToTab(r.key)}
-              >
-                <item.Icon color={color} />
-                <Text style={[styles.label, { color, fontFamily: on ? F.s : F.m }]}>{item.label}</Text>
-              </Press>
-            </Fragment>
-          );
-        })}
-      </BlurView>
+    <View pointerEvents="box-none" style={[styles.wrap, { bottom: Math.max(insets.bottom, 16) }]}>
+      <View style={styles.float}>
+        <BlurView intensity={60} tint="light" style={styles.dock}>
+          {state.routes.map((r, i) => {
+            const item = ITEMS[r.name];
+            if (!item) return null;
+            const on = state.index === i;
+            const color = on ? C.ink : C.muted;
+            return (
+              <Fragment key={r.key}>
+                {i === 2 && <View style={styles.item} />}
+                <Press
+                  scale={0.92}
+                  style={styles.item}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: on }}
+                  onPress={() => !on && navigateToTab(r.key)}
+                >
+                  <item.Icon color={color} />
+                  <Text style={[styles.label, { color, fontFamily: on ? F.s : F.m }]}>{item.label}</Text>
+                </Press>
+              </Fragment>
+            );
+          })}
+        </BlurView>
+      </View>
       {/* Sits outside the blurred pill so it can rise above it; the pill keeps an empty slot under it. */}
       <View pointerEvents="box-none" style={styles.captureWrap}>
         <Press
@@ -53,7 +55,7 @@ function Dock({ state, navigateToTab }: BottomTabBarProps) {
           accessibilityLabel="Capture an idea"
           onPress={() => Alert.alert('Capture', 'Quick notes come in the next build.')}
         >
-          <Plus size={30} weight={2.4} color="#FFFFFF" />
+          <Plus size={34} weight={2.6} color="#FFFFFF" />
         </Press>
       </View>
     </View>
@@ -72,7 +74,15 @@ export default function TabsLayout() {
 }
 
 const styles = StyleSheet.create({
-  wrap: { position: 'absolute', left: 16, right: 16 },
+  wrap: { position: 'absolute', left: 20, right: 20 },
+  // Lifts the pill off the screen edge: a soft, wide shadow under the glass.
+  float: {
+    borderRadius: 32,
+    shadowColor: '#141414',
+    shadowOpacity: 0.14,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 10 },
+  },
   dock: {
     height: 64,
     borderRadius: 32,
@@ -86,7 +96,7 @@ const styles = StyleSheet.create({
   },
   item: { flex: 1, height: 52, alignItems: 'center', justifyContent: 'center', gap: 2 },
   label: { fontSize: 12, lineHeight: 16 },
-  captureWrap: { position: 'absolute', left: 0, right: 0, top: -18, alignItems: 'center' },
+  captureWrap: { position: 'absolute', left: 0, right: 0, top: -24, alignItems: 'center' },
   capture: {
     width: CAPTURE,
     height: CAPTURE,
@@ -97,9 +107,9 @@ const styles = StyleSheet.create({
     borderWidth: 4,
     borderColor: C.bg,
     shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.22,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
     elevation: 6,
   },
 });

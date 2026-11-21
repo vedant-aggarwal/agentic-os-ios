@@ -17,7 +17,7 @@ export default function Channels() {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: C.bg }}
-      contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: 16, paddingBottom: 120 }}
+      contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: 16, paddingBottom: 150 }}
       refreshControl={<RefreshControl refreshing={loading && !!data} onRefresh={reload} tintColor={C.ink} />}
     >
       <View style={styles.header}>
@@ -36,15 +36,15 @@ export default function Channels() {
       ) : !data ? (
         <Loading />
       ) : (
-        YOUTUBE.map((yt, i) => {
-          const ig = INSTAGRAM[i];
-          return (
-            <View key={yt.channelId} style={[styles.row, { marginTop: i ? 10 : 8 }]}>
-              <Tile slot={yt} ch={byId[yt.channelId]} today={today} />
-              <Tile slot={ig} ch={byId[ig.channelId]} today={today} />
+        <View style={styles.row}>
+          {[YOUTUBE, INSTAGRAM].map((col, c) => (
+            <View key={c} style={styles.col}>
+              {col.map((slot) => (
+                <Tile key={slot.channelId} slot={slot} ch={byId[slot.channelId]} today={today} />
+              ))}
             </View>
-          );
-        })
+          ))}
+        </View>
       )}
     </ScrollView>
   );
@@ -53,5 +53,6 @@ export default function Channels() {
 const styles = StyleSheet.create({
   header: { flexDirection: 'row', gap: 10, height: 52 },
   colHead: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  row: { flexDirection: 'row', gap: 10 },
+  row: { marginTop: 8, flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
+  col: { flex: 1, gap: 10 },
 });

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming, cancelAnimation } from 'react-native-reanimated';
 import { MicIcon } from './Icons';
@@ -6,12 +6,13 @@ import { Press } from './Press';
 import { useDictation } from '@/lib/dictation';
 import { C, F } from '@/theme';
 
-type Props = { value: string; onChangeText: (t: string) => void; placeholder: string; minHeight?: number } & Pick<TextInputProps, 'maxLength'>;
+type Props = { value: string; onChangeText: (t: string) => void; placeholder: string; minHeight?: number; right?: React.ReactNode } & Pick<TextInputProps, 'maxLength' | 'onFocus' | 'autoFocus'>;
 
 /** A text box with a mic: speech streams in live (Codex dictation through the PC) and is added after what is already typed. */
-export function VoiceField({ value, onChangeText, placeholder, minHeight = 96, maxLength = 2000 }: Props) {
+export function VoiceField({ value, onChangeText, placeholder, minHeight = 96, maxLength = 2000, onFocus, autoFocus, right }: Props) {
   const base = useRef('');
   const { state, error, start, stop } = useDictation((text) => {
+    if (!text) return; // an empty end (error or no speech) keeps what is already there
     const b = base.current;
     onChangeText((b && text ? b.replace(/\s+$/, '') + ' ' : b) + text);
   });
@@ -31,7 +32,7 @@ export function VoiceField({ value, onChangeText, placeholder, minHeight = 96, m
     <View>
       <View style={[styles.box, on && styles.boxOn]}>
         <TextInput
-          style={[styles.input, { minHeight }]}
+          style={[styles.input, { minHeight, paddingRight: right ? 104 : 60 }]}
           value={value}
           onChangeText={onChangeText}
           placeholder={state === 'live' ? 'Listening…' : placeholder}
@@ -40,8 +41,11 @@ export function VoiceField({ value, onChangeText, placeholder, minHeight = 96, m
           maxLength={maxLength}
           textAlignVertical="top"
           editable={!on}
+          onFocus={onFocus}
+          autoFocus={autoFocus}
         />
         <View style={styles.micWrap}>
+          {right}
           {state === 'live' ? <Animated.View pointerEvents="none" style={[styles.halo, ring]} /> : null}
           <Press
             style={[styles.mic, on && { backgroundColor: C.yt }]}
@@ -72,8 +76,8 @@ const styles = StyleSheet.create({
   box: { borderRadius: 18, backgroundColor: C.card, borderWidth: 2, borderColor: 'transparent' },
   boxOn: { borderColor: C.yt },
   input: { paddingTop: 14, paddingBottom: 14, paddingLeft: 14, paddingRight: 60, fontFamily: F.r, fontSize: 16, lineHeight: 22, color: C.ink },
-  micWrap: { position: 'absolute', right: 8, bottom: 8, width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  halo: { position: 'absolute', width: 40, height: 40, borderRadius: 20, backgroundColor: C.yt },
+  micWrap: { position: 'absolute', right: 8, bottom: 8, height: 40, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  halo: { position: 'absolute', right: 0, width: 40, height: 40, borderRadius: 20, backgroundColor: C.yt },
   mic: { width: 40, height: 40, borderRadius: 20, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center' },
   stopSq: { width: 12, height: 12, borderRadius: 3, backgroundColor: '#fff' },
   error: { marginTop: 6, fontFamily: F.m, fontSize: 13, lineHeight: 18, color: '#B4232F' },

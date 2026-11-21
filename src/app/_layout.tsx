@@ -4,6 +4,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { warmLive } from '@/lib/live';
 import { C } from '@/theme';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -14,6 +15,7 @@ export default function Root() {
   useEffect(() => {
     if (loaded) SplashScreen.hideAsync().catch(() => {});
   }, [loaded]);
+  useEffect(() => warmLive(), []); // the AI socket is open before the first request
 
   if (!loaded) return null;
 

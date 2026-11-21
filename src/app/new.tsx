@@ -1,4 +1,3 @@
-import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
 import {
@@ -6,7 +5,6 @@ import {
   Animated,
   Easing,
   Keyboard,
-  KeyboardAvoidingView,
   PanResponder,
   Platform,
   Pressable,
@@ -20,53 +18,80 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 import { Avatar } from '@/components/Avatar';
+import { ChannelContext } from '@/components/concepts/ChannelContext';
+import { ConceptEditor } from '@/components/concepts/ConceptEditor';
+import { StrengthSlider } from '@/components/concepts/StrengthSlider';
 import { Check, Chevron, InstagramMark, Plus, SparkIcon, YouTubeMark } from '@/components/Icons';
 import { Press } from '@/components/Press';
 import { VoiceField } from '@/components/VoiceField';
-import { compact, createReels, draftConcepts, useDirections, useHome, useProfiles, useReels, type Concept, type Post } from '@/lib/api';
+import { createReels, useDirections, type Concept } from '@/lib/api';
 import { land, measureTile } from '@/lib/flight';
 import { INSTAGRAM, YOUTUBE, type Slot } from '@/lib/lineup';
+import { live, resetSession } from '@/lib/live';
 import { C, F } from '@/theme';
 
 const native = Platform.OS !== 'web';
 // Two rows of four: YouTube on top, Instagram below.
 const ORDER: Slot[] = [...YOUTUBE, ...INSTAGRAM];
 
+type Chat = { role: 'you' | 'kai'; text: string; error?: string };
+const key = (v: number, i: number) => `${v}:${i}`;
+
 /**
- * Concept Generator: pick a channel, see what works there, say or type a raw idea, draft concepts with AI,
- * pick one or more, and build the next step (the video's structure). Vedant's words are direction, never copy.
- * When it's done the sheet crumples and flies into that channel's tile on the home grid.
+ * Concept Generator: pick a channel, see what works there, give a raw idea (typed or spoken) and how closely to
+ * follow it, then draft concepts. Each draft or chat change is a version; picks can come from any version.
+ * Hold a concept to edit it, chat with Kai to reshape them, then build the structure. When it's done the sheet
+ * crumples and flies into that channel's tile on the home grid.
  */
 export default function ConceptGenerator() {
-  const { channel } = useLocalSearchParams<{ channel?: string }>();
+  const params = useLocalSearchParams<{ channel?: string; idea?: string }>();
   const insets = useSafeAreaInsets();
   const { width: W, height: H } = useWindowDimensions();
   const TOP = insets.top + 10;
   const SHEET = H - TOP;
 
-  const [channelId, setChannelId] = useState<string | null>(ORDER.some((s) => s.channelId === channel) ? String(channel) : null);
-  const [raw, setRaw] = useState('');
-  const [concepts, setConcepts] = useState<Concept[]>([]);
-  const [picked, setPicked] = useState<number[]>([]);
-  const [mode, setMode] = useState<'separate' | 'combined'>('separate');
+  const [channelId, setChannelId] = useState<string | null>(ORDER.some((s) => s.channelId === params.channel) ? String(params.channel) : null);
+  const [raw, setRaw] = useState(params.idea ? String(params.idea) : '');
+  const [strength, setStrength] = useState(2);
   const [directionId, setDirectionId] = useState<string | null>(null);
   const [other, setOther] = useState('');
-  const [notes, setNotes] = useState('');
-  const [drafting, setDrafting] = useState(false);
+  const [versions, setVersions] = useState<Concept[][]>([]);
+  const [vi, setVi] = useState(0);
+  const [picked, setPicked] = useState<string[]>([]);
+  const [editing, setEditing] = useState<{ v: number; i: number } | null>(null);
+  const [chat, setChat] = useState<Chat[]>([]);
+  const [say, setSay] = useState('');
+  const [busy, setBusy] = useState<'draft' | 'refine' | null>(null);
   const [building, setBuilding] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [draftError, setDraftError] = useState<string | null>(null);
-  const scroller = useRef<ComponentRef<typeof ScrollView>>(null);
-  // Offsets of the nested views that hold the concept cards, so a new card can be scrolled into view.
-  const wrapY = useRef(0);
-  const listY = useRef(0);
-  const gridY = useRef(0);
-  const revealAt = useRef<number | null>(null);
   const [flying, setFlying] = useState(false);
+  const [kb, setKb] = useState(false);
+  const sessionId = useRef('c' + Date.now().toString(36)).current;
+  const cancel = useRef<(() => void) | null>(null);
 
   const dirs = useDirections();
   const slot = ORDER.find((s) => s.channelId === channelId);
   const dirId = directionId ?? (channelId ? dirs?.defaults[channelId] : null) ?? null;
+  const shown = versions[vi] || [];
+
+  // The footer button hides while typing so the keyboard and the button never cover the field together.
+  useEffect(() => {
+    const a = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setKb(true));
+    const b = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => setKb(false));
+    return () => {
+      a.remove();
+      b.remove();
+      cancel.current?.();
+      resetSession('refine:' + sessionId);
+    };
+  }, [sessionId]);
+
+  // ---------- scrolling helpers ----------
+  const scroller = useRef<ComponentRef<typeof ScrollView>>(null);
+  const ys = useRef<Record<string, number>>({});
+  const at = (name: string) => (e: { nativeEvent: { layout: { y: number } } }) => (ys.current[name] = e.nativeEvent.layout.y);
+  const scrollToY = (y: number, delay = 80) => setTimeout(() => scroller.current?.scrollTo({ y: Math.max(0, y), animated: true }), delay);
+  const pad = (name: string) => (ys.current.body || 0) + (ys.current[name] || 0);
 
   // ---------- sheet motion ----------
   const y = useRef(new Animated.Value(SHEET)).current; // 0 = open, SHEET = off screen
@@ -83,6 +108,7 @@ export default function ConceptGenerator() {
 
   const close = () => {
     if (flying) return;
+    Keyboard.dismiss();
     Animated.timing(y, { toValue: SHEET, duration: 230, easing: Easing.in(Easing.quad), useNativeDriver: native }).start(() =>
       router.canGoBack() ? router.back() : router.replace('/'),
     );
@@ -124,7 +150,6 @@ export default function ConceptGenerator() {
     });
   };
 
-  // Crumpled: the page squashes to a rough square and twists; then it shrinks to a ball on its way to the tile.
   const ball = Math.min(W, SHEET) * 0.42;
   const sx = Animated.multiply(
     crumple.interpolate({ inputRange: [0, 0.45, 1], outputRange: [1, 0.78, ball / W] }),
@@ -142,59 +167,98 @@ export default function ConceptGenerator() {
   // ---------- actions ----------
   const pickChannel = (id: string) => {
     if (id === channelId) return;
+    cancel.current?.();
+    resetSession('refine:' + sessionId);
     setChannelId(id);
-    setConcepts([]);
+    setVersions([]);
+    setVi(0);
     setPicked([]);
+    setChat([]);
     setDirectionId(null);
+    setBusy(null);
     setError(null);
-    setDraftError(null);
   };
 
-  const draft = async () => {
-    if (!channelId || drafting) return;
-    setDrafting(true);
-    setDraftError(null);
+  const direction = () => ({ directionId: dirId || '', directionOther: dirId === 'other' ? other.trim() : '' });
+
+  /** A new version fills in as concepts stream from the PC. */
+  const draft = () => {
+    if (!channelId || busy) return;
     Keyboard.dismiss();
-    const first = concepts.length;
-    try {
-      const ideas = await withTimeout(draftConcepts({
-        channelId,
-        direction: raw.trim(),
-        directionId: dirId || '',
-        directionOther: dirId === 'other' ? other.trim() : '',
-        avoid: concepts.map((c) => c.title),
-      }), 120000);
-      if (!ideas.length) throw new Error('No concepts came back. Try again.');
-      // The new cards land below the fold: the first one scrolls into view once it has laid out.
-      revealAt.current = first;
-      setConcepts((prev) => [...prev, ...ideas]);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      console.warn('[concepts] draft failed:', msg);
-      setDraftError(msg);
-    } finally {
-      setDrafting(false);
-    }
+    setError(null);
+    setBusy('draft');
+    const v = versions.length;
+    setVersions((vs) => [...vs, []]);
+    setVi(v);
+    scrollToY(pad('concepts') - 8, 150);
+    let got = 0;
+    cancel.current = live('draft', {
+      channelId,
+      direction: raw.trim(),
+      strength,
+      ...direction(),
+      avoid: versions.flat().map((c) => c.title),
+    }, {
+      onConcept: (c) => {
+        got++;
+        setVersions((vs) => vs.map((x, j) => (j === v ? [...x, c] : x)));
+      },
+      onDone: () => setBusy(null),
+      onError: (e) => {
+        setBusy(null);
+        setError(e);
+        if (!got) {
+          setVersions((vs) => vs.filter((_, j) => j !== v));
+          setVi((x) => Math.max(0, Math.min(x, v - 1)));
+        }
+      },
+    });
   };
 
-  const toggle = (i: number) => setPicked((p) => (p.includes(i) ? p.filter((x) => x !== i) : [...p, i]));
-  const chosen = picked.map((i) => concepts[i]).filter(Boolean);
-  const combined = mode === 'combined' && chosen.length > 1;
-  const ready = !!channelId && chosen.length > 0 && !building && !drafting;
+  /** Ask Kai to change the concepts on screen; a reply with concepts becomes the next version. */
+  const refine = () => {
+    const message = say.trim();
+    if (!channelId || !message || busy) return;
+    setSay('');
+    setError(null);
+    setBusy('refine');
+    const turn = chat.length;
+    setChat((c) => [...c, { role: 'you', text: message }, { role: 'kai', text: '' }]);
+    const base = shown;
+    const v = versions.length; // no draft can be running (busy), so the next version goes here
+    let first = true;
+    cancel.current = live('refine', { sessionId, channelId, message, concepts: base, ...direction() }, {
+      onText: (t) => setChat((c) => c.map((m, j) => (j === turn + 1 ? { ...m, text: m.text + t } : m))),
+      onConcept: (c) => {
+        if (first) {
+          first = false;
+          setVersions((vs) => [...vs, [c]]);
+          setVi(v);
+          return;
+        }
+        setVersions((vs) => vs.map((x, j) => (j === v ? [...x, c] : x)));
+      },
+      onDone: () => setBusy(null),
+      onError: (e) => {
+        setBusy(null);
+        setChat((c) => c.map((m, j) => (j === turn + 1 ? { ...m, error: e } : m)));
+      },
+    });
+  };
+
+  const toggle = (i: number) => setPicked((p) => (p.includes(key(vi, i)) ? p.filter((x) => x !== key(vi, i)) : [...p, key(vi, i)]));
+  const chosen = picked.map((k) => { const [v, i] = k.split(':').map(Number); return versions[v]?.[i]; }).filter(Boolean) as Concept[];
+  const pickedHere = shown.filter((_, i) => picked.includes(key(vi, i))).length;
+  const ready = !!channelId && chosen.length > 0 && !building && !busy;
 
   const build = async () => {
     if (!ready || !channelId) return;
     setBuilding(true);
     setError(null);
     try {
-      await createReels({
-        channelId,
-        ideas: chosen,
-        notes: notes.trim(),
-        mode: combined ? 'combined' : 'separate',
-        directionId: dirId || '',
-        directionOther: dirId === 'other' ? other.trim() : '',
-      });
+      // What Vedant told Kai while refining is direction for the structure too.
+      const notes = chat.filter((m) => m.role === 'you').map((m) => m.text).join(' / ').slice(0, 2000);
+      await createReels({ channelId, ideas: chosen, notes, mode: 'separate', ...direction() });
       flyAway(channelId);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -202,7 +266,7 @@ export default function ConceptGenerator() {
     }
   };
 
-  const buildLabel = chosen.length === 0 ? 'Pick a concept' : combined ? 'Build structure for 1 combined reel' : chosen.length === 1 ? 'Build structure' : `Build structure for ${chosen.length} reels`;
+  const buildLabel = chosen.length === 0 ? 'Pick a concept' : chosen.length === 1 ? 'Build structure' : `Build structure for ${chosen.length} reels`;
 
   return (
     <View style={StyleSheet.absoluteFill}>
@@ -228,120 +292,148 @@ export default function ConceptGenerator() {
           },
         ]}
       >
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={TOP}>
-          <View {...pan.panHandlers}>
-            <View style={styles.gripZone}>
-              <View style={styles.grip} />
-            </View>
-            <View style={styles.head}>
-              <Text style={styles.title}>Concept Generator</Text>
-              <Press style={styles.close} scale={0.9} onPress={close} accessibilityLabel="Close">
-                <View style={{ transform: [{ rotate: '45deg' }] }}>
-                  <Plus size={20} />
-                </View>
-              </Press>
-            </View>
+        <View {...pan.panHandlers}>
+          <View style={styles.gripZone}>
+            <View style={styles.grip} />
+          </View>
+          <View style={styles.head}>
+            <Text style={styles.title}>Concept Generator</Text>
+            <Press style={styles.close} scale={0.9} onPress={close} accessibilityLabel="Close">
+              <View style={{ transform: [{ rotate: '45deg' }] }}>
+                <Plus size={20} />
+              </View>
+            </Press>
+          </View>
+        </View>
+
+        <ScrollView
+          ref={scroller}
+          style={{ flex: 1 }}
+          contentContainerStyle={{ paddingBottom: kb ? 24 : 96 }}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          automaticallyAdjustKeyboardInsets
+        >
+          {/* Two rows of four: every channel visible at once, no sideways scrolling. */}
+          <View style={styles.channels}>
+            {ORDER.map((s) => {
+              const on = s.channelId === channelId;
+              return (
+                <Press
+                  key={s.channelId}
+                  style={[styles.channel, on && styles.channelOn]}
+                  scale={0.94}
+                  onPress={() => pickChannel(s.channelId)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: on }}
+                  accessibilityLabel={`${s.name}, ${s.platform}`}
+                >
+                  <View>
+                    <Avatar slot={s} size={44} live />
+                    <View style={styles.badge}>{s.platform === 'youtube' ? <YouTubeMark size={12} /> : <InstagramMark size={11} />}</View>
+                  </View>
+                  <Text numberOfLines={1} style={styles.channelName}>{s.name}</Text>
+                </Press>
+              );
+            })}
           </View>
 
-          <ScrollView ref={scroller} contentContainerStyle={{ paddingBottom: 24 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
-            {/* Two rows of four: every channel visible at once, no sideways scrolling. */}
-            <View style={styles.channels}>
-              {ORDER.map((s) => {
-                const on = s.channelId === channelId;
-                return (
-                  <Press
-                    key={s.channelId}
-                    style={[styles.channel, on && styles.channelOn]}
-                    scale={0.94}
-                    onPress={() => pickChannel(s.channelId)}
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected: on }}
-                    accessibilityLabel={`${s.name}, ${s.platform}`}
-                  >
-                    <View>
-                      <Avatar slot={s} size={44} live />
-                      <View style={styles.badge}>{s.platform === 'youtube' ? <YouTubeMark size={12} /> : <InstagramMark size={11} />}</View>
-                    </View>
-                    <Text numberOfLines={1} style={styles.channelName}>{s.name}</Text>
-                  </Press>
-                );
-              })}
-            </View>
+          <View style={{ paddingHorizontal: 16 }} onLayout={at('body')}>
+            {!slot ? (
+              <View style={styles.hint}>
+                <Text style={styles.hintText}>Pick a channel to see what works there and draft concepts for it.</Text>
+              </View>
+            ) : (
+              <>
+                <ChannelContext channelId={slot.channelId} />
 
-            <View style={{ paddingHorizontal: 16 }} onLayout={(e) => (wrapY.current = e.nativeEvent.layout.y)}>
-              {!slot ? (
-                <View style={styles.hint}>
-                  <Text style={styles.hintText}>Pick a channel to see what works there and draft concepts for it.</Text>
-                </View>
-              ) : (
-                <>
-                  <ChannelContext channelId={slot.channelId} />
+                <DirectionPicker channelId={slot.channelId} value={dirId} onChange={setDirectionId} other={other} onOther={setOther} />
 
+                <View onLayout={at('raw')}>
                   <Text style={styles.h2}>Raw idea</Text>
-                  <VoiceField
-                    value={raw}
-                    onChangeText={setRaw}
-                    placeholder="Type or say your idea"
-                    minHeight={88}
-                  />
+                  <VoiceField value={raw} onChangeText={setRaw} placeholder="Type or say your idea" minHeight={88} onFocus={() => scrollToY(pad('raw') - 12, 300)} />
+                </View>
+                <StrengthSlider value={strength} onChange={setStrength} disabled={!raw.trim()} />
 
-                  <Press style={[styles.draft, drafting && { opacity: 0.6 }]} disabled={drafting} onPress={draft} accessibilityLabel="Draft concepts with AI">
-                    {drafting ? <ActivityIndicator color={C.ink} /> : <SparkIcon size={18} />}
-                    <Text style={styles.draftText}>{drafting ? 'Drafting concepts…' : concepts.length ? 'Draft more' : 'Draft concepts'}</Text>
-                  </Press>
-                  {draftError ? <Text style={styles.error}>{draftError}</Text> : null}
+                <Press style={[styles.draft, !!busy && { opacity: 0.6 }]} disabled={!!busy} onPress={draft} accessibilityLabel="Draft concepts with AI">
+                  {busy === 'draft' ? <ActivityIndicator color={C.ink} /> : <SparkIcon size={18} />}
+                  <Text style={styles.draftText}>{busy === 'draft' ? 'Drafting…' : versions.length ? 'Draft a new version' : 'Draft concepts'}</Text>
+                </Press>
 
-                  {concepts.length ? (
-                    <View onLayout={(e) => (listY.current = e.nativeEvent.layout.y)}>
-                      <Text style={styles.h2}>
-                        Concepts <Text style={styles.h2sub}>{picked.length ? `${picked.length} picked` : 'tap to pick one or more'}</Text>
+                <View onLayout={at('concepts')}>
+                  {versions.length ? (
+                    <>
+                      <View style={styles.vbar}>
+                        <Text style={styles.h2flat}>Concepts</Text>
+                        <View style={styles.pager}>
+                          <Press style={[styles.arrow, vi === 0 && { opacity: 0.3 }]} disabled={vi === 0} scale={0.9} onPress={() => setVi(vi - 1)} accessibilityLabel="Previous version">
+                            <Chevron size={16} />
+                          </Press>
+                          <Text style={styles.vnum}>{vi + 1} of {versions.length}</Text>
+                          <Press style={[styles.arrow, vi === versions.length - 1 && { opacity: 0.3 }]} disabled={vi === versions.length - 1} scale={0.9} onPress={() => setVi(vi + 1)} accessibilityLabel="Next version">
+                            <Chevron size={16} dir="right" />
+                          </Press>
+                        </View>
+                      </View>
+                      <Text style={styles.vhint}>
+                        {picked.length ? `${picked.length} picked${picked.length !== pickedHere ? `, ${pickedHere} in this version` : ''}. ` : ''}Tap to pick, hold to edit.
                       </Text>
-                      <View style={{ gap: 8 }} onLayout={(e) => (gridY.current = e.nativeEvent.layout.y)}>
-                        {concepts.map((c, i) => (
-                          <View
-                            key={i}
-                            onLayout={(e) => {
-                              if (revealAt.current !== i) return;
-                              revealAt.current = null;
-                              const cy = e.nativeEvent.layout.y;
-                              // Parents report their layout after this card does: read the offsets a beat later.
-                              setTimeout(() => {
-                                const y = wrapY.current + listY.current + gridY.current + cy - 44; // keep the "Concepts" heading in view
-                                scroller.current?.scrollTo({ y: Math.max(0, y), animated: true });
-                              }, 60);
-                            }}
-                          >
-                            <ConceptCard c={c} on={picked.includes(i)} onPress={() => toggle(i)} />
-                          </View>
+                      <View style={{ gap: 8 }}>
+                        {shown.map((c, i) => (
+                          <ConceptCard key={i} c={c} on={picked.includes(key(vi, i))} onPress={() => toggle(i)} onLongPress={() => setEditing({ v: vi, i })} />
                         ))}
+                        {busy && vi === versions.length - 1 ? (
+                          <View style={styles.writing}>
+                            <ActivityIndicator color={C.muted} />
+                            <Text style={styles.writingText}>{shown.length ? 'Writing the next one…' : 'Writing concepts…'}</Text>
+                          </View>
+                        ) : null}
                       </View>
 
-                      <Segmented
-                        value={mode}
-                        onChange={setMode}
-                        left={{ key: 'separate', label: 'Separate reels' }}
-                        right={{ key: 'combined', label: 'One combined reel' }}
-                      />
-                      {mode === 'combined' && chosen.length < 2 ? <Text style={styles.note}>Pick two or more concepts to combine them.</Text> : null}
-
-                      <DirectionPicker channelId={slot.channelId} value={dirId} onChange={setDirectionId} other={other} onOther={setOther} />
-
-                      <Text style={styles.h2}>Additional context</Text>
-                      <VoiceField value={notes} onChangeText={setNotes} placeholder="Anything the structure should know. Optional." minHeight={72} />
-                    </View>
+                      <View onLayout={at('chat')}>
+                        <Text style={styles.h2}>Shape them with Kai</Text>
+                        {chat.length ? (
+                          <View style={{ gap: 8, marginBottom: 10 }}>
+                            {chat.map((m, i) => (
+                              <View key={i} style={[styles.bubble, m.role === 'you' ? styles.mine : styles.theirs]}>
+                                {m.role === 'kai' && !m.text && !m.error ? (
+                                  <ActivityIndicator size="small" color={C.muted} />
+                                ) : (
+                                  <Text style={[styles.bubbleText, m.role === 'you' && { color: '#fff' }]}>{m.error ? m.error : m.text.trim()}</Text>
+                                )}
+                              </View>
+                            ))}
+                          </View>
+                        ) : null}
+                        <VoiceField
+                          value={say}
+                          onChangeText={setSay}
+                          placeholder="e.g. combine 1 and 3, make 2 darker"
+                          minHeight={56}
+                          onFocus={() => scrollToY(pad('chat') + 200, 300)}
+                          right={
+                            <Press style={[styles.send, (!say.trim() || !!busy) && { opacity: 0.35 }]} disabled={!say.trim() || !!busy} onPress={refine} scale={0.9} accessibilityLabel="Send to Kai">
+                              <Chevron size={18} color="#fff" dir="right" />
+                            </Press>
+                          }
+                        />
+                      </View>
+                    </>
                   ) : null}
-                </>
-              )}
-              {error ? <Text style={styles.error}>{error}</Text> : null}
-            </View>
-          </ScrollView>
+                </View>
+              </>
+            )}
+            {error ? <Text style={styles.error}>{error}</Text> : null}
+          </View>
+        </ScrollView>
 
+        {!kb ? (
           <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
             <Press style={[styles.create, !ready && { opacity: 0.35 }]} disabled={!ready} onPress={build} accessibilityLabel={buildLabel}>
               {building ? <ActivityIndicator color="#fff" /> : <Text style={styles.createText}>{buildLabel}</Text>}
             </Press>
           </View>
-        </KeyboardAvoidingView>
+        ) : null}
 
         {/* Paper creases that show as the page crumples. */}
         <Animated.View pointerEvents="none" style={[styles.paper, { opacity: crumple.interpolate({ inputRange: [0, 0.3, 1], outputRange: [0, 0.5, 1] }) }]}>
@@ -350,72 +442,34 @@ export default function ConceptGenerator() {
           </Svg>
         </Animated.View>
       </Animated.View>
+
+      {editing && versions[editing.v]?.[editing.i] ? (
+        <ConceptEditor
+          concept={versions[editing.v][editing.i]}
+          onClose={() => setEditing(null)}
+          onSave={(c) => {
+            const e = editing;
+            setVersions((vs) => vs.map((x, j) => (j === e.v ? x.map((y2, k) => (k === e.i ? c : y2)) : x)));
+            setEditing(null);
+          }}
+        />
+      ) : null}
     </View>
   );
 }
 
-function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
-  return Promise.race([p, new Promise<T>((_, no) => setTimeout(() => no(new Error('The PC took too long to answer. Try again.')), ms))]);
-}
-
-/** What the channel promises and what has worked there: top posts by views, or the latest when views aren't known. */
-function ChannelContext({ channelId }: { channelId: string }) {
-  const { data } = useHome();
-  const profiles = useProfiles();
-  const { reels } = useReels();
-  const ch = data?.channels.find((c) => c.id === channelId);
-  const prof = profiles?.find((p) => p.id === channelId);
-  const posts = (ch?.posts || []).filter((p) => p.status === 'published');
-  const byViews = posts.filter((p) => p.views != null).sort((a, b) => (b.views || 0) - (a.views || 0));
-  const top: Post[] = (byViews.length ? byViews : posts).slice(0, 6);
-  const making = (reels || []).filter((r) => r.channelId === channelId).length;
-  const stats = [
-    ch?.stats.followers != null ? `${compact(ch.stats.followers)} ${ch.platform === 'youtube' ? 'subscribers' : 'followers'}` : null,
-    posts.length ? `${posts.length} posts` : null,
-    making ? `${making} in production` : null,
-  ].filter(Boolean);
-
+function ConceptCard({ c, on, onPress, onLongPress }: { c: Concept; on: boolean; onPress: () => void; onLongPress: () => void }) {
   return (
-    <View style={styles.ctx}>
-      {prof?.promise ? <Text style={styles.promise}>{prof.promise}</Text> : null}
-      {stats.length ? <Text style={styles.ctxStats}>{stats.join(' · ')}</Text> : null}
-      {top.length ? (
-        <>
-          <Text style={styles.ctxLabel}>{byViews.length ? 'Best performing' : 'Latest posts'}</Text>
-          {!top.some((p) => p.thumb) ? (
-            // No cover images known (Instagram schedule entries): a plain list reads better than empty boxes.
-            <View style={{ gap: 6 }}>
-              {top.slice(0, 4).map((p, i) => (
-                <View key={p.at + i} style={styles.postRow}>
-                  <Text numberOfLines={1} style={[styles.postTitle, { flex: 1, marginTop: 0 }]}>{p.title}</Text>
-                  {p.views != null ? <Text style={[styles.postViews, { marginTop: 0 }]}>{compact(p.views)}</Text> : null}
-                </View>
-              ))}
-            </View>
-          ) : (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }} style={{ marginHorizontal: -14 }}>
-            <View style={{ width: 6 }} />
-            {top.map((p, i) => (
-              <View key={p.at + i} style={styles.post}>
-                {p.thumb ? <Image source={p.thumb} style={styles.thumb} contentFit="cover" /> : <View style={[styles.thumb, { backgroundColor: C.empty }]} />}
-                <Text numberOfLines={2} style={styles.postTitle}>{p.title}</Text>
-                {p.views != null ? <Text style={styles.postViews}>{compact(p.views)} views</Text> : null}
-              </View>
-            ))}
-            <View style={{ width: 6 }} />
-          </ScrollView>
-          )}
-        </>
-      ) : (
-        <Text style={styles.ctxStats}>Nothing posted yet. Concepts come from the channel's promise and audience.</Text>
-      )}
-    </View>
-  );
-}
-
-function ConceptCard({ c, on, onPress }: { c: Concept; on: boolean; onPress: () => void }) {
-  return (
-    <Press style={[styles.concept, on && styles.conceptOn]} scale={0.98} onPress={onPress} accessibilityRole="checkbox" accessibilityState={{ checked: on }}>
+    <Press
+      style={[styles.concept, on && styles.conceptOn]}
+      scale={0.98}
+      onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={350}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked: on }}
+      accessibilityHint="Hold to edit"
+    >
       <View style={{ flex: 1 }}>
         <Text style={styles.cTitle}>{c.title}</Text>
         <Text style={styles.cHook}>{c.hook}</Text>
@@ -424,28 +478,6 @@ function ConceptCard({ c, on, onPress }: { c: Concept; on: boolean; onPress: () 
       </View>
       <View style={[styles.tick, on && styles.tickOn]}>{on ? <Check size={13} /> : null}</View>
     </Press>
-  );
-}
-
-type Opt<K extends string> = { key: K; label: string };
-
-/** Two options on a track; the knob slides to the one tapped. Left is the default. */
-function Segmented<K extends string>({ value, onChange, left, right }: { value: K; onChange: (k: K) => void; left: Opt<K>; right: Opt<K> }) {
-  const [w, setW] = useState(0);
-  const x = useRef(new Animated.Value(value === right.key ? 1 : 0)).current;
-  useEffect(() => {
-    Animated.spring(x, { toValue: value === right.key ? 1 : 0, damping: 22, stiffness: 260, useNativeDriver: native }).start();
-  }, [value, right.key, x]);
-  const half = (w - 8) / 2;
-  return (
-    <View style={styles.seg} onLayout={(e) => setW(e.nativeEvent.layout.width)}>
-      {w ? <Animated.View style={[styles.knob, { width: half, transform: [{ translateX: x.interpolate({ inputRange: [0, 1], outputRange: [0, half] }) }] }]} /> : null}
-      {[left, right].map((o) => (
-        <Pressable key={o.key} style={styles.segOpt} onPress={() => onChange(o.key)} accessibilityRole="radio" accessibilityState={{ selected: value === o.key }}>
-          <Text style={[styles.segText, value === o.key && { color: C.ink, fontFamily: F.b }]}>{o.label}</Text>
-        </Pressable>
-      ))}
-    </View>
   );
 }
 
@@ -486,7 +518,7 @@ function DirectionPicker({ channelId, value, onChange, other, onOther }: { chann
 
   return (
     <>
-      <Text style={styles.h2}>Generation direction</Text>
+      <Text style={styles.h2}>Direction</Text>
       <Press style={styles.dropdown} scale={0.98} onPress={() => setOpen((o) => !o)} accessibilityRole="button" accessibilityState={{ expanded: open }}>
         <View style={{ flex: 1 }}>
           <Text style={styles.dirName}>
@@ -508,17 +540,15 @@ function DirectionPicker({ channelId, value, onChange, other, onOther }: { chann
         </View>
       ) : null}
       {value === 'other' ? (
-        <View style={{ marginTop: 8 }}>
-          <TextInput
-            style={styles.otherInput}
-            value={other}
-            onChangeText={onOther}
-            placeholder="How should this one be made?"
-            placeholderTextColor={C.faint}
-            multiline
-            maxLength={1000}
-          />
-        </View>
+        <TextInput
+          style={styles.otherInput}
+          value={other}
+          onChangeText={onOther}
+          placeholder="How should this one be made?"
+          placeholderTextColor={C.faint}
+          multiline
+          maxLength={1000}
+        />
       ) : null}
     </>
   );
@@ -552,19 +582,17 @@ const styles = StyleSheet.create({
   channelName: { maxWidth: '100%', fontFamily: F.s, fontSize: 12, lineHeight: 16, color: C.ink },
   hint: { marginTop: 16, padding: 16, borderRadius: 20, backgroundColor: C.card },
   hintText: { fontFamily: F.r, fontSize: 15, lineHeight: 22, color: C.muted },
-  ctx: { marginTop: 12, padding: 14, borderRadius: 20, backgroundColor: C.card },
-  promise: { fontFamily: F.s, fontSize: 15, lineHeight: 21, color: C.ink },
-  ctxStats: { marginTop: 4, fontFamily: F.m, fontSize: 13, lineHeight: 18, color: C.muted },
-  ctxLabel: { marginTop: 12, marginBottom: 8, fontFamily: F.s, fontSize: 13, lineHeight: 18, color: C.ink2 },
-  post: { width: 104 },
-  postRow: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 34, paddingHorizontal: 10, borderRadius: 10, backgroundColor: C.bg },
-  thumb: { width: 104, height: 138, borderRadius: 12 },
-  postTitle: { marginTop: 6, fontFamily: F.m, fontSize: 12, lineHeight: 16, color: C.ink },
-  postViews: { marginTop: 2, fontFamily: F.b, fontSize: 12, lineHeight: 16, color: C.ink },
   h2: { marginTop: 20, marginBottom: 8, fontFamily: F.s, fontSize: 16, lineHeight: 20, color: C.ink },
-  h2sub: { fontFamily: F.m, fontSize: 13, color: C.muted },
-  draft: { marginTop: 10, height: 48, borderRadius: 24, backgroundColor: C.card, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1.5, borderColor: C.ink },
+  h2flat: { flex: 1, fontFamily: F.s, fontSize: 16, lineHeight: 20, color: C.ink },
+  draft: { marginTop: 12, height: 48, borderRadius: 24, backgroundColor: C.card, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1.5, borderColor: C.ink },
   draftText: { fontFamily: F.b, fontSize: 15, color: C.ink },
+  vbar: { marginTop: 20, flexDirection: 'row', alignItems: 'center' },
+  pager: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  arrow: { width: 32, height: 32, borderRadius: 16, backgroundColor: C.card, alignItems: 'center', justifyContent: 'center' },
+  vnum: { minWidth: 52, textAlign: 'center', fontFamily: F.s, fontSize: 13, color: C.ink },
+  vhint: { marginTop: 4, marginBottom: 8, fontFamily: F.m, fontSize: 12, lineHeight: 16, color: C.muted },
+  writing: { height: 56, borderRadius: 20, backgroundColor: C.card, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
+  writingText: { fontFamily: F.m, fontSize: 14, color: C.muted },
   concept: { flexDirection: 'row', gap: 12, padding: 14, borderRadius: 20, backgroundColor: C.card, borderWidth: 2, borderColor: 'transparent' },
   conceptOn: { borderColor: C.ink },
   cTitle: { fontFamily: F.b, fontSize: 16, lineHeight: 21, color: C.ink },
@@ -573,11 +601,11 @@ const styles = StyleSheet.create({
   cWhy: { marginTop: 8, fontFamily: F.m, fontSize: 13, lineHeight: 18, color: C.growInk },
   tick: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: C.empty, alignItems: 'center', justifyContent: 'center' },
   tickOn: { backgroundColor: C.ink, borderColor: C.ink },
-  seg: { marginTop: 16, height: 48, borderRadius: 24, backgroundColor: C.empty, padding: 4, flexDirection: 'row' },
-  knob: { position: 'absolute', top: 4, left: 4, bottom: 4, borderRadius: 20, backgroundColor: C.card, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
-  segOpt: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  segText: { fontFamily: F.s, fontSize: 14, color: C.muted },
-  note: { marginTop: 6, fontFamily: F.m, fontSize: 13, lineHeight: 18, color: C.muted },
+  bubble: { maxWidth: '86%', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 18 },
+  mine: { alignSelf: 'flex-end', backgroundColor: C.ink, borderBottomRightRadius: 6 },
+  theirs: { alignSelf: 'flex-start', backgroundColor: C.card, borderBottomLeftRadius: 6 },
+  bubbleText: { fontFamily: F.r, fontSize: 15, lineHeight: 21, color: C.ink },
+  send: { width: 40, height: 40, borderRadius: 20, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' },
   dropdown: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 18, backgroundColor: C.card },
   dirList: { marginTop: 6, padding: 6, borderRadius: 18, backgroundColor: C.card },
   dirRow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, borderRadius: 12 },
@@ -585,9 +613,9 @@ const styles = StyleSheet.create({
   dirName: { fontFamily: F.s, fontSize: 15, lineHeight: 20, color: C.ink },
   dirDefault: { fontFamily: F.m, fontSize: 12, color: C.growInk },
   dirSum: { marginTop: 1, fontFamily: F.r, fontSize: 13, lineHeight: 18, color: C.muted },
-  otherInput: { minHeight: 64, borderRadius: 18, backgroundColor: C.card, padding: 14, fontFamily: F.r, fontSize: 15, lineHeight: 21, color: C.ink, textAlignVertical: 'top' },
+  otherInput: { marginTop: 8, minHeight: 64, borderRadius: 18, backgroundColor: C.card, padding: 14, fontFamily: F.r, fontSize: 15, lineHeight: 21, color: C.ink, textAlignVertical: 'top' },
   error: { marginTop: 16, fontFamily: F.m, fontSize: 14, lineHeight: 20, color: '#B4232F' },
-  footer: { paddingHorizontal: 16, paddingTop: 10, backgroundColor: C.bg },
+  footer: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 16, paddingTop: 10, backgroundColor: C.bg },
   create: { height: 52, borderRadius: 26, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' },
   createText: { fontFamily: F.b, fontSize: 16, color: '#fff' },
 });

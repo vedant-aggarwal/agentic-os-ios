@@ -140,11 +140,12 @@ function Ring({ aspects }: { aspects: AspectProgress }) {
 }
 
 // ---- the dial ----
-const OPEN = { duration: 320, dampingRatio: 0.88, reduceMotion: ReduceMotion.System } as const;
-const CLOSE = { duration: 300, dampingRatio: 1, reduceMotion: ReduceMotion.System } as const;
-const SWAP = { duration: 260, dampingRatio: 0.9, reduceMotion: ReduceMotion.System } as const;
-const POP = { duration: 420, dampingRatio: 0.6, reduceMotion: ReduceMotion.System } as const; // the chosen wedge springs out past its size
-const SLIDE = { duration: 340, dampingRatio: 0.82, reduceMotion: ReduceMotion.System } as const;
+// Springs re-target from where they are, velocity kept, so every change mid-motion stays continuous.
+const OPEN = { duration: 360, dampingRatio: 0.86, reduceMotion: ReduceMotion.System } as const;
+const CLOSE = { duration: 380, dampingRatio: 1, reduceMotion: ReduceMotion.System } as const;
+const SWAP = { duration: 340, dampingRatio: 0.96, reduceMotion: ReduceMotion.System } as const;
+const POP = { duration: 480, dampingRatio: 0.7, reduceMotion: ReduceMotion.System } as const; // the chosen wedge springs out a little past its size
+const SLIDE = { duration: 520, dampingRatio: 0.92, reduceMotion: ReduceMotion.System } as const; // the title glides, barely settles
 
 const APath = Animated.createAnimatedComponent(Path);
 const clamp01 = (v: number) => { 'worklet'; return Math.min(Math.max(v, 0), 1); };
@@ -161,7 +162,7 @@ function Wedge({ i, open, state, pick, progress }: {
   useEffect(() => {
     // chosen pops out; the rest fall away in a ripple outward from it
     if (state === 'picked') e.set(withSpring(1, POP));
-    else if (state === 'hidden') e.set(withDelay(Math.abs(i - pick) * 22, withSpring(-1, SWAP)));
+    else if (state === 'hidden') e.set(withDelay(Math.abs(i - pick) * 18, withSpring(-1, SWAP)));
     else e.set(withSpring(0, SWAP));
   }, [state, pick, i, e]);
   const frac = progress?.total ? Math.min(progress.done / progress.total, 1) : 0;
@@ -244,10 +245,11 @@ function GroupBand({ g, open, state, progress }: {
 /** One aspect's name in the title row. It sits centred when chosen and slides off sideways as the choice moves. */
 function TitleWord({ i, pos, shown }: { i: number; pos: SharedValue<number>; shown: SharedValue<number> }) {
   const st = useAnimatedStyle(() => {
-    const d = i - pos.value, near = Math.min(Math.abs(d), 1);
+    const d = i - pos.value, near = 1 - Math.exp(-d * d * 2);
     return {
-      opacity: shown.value * clamp01(1 - Math.abs(d) * 1.6),
-      transform: [{ translateX: d * 64 }, { translateY: (1 - shown.value) * 12 }, { scale: (0.9 + 0.1 * shown.value) * (1 - 0.12 * near) }],
+      // bell-shaped falloff (no kink at the centre), so a name eases in and out as it passes
+      opacity: shown.value * Math.exp(-d * d * 5),
+      transform: [{ translateX: d * 76 }, { translateY: (1 - shown.value) * 10 }, { scale: (0.92 + 0.08 * shown.value) * (1 - 0.1 * near) }],
     };
   });
   const k = WHEEL[i];
@@ -368,7 +370,7 @@ function Ball({ t }: { t: SharedValue<number> }) {
 function useScale(to: number) {
   const scale = useSharedValue(1);
   const style = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
-  const spring = { duration: 260, dampingRatio: 1, reduceMotion: ReduceMotion.System } as const;
+  const spring = { duration: 300, dampingRatio: 1, reduceMotion: ReduceMotion.System } as const;
   return { style, set: (v: number) => { scale.set(withSpring(v, spring)); }, to };
 }
 

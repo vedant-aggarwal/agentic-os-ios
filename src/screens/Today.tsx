@@ -13,6 +13,7 @@ import { TaskGroup } from '@/components/TaskRow';
 import { PcMicSheet } from '@/components/PcMicSheet';
 import { micCenter, TOP_GAP, TOP_H, TopBar } from '@/components/TopBar';
 import { signOut } from '@/lib/api';
+import { gazeTouch } from '@/lib/gaze';
 import { useToday } from '@/lib/useToday';
 import { useWispr } from '@/lib/wispr';
 import { C, F } from '@/theme';
@@ -64,7 +65,8 @@ export default function Today() {
   const orb = orbFromBottom(insets.bottom);
   const empty = !v.groups.length && !v.carried;
   return (
-    <View style={s.screen}>
+    // every touch on Today is passed to the smiley, which looks toward the finger
+    <View style={s.screen} {...gazeTouch}>
       <Backdrop orb={orb} />
       <Scene width={width} />
       <ScrollView

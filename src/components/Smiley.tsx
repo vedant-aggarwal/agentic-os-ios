@@ -1,16 +1,25 @@
-import { useEffect } from 'react';
+import { type ComponentRef, useEffect, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, {
-  ReduceMotion, useAnimatedProps, useAnimatedStyle, useReducedMotion, useSharedValue, withSequence, withSpring, withTiming,
+  ReduceMotion, useAnimatedProps, useAnimatedReaction, useAnimatedStyle, useReducedMotion, useSharedValue, withSequence, withSpring,
+  withTiming,
 } from 'react-native-reanimated';
 import Svg, { Circle, Defs, Ellipse, Path, RadialGradient, Stop } from 'react-native-svg';
+import { gaze } from '@/lib/gaze';
 
 // A small 3D smiley for logging mood. The ball is lit from the top left and stays put; the face rides its
 // surface: it turns and tilts to look around (foreshortening toward the edge), the eyes lead the head, it
-// blinks now and then, and the smile widens when it looks back at you. Still under Reduce Motion.
+// blinks now and then, and the smile widens when it looks back at you. While a finger is on the screen it
+// watches the finger instead, eyes first, head following. Still under Reduce Motion.
 const HEAD = { duration: 900, dampingRatio: 0.82, reduceMotion: ReduceMotion.System } as const;
 const EYES = { duration: 420, dampingRatio: 0.9, reduceMotion: ReduceMotion.System } as const;
 const SMILE = { duration: 700, dampingRatio: 0.85, reduceMotion: ReduceMotion.System } as const;
+// following a finger: quick, so it feels like it is really watching
+const FOLLOW = { duration: 420, dampingRatio: 0.9, reduceMotion: ReduceMotion.System } as const;
+const GLANCE = { duration: 200, dampingRatio: 1, reduceMotion: ReduceMotion.System } as const;
+const REACH_X = 170; // pt sideways from the smiley at which it looks fully left or right
+const REACH_Y = 300; // pt down at which it looks fully down
+const RESUME = 1400; // ms after the finger lifts before it goes back to looking around
 
 // Where it looks next: yaw and pitch from -1 to 1, roll in degrees, smile from 0 to 1.
 const LOOKS = [
@@ -29,12 +38,28 @@ export function Smiley({ size = 30 }: { size?: number }) {
   const yaw = useSharedValue(0), pitch = useSharedValue(0), roll = useSharedValue(0);
   const ex = useSharedValue(0), ey = useSharedValue(0); // the eyes, a step ahead of the head
   const smile = useSharedValue(1), lid = useSharedValue(1);
+  const center = useSharedValue({ x: 0, y: 0 });
+  const box = useRef<ComponentRef<typeof View>>(null);
+
+  // Watch the finger: eyes snap toward it, the head turns after.
+  useAnimatedReaction(() => gaze.value, (g, prev) => {
+    if (reduce || (!g.active && !prev?.active)) return;
+    if (!g.active) { smile.value = withSpring(1, SMILE); return; } // lifted: a smile, then back to idle
+    const c = center.value;
+    const yw = Math.max(-1, Math.min(1, (g.x - c.x) / REACH_X));
+    const pt = Math.max(-1, Math.min(1, (g.y - c.y) / REACH_Y));
+    ex.value = withSpring(yw, GLANCE); ey.value = withSpring(pt, GLANCE);
+    yaw.value = withSpring(yw * 0.85, FOLLOW); pitch.value = withSpring(pt * 0.8, FOLLOW); roll.value = withSpring(yw * 5, FOLLOW);
+    if (!prev?.active) smile.value = withSpring(0.7, SMILE);
+  }, [reduce]);
 
   useEffect(() => {
     if (reduce) return;
     let alive = true, i = 0, timer: ReturnType<typeof setTimeout>;
     const step = () => {
       if (!alive) return;
+      const g = gaze.get();
+      if (g.active || Date.now() - g.at < RESUME) { timer = setTimeout(step, 400); return; } // watching a finger
       i = (i + 1 + Math.floor(Math.random() * (LOOKS.length - 1))) % LOOKS.length; // never the same look twice
       const l = LOOKS[i];
       ex.set(withSpring(l.yaw, EYES)); ey.set(withSpring(l.pitch, EYES));
@@ -64,7 +89,8 @@ export function Smiley({ size = 30 }: { size?: number }) {
 
   const d = size;
   return (
-    <View style={{ width: d, height: d }}>
+    <View ref={box} style={{ width: d, height: d }}
+      onLayout={() => box.current?.measureInWindow((x, y, w, h) => center.set({ x: x + w / 2, y: y + h / 2 }))}>
       <Svg width={d} height={d} viewBox="0 0 100 100" style={StyleSheet.absoluteFill}>
         <Defs>
           <RadialGradient id="smBall" cx="0.38" cy="0.3" r="0.75">

@@ -92,7 +92,8 @@ def setup():
     os.makedirs(d, exist_ok=True)
     stamp = int(time.time())
     made = {}
-    for role, ident, label in (("APP", bundle, "Agentic OS"), ("EXT", f"{bundle}.controls", "Agentic OS Controls")):
+    for role, ident, label in (("APP", bundle, "Agentic OS"), ("EXT", f"{bundle}.controls", "Agentic OS Controls"),
+                               ("KBD", f"{bundle}.keyboard", "Agentic OS Keyboard")):
         name = f"{label} CI {stamp}"
         pk = ensure_bundle(ident, label)
         prof = call("POST", "/profiles", {"data": {"type": "profiles",
@@ -112,7 +113,7 @@ def setup():
 
     with open(os.environ["GITHUB_ENV"], "a") as env:
         env.write(f"PROFILE_APP={made['APP'][0]}\nPROFILE_NAME={made['APP'][0]}\nPROFILE_UUID={made['APP'][1]}\n")
-        env.write(f"PROFILE_EXT={made['EXT'][0]}\n")
+        env.write(f"PROFILE_EXT={made['EXT'][0]}\nPROFILE_KBD={made['KBD'][0]}\n")
     print(f"Signing ready: certificate {cert['id']}, {len(made)} profiles")
 
 

@@ -1,6 +1,6 @@
 # After `expo prebuild`: manual App Store signing on the app target and its app extensions, every build configuration.
 # Only those targets are touched, so Pods never get a provisioning profile they don't support.
-# Env: TEAM, BUNDLE_ID, PROFILE_APP, PROFILE_EXT (written by scripts/ios_signing.py setup).
+# Env: TEAM, BUNDLE_ID, PROFILE_APP, PROFILE_EXT, PROFILE_KBD (written by scripts/ios_signing.py setup).
 require 'xcodeproj'
 
 path = Dir['ios/*.xcodeproj'].reject { |p| p.include?('Pods') }.first or abort('No Xcode project under ios/')
@@ -31,8 +31,13 @@ end
 
 sign.call(app, ENV.fetch('PROFILE_APP'), ENV.fetch('BUNDLE_ID'))
 exts.each do |t|
-  # the Controls extension: <app>.controls (set by @bacons/apple-targets from targets/controls)
-  sign.call(t, ENV.fetch('PROFILE_EXT'), "#{ENV.fetch('BUNDLE_ID')}.controls")
+  # set by @bacons/apple-targets: the keyboard (targets/keyboard, <app>.keyboard) and the Controls extension
+  # (targets/controls, <app>.controls)
+  if t.name =~ /keyboard/i
+    sign.call(t, ENV.fetch('PROFILE_KBD'), "#{ENV.fetch('BUNDLE_ID')}.keyboard")
+  else
+    sign.call(t, ENV.fetch('PROFILE_EXT'), "#{ENV.fetch('BUNDLE_ID')}.controls")
+  end
 end
 project.save
 puts "Manual signing set on #{([app] + exts).map(&:name).join(', ')} (#{app.build_configurations.map(&:name).join(', ')})"

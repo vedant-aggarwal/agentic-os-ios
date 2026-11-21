@@ -120,6 +120,7 @@ jobs:
             <key>provisioningProfiles</key><dict>
               <key>$BUNDLE_ID</key><string>$PROFILE_APP</string>
               <key>$BUNDLE_ID.controls</key><string>$PROFILE_EXT</string>
+              <key>$BUNDLE_ID.keyboard</key><string>$PROFILE_KBD</string>
             </dict>
             <key>uploadSymbols</key><false/>
             <key>manageAppVersionAndBuildNumber</key><false/>

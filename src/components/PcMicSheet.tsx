@@ -1,6 +1,6 @@
 import { BlurView } from 'expo-blur';
-import { useEffect, useState } from 'react';
-import { Keyboard, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { type ComponentRef, useEffect, useRef, useState } from 'react';
+import { Keyboard, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Animated, {
   cancelAnimation, Easing, FadeIn, ReduceMotion, useAnimatedKeyboard, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSpring, withTiming,
 } from 'react-native-reanimated';
@@ -140,7 +140,7 @@ function Toggle({ on, label, icon, onPress }: { on: boolean; label: string; icon
 // and the mic row at the bottom (Wispr's orb, its state, the trackpad and keyboard toggles, Wispr | GPT).
 export function PcMicSheet({
   open, origin, phase, since, error, source, sourceNote, onSource, onClose, onTalkIn, onTalkOut, onHandsFree, onSayIn, onSayOut,
-  onSayLock, onSayToggle, sayLocked, agent, onStop, want,
+  onSayLock, onSayToggle, sayLocked, agent, onStop, want, live = '', offline = false,
 }: {
   open: boolean; origin: { x: number; y: number }; phase: Phase; since: number; error: string | null;
   source: MicSource; sourceNote: string | null; onSource: (v: MicSource) => void;
@@ -148,6 +148,7 @@ export function PcMicSheet({
   onSayIn: () => void; onSayOut: () => void; onSayLock: () => void; onSayToggle: () => void; sayLocked: boolean;
   agent: ReturnType<typeof useAgent>; onStop: () => void;
   want?: { view: 'chat' | 'screen'; n: number } | null; // open on this view (the top bar's Remote PC button)
+  live?: string; offline?: boolean; // GPT: the PC's text so far; the PC isn't getting the audio (saved here meanwhile)
 }) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -219,6 +220,7 @@ export function PcMicSheet({
           )}
         </View>
 
+        {source === 'phone' && phase !== 'idle' && (live || offline) ? <LiveText text={live} offline={offline} /> : null}
         <View style={s.micRow}>
           <Orb phase={phase} since={since} onTalkIn={onTalkIn} onTalkOut={onTalkOut} onHandsFree={onHandsFree} />
           <View style={s.side}>
@@ -236,6 +238,19 @@ export function PcMicSheet({
         {error ? <Text style={s.error}>{error}</Text> : null}
       </Content>
       </Animated.View>
+    </Animated.View>
+  );
+}
+
+/** GPT's words so far, as the PC transcribes them while you talk (newest at the bottom). */
+function LiveText({ text, offline }: { text: string; offline: boolean }) {
+  const ref = useRef<ComponentRef<typeof ScrollView>>(null);
+  return (
+    <Animated.View entering={FadeIn.duration(160)} style={s.live}>
+      <ScrollView ref={ref} style={{ maxHeight: 92 }} onContentSizeChange={() => ref.current?.scrollToEnd({ animated: true })}>
+        {text ? <Text selectable style={s.liveText}>{text}</Text> : null}
+      </ScrollView>
+      {offline ? <Text style={s.liveNote}>PC not reached. Still saving on this phone.</Text> : null}
     </Animated.View>
   );
 }
@@ -288,4 +303,10 @@ const s = StyleSheet.create({
   toggleOn: { backgroundColor: LIVE },
   toggleTxt: { fontFamily: F.semibold, fontSize: 16, color: C.text },
   error: { fontFamily: F.medium, fontSize: 13, lineHeight: 18, color: C.danger },
+  live: {
+    marginBottom: 10, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 16, borderCurve: 'continuous', gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.07)', borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.12)',
+  },
+  liveText: { fontFamily: F.medium, fontSize: 15, lineHeight: 21, color: C.text },
+  liveNote: { fontFamily: F.medium, fontSize: 12, lineHeight: 16, color: '#FFB547' },
 });

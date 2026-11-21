@@ -277,5 +277,6 @@ export function useWispr(enabled: boolean) {
   return {
     phase, since, error, command, locked, source, sourceNote, setSource, startTalk, endTalk, toggleHandsFree,
     sayIn, sayOut, sayLock, sayToggle, settle, cancel, closeCommand, openCommand,
+    live: rec.live, offline: rec.offline, // GPT: the PC's text so far, and whether it is getting the audio
   };
 }

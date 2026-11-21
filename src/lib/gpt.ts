@@ -1,61 +1,230 @@
 import { requireOptionalNativeModule } from 'expo';
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { API, ApiError, currentToken } from './api';
 
-// GPT dictation: record with this phone's mic, send the clip to the PC, and the PC transcribes it with the Codex
-// app's dictation and types it where the cursor is (or hands it to the PC agent). Server: POST /pc/dictate.
+// GPT dictation, streamed. The phone's mic writes a WAV file on the phone (Documents/takes, valid at every moment, so
+// a crash keeps everything said), and once a second the new part of that file goes to the PC (PUT at its byte
+// offset; the PC keeps it on disk too). The PC cuts the audio at pauses and transcribes each piece with the Codex
+// login as you talk, so `live` fills in while you speak and there is no length limit. On stop the PC transcribes the
+// last bit and types it where the cursor is, or hands it to the PC agent. Server: pc-take.ts (/pc/take).
+// A take the PC never fully got (no connection, the app was killed) is sent on the next launch, saved, not typed.
 // expo-audio's native side arrives with the app build that added it; older builds just report it missing.
 type Audio = typeof import('expo-audio');
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+type FS = typeof import('expo-file-system');
+/* eslint-disable @typescript-eslint/no-require-imports */
 const audio: Audio | null = requireOptionalNativeModule('ExpoAudio') ? require('expo-audio') : null;
-export const gptAvailable = !!audio;
+const fs: FS | null = requireOptionalNativeModule('FileSystem') ? require('expo-file-system') : null;
+/* eslint-enable @typescript-eslint/no-require-imports */
+export const gptAvailable = !!audio && !!fs;
 
 export type DictateTo = 'type' | 'agent';
 export type DictateResult = { text: string; enter: boolean; ms: number };
+/** A take as this phone remembers it. */
+export type LocalTake = { id: string; uri: string; rate: number; createdAt: string; sent: number; finished: boolean };
 
-const OPTIONS = audio ? { ...audio.RecordingPresets.HIGH_QUALITY, numberOfChannels: 1, bitRate: 64000 } : null;
+const RATE = 16000;
+const HEADER = 44;          // the WAV header expo-audio writes; the PCM follows it
+const PIECE = 256 * 1024;   // most bytes per upload (8 s of audio)
+const TICK = 1000;          // send what's new this often
+const KEEP_DAYS = 7;        // the phone keeps its own copy this long after the PC has it
 
-export function useGptRecorder() {
-  // the hook exists only when the native module does, which never changes while the app runs
-  const recorder = audio && OPTIONS ? audio.useAudioRecorder(OPTIONS) : null;
-  const on = useRef(false);
-  useEffect(() => () => { if (on.current) recorder?.stop().catch(() => {}); }, [recorder]);
+const auth = (): Record<string, string> => { const t = currentToken(); return t ? { Authorization: `Bearer ${t}` } : {}; };
+async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const res = await fetch(`${API}${path}`, {
+    method, headers: { ...auth(), ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  const out = await res.json().catch(() => null);
+  if (!res.ok) throw new ApiError(res.status, out?.error ?? `The PC said HTTP ${res.status}.`);
+  return out as T;
+}
 
-  const start = useCallback(async () => {
-    if (!audio || !recorder) throw new Error('GPT mic arrives with the next app build.');
-    const perm = await audio.requestRecordingPermissionsAsync();
-    if (!perm.granted) throw new Error('Allow the microphone for Agentic OS in Settings.');
-    await audio.setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
-    await recorder.prepareToRecordAsync();
-    recorder.record();
-    on.current = true;
-  }, [recorder]);
+// ---- the phone's own list of takes (Documents/takes/index.json) ----
+const takesDir = () => new fs!.Directory(fs!.Paths.document, 'takes');
+const indexFile = () => new fs!.File(takesDir(), 'index.json');
+let index: LocalTake[] | null = null;
+function readIndex(): LocalTake[] {
+  if (index) return index;
+  try { index = JSON.parse(indexFile().textSync()) as LocalTake[]; } catch { index = []; }
+  return index;
+}
+function writeIndex() {
+  try {
+    const d = takesDir();
+    if (!d.exists) d.create({ intermediates: true, idempotent: true });
+    indexFile().write(JSON.stringify(index ?? []));
+  } catch {}
+}
+function remember(t: LocalTake) {
+  const list = readIndex();
+  const i = list.findIndex((x) => x.id === t.id);
+  if (i >= 0) list[i] = t; else list.unshift(t);
+  writeIndex();
+}
+/** Takes saved on this phone, newest first (the history uses these to play without the PC). */
+export function localTakes(): LocalTake[] { return gptAvailable ? [...readIndex()] : []; }
+export function localUri(id: string) {
+  const t = gptAvailable ? readIndex().find((x) => x.id === id) : undefined;
+  return t && new fs!.File(t.uri).exists ? t.uri : null;
+}
+function prune() {
+  const cut = Date.now() - KEEP_DAYS * 86400_000;
+  const list = readIndex();
+  const keep = list.filter((t) => {
+    if (!t.finished || Date.parse(t.createdAt) > cut) return true;
+    try { new fs!.File(t.uri).delete(); } catch {}
+    return false;
+  });
+  if (keep.length !== list.length) { index = keep; writeIndex(); }
+}
 
-  /** Stop and send the clip; resolves with what the PC heard. */
-  const finish = useCallback(async (to: DictateTo): Promise<DictateResult> => {
-    if (!recorder || !on.current) throw new Error('Not recording.');
-    on.current = false;
-    await recorder.stop();
-    audio?.setAudioModeAsync({ allowsRecording: false }).catch(() => {});
-    const uri = recorder.uri;
-    if (!uri) throw new Error('Nothing was recorded.');
-    const clip = await (await fetch(uri)).blob();
-    const token = currentToken();
-    const res = await fetch(`${API}/pc/dictate?to=${to}`, {
-      method: 'POST', body: clip,
-      headers: { 'Content-Type': 'application/octet-stream', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+// ---- sending a take's file to the PC ----
+type Sender = { t: LocalTake; h: import('expo-file-system').FileHandle | null; created: boolean; busy: Promise<void> | null };
+
+/** Send everything in the file past what the PC has. Throws if the PC can't be reached. */
+async function pushAll(s: Sender) {
+  if (!s.created) { await call('POST', '/pc/take', { id: s.t.id, rate: s.t.rate }); s.created = true; }
+  if (!s.h) s.h = new fs!.File(s.t.uri).open();
+  for (;;) {
+    s.h.offset = HEADER + s.t.sent;
+    let bytes = await s.h.readBytes(PIECE);
+    if (bytes.length & 1) bytes = bytes.subarray(0, bytes.length - 1); // whole samples only
+    if (!bytes.length) return;
+    const res = await fetch(`${API}/pc/take/${s.t.id}/pcm?at=${s.t.sent}`, {
+      method: 'PUT', body: bytes, headers: { ...auth(), 'Content-Type': 'application/octet-stream' },
     });
     const out = await res.json().catch(() => null);
-    if (!res.ok) throw new ApiError(res.status, out?.error ?? `The PC couldn't transcribe that (HTTP ${res.status}).`);
-    return out as DictateResult;
-  }, [recorder]);
+    if (!res.ok && res.status !== 409) throw new ApiError(res.status, out?.error ?? `Upload failed (HTTP ${res.status}).`);
+    s.t.sent = Number(out?.have ?? s.t.sent); // on 409 the PC says where it is; carry on from there
+    if (res.ok && bytes.length < PIECE) return;
+  }
+}
+/** One send at a time; a failed one is retried on the next tick. */
+function push(s: Sender) {
+  if (s.busy) return s.busy;
+  s.busy = pushAll(s).finally(() => { s.busy = null; remember(s.t); });
+  return s.busy;
+}
+async function pushHard(s: Sender, tries = 4) {
+  for (let i = 0; ; i++) {
+    try { await push(s); await push(s); return; } // the second catches bytes written while the first ran
+    catch (e) { if (i >= tries - 1) throw e; await new Promise((r) => setTimeout(r, 600 * 2 ** i)); }
+  }
+}
+function close(s: Sender) { try { s.h?.close(); } catch {} s.h = null; }
 
-  const cancel = useCallback(() => {
-    if (!recorder || !on.current) return;
-    on.current = false;
-    recorder.stop().catch(() => {});
+/** Takes the PC never fully got: send the rest and save them there (not typed: that moment has passed). */
+let recovering = false;
+async function recover(skip?: string) {
+  if (!gptAvailable || recovering) return;
+  recovering = true;
+  try {
+    prune();
+    for (const t of readIndex().filter((x) => !x.finished && x.id !== skip)) {
+      if (!new fs!.File(t.uri).exists) { t.finished = true; remember(t); continue; }
+      const s: Sender = { t, h: null, created: false, busy: null };
+      try {
+        await pushHard(s, 2);
+        await call('POST', `/pc/take/${t.id}/finish`, { bytes: t.sent, to: 'none' });
+        t.finished = true; remember(t);
+      } catch { /* the PC is away; next launch */ } finally { close(s); }
+    }
+  } finally { recovering = false; }
+}
+
+export function useGptRecorder() {
+  // the hooks exist only when the native module does, which never changes while the app runs
+  const stream = audio ? audio.useAudioStream({ sampleRate: RATE, channels: 1, encoding: 'int16' }).stream : null;
+  const cur = useRef<Sender | null>(null);
+  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [live, setLive] = useState('');
+  const [offline, setOffline] = useState(false); // the PC isn't getting the audio right now (it's still saved here)
+
+  useEffect(() => { void recover(); }, []);
+  useEffect(() => () => { if (timer.current) clearInterval(timer.current); try { stream?.stop(); } catch {} }, [stream]);
+
+  /** Show the PC's text as it comes, until the take is done or another one starts. */
+  const follow = useCallback(async (s: Sender) => {
+    let v: number | undefined;
+    while (cur.current === s && s.created) {
+      try {
+        const t = await call<{ v: number; text: string; status: string }>('GET', `/pc/take/${s.t.id}${v == null ? '' : `?v=${v}&wait=20`}`);
+        if (cur.current !== s) return;
+        v = t.v; setLive(t.text);
+        if (t.status === 'done') return;
+      } catch { await new Promise((r) => setTimeout(r, 1500)); }
+    }
+  }, []);
+
+  const start = useCallback(async () => {
+    if (!audio || !fs || !stream) throw new Error('GPT mic arrives with the next app build.');
+    const perm = await audio.requestRecordingPermissionsAsync();
+    if (!perm.granted) throw new Error('Allow the microphone for Agentic OS in Settings.');
+    await audio.setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true, allowsBackgroundRecording: true, shouldPlayInBackground: true });
+    const d = takesDir();
+    if (!d.exists) d.create({ intermediates: true, idempotent: true });
+    const id = `t_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    await stream.start();
+    let uri: string;
+    try { ({ uri } = await stream.startFileRecordingAsync({ uri: new fs.File(d, `${id}.wav`).uri, format: 'wav' })); }
+    catch (e) { try { stream.stop(); } catch {} throw e; }
+    const s: Sender = { t: { id, uri, rate: stream.sampleRate || RATE, createdAt: new Date().toISOString(), sent: 0, finished: false }, h: null, created: false, busy: null };
+    remember(s.t);
+    cur.current = s;
+    setLive(''); setOffline(false);
+    let following = false;
+    timer.current = setInterval(() => {
+      push(s).then(() => {
+        setOffline(false);
+        if (!following && s.created) { following = true; void follow(s); }
+      }, () => setOffline(true));
+    }, TICK);
+  }, [stream, follow]);
+
+  const stop = useCallback(async () => {
+    if (timer.current) { clearInterval(timer.current); timer.current = null; }
+    try { await stream?.stopFileRecordingAsync(); } catch {}
+    try { stream?.stop(); } catch {}
     audio?.setAudioModeAsync({ allowsRecording: false }).catch(() => {});
-  }, [recorder]);
+  }, [stream]);
 
-  return { start, finish, cancel };
+  /** Stop and deliver: resolves with what the PC heard. */
+  const finish = useCallback(async (to: DictateTo): Promise<DictateResult> => {
+    const s = cur.current;
+    if (!s) throw new Error('Not recording.');
+    const t0 = Date.now();
+    await stop();
+    try {
+      await pushHard(s);
+      const r = await call<{ text: string; enter: boolean; error?: string }>('POST', `/pc/take/${s.t.id}/finish`, { bytes: s.t.sent, to });
+      s.t.finished = true; remember(s.t);
+      setLive(r.text);
+      if (!r.text && r.error) throw new ApiError(502, r.error);
+      return { text: r.text, enter: r.enter, ms: Date.now() - t0 };
+    } catch (e) {
+      if (e instanceof ApiError && (s.t.finished || (e.status < 500 && e.status !== 409))) throw e;
+      throw new Error('Saved on this phone. It goes to the PC when it can be reached.');
+    } finally {
+      close(s);
+      if (cur.current === s) cur.current = null;
+      void recover(s.t.id);
+    }
+  }, [stop]);
+
+  /** Stop without typing anything: the take is still saved, on both sides. */
+  const cancel = useCallback(() => {
+    const s = cur.current;
+    if (!s) return;
+    cur.current = null;
+    setLive('');
+    void stop().then(async () => {
+      try {
+        await pushHard(s);
+        await call('POST', `/pc/take/${s.t.id}/finish`, { bytes: s.t.sent, to: 'none' });
+        s.t.finished = true; remember(s.t);
+      } catch {} finally { close(s); }
+    });
+  }, [stop]);
+
+  return { start, finish, cancel, live, offline };
 }

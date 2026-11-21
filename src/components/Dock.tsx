@@ -7,7 +7,7 @@ import Animated, {
   Easing, ReduceMotion, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withSpring, withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
-import Svg, { Circle, Defs, Ellipse, G, Path, RadialGradient, Rect, Stop, Text as SvgText } from 'react-native-svg';
+import Svg, { Circle, Defs, G, Path, RadialGradient, Rect, Stop, Text as SvgText } from 'react-native-svg';
 import { Keyboard, Plus } from '@/components/Icons';
 import type { AspectProgress } from '@/lib/today';
 import { ASPECT_COLOR, C, F, type AspectKey } from '@/theme';
@@ -22,7 +22,8 @@ const ORB_R = 36; // the ball
 const ARC_R = 46;
 const ORB_TOP = BAR_H / 2 - 16 - ORB / 2; // orb centre 16 above the pill's centre
 const TURN = 12000; // one turn of the sphere, ms
-const HOLD = 280; // ms before a press becomes a hold
+const HOLD = 280; // ms before a press held still becomes a hold
+const SWIPE = 8; // pt of travel that turns a press into a swipe
 
 // The dial the ring opens into (board: wedges at r140, 36 thick, labels at r172)
 const DIAL_R = 140;
@@ -57,8 +58,13 @@ function arcAt(c: number, r: number, a0: number, a1: number) {
   const [x0, y0] = at(c, r, a0), [x1, y1] = at(c, r, a1);
   return `M ${x0.toFixed(2)} ${y0.toFixed(2)} A ${r} ${r} 0 0 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`;
 }
+// The resting ring stays clear of the pill: the orb's centre sits 16 below the pill's top edge, so at
+// r46 the ring may reach 66 deg either side of 12 o'clock before its ends (and their glow) touch that edge.
+const RING_HALF = 66;
+const RING_SPAN = (RING_HALF * 2) / WHEEL.length;
+const RING_START = 360 - RING_HALF;
 const RING = WHEEL.map((k, i) => {
-  const a0 = 270 + i * SPAN + 4.5, a1 = 270 + (i + 1) * SPAN - 4.5; // trimmed so round caps leave a gap
+  const s0 = RING_START + i * RING_SPAN, a0 = s0 + 4, a1 = s0 + RING_SPAN - 4; // trimmed so round caps leave a gap
   return { k, a0, a1, color: ASPECT_COLOR[k], track: arcAt(ORB / 2, ARC_R, a0, a1) };
 });
 /** A ring segment between radii ri..ro and angles a0..a1, with its four corners rounded by rc. */
@@ -78,7 +84,9 @@ const DIAL = WHEEL.map((k, i) => {
   // chosen, a wedge spreads into its hidden neighbours' room: twice the span and thicker
   const d = sector(CAN, DIAL_R - DIAL_W / 2, DIAL_R + DIAL_W / 2, a0, a1, 6);
   const dp = sector(CAN, DIAL_R - PICK_W / 2, DIAL_R + PICK_W / 2, mid - SPAN * 0.85, mid + SPAN * 0.85, 12);
-  return { k, color: ASPECT_COLOR[k], d, dp, lx, ly: ly + 4 };
+  // the ring is narrower than the dial, so each wedge starts turned to its ring section and fans out
+  const turn = RING_START + (i + 0.5) * RING_SPAN - mid;
+  return { k, color: ASPECT_COLOR[k], d, dp, lx, ly: ly + 4, turn };
 });
 
 /** Which section a finger at (vx, vy) from the orb's centre is over, or -1. */
@@ -94,7 +102,7 @@ function sectionAt(vx: number, vy: number) {
 function Ring({ aspects }: { aspects: AspectProgress }) {
   return (
     <>
-      {RING.map((s) => <Path key={s.k} d={s.track} stroke={s.color} strokeOpacity={0.35} strokeWidth={4} strokeLinecap="round" fill="none" />)}
+      {RING.map((s) => <Path key={s.k} d={s.track} stroke={s.color} strokeOpacity={0.35} strokeWidth={3.5} strokeLinecap="round" fill="none" />)}
       {RING.map((s) => {
         const p = aspects[s.k];
         if (!p || !p.done || !p.total) return null;
@@ -102,7 +110,7 @@ function Ring({ aspects }: { aspects: AspectProgress }) {
         return (
           <G key={`f${s.k}`}>
             <Path d={d} stroke={s.color} strokeOpacity={0.3} strokeWidth={8} strokeLinecap="round" fill="none" />
-            <Path d={d} stroke={s.color} strokeWidth={4} strokeLinecap="round" fill="none" />
+            <Path d={d} stroke={s.color} strokeWidth={3.5} strokeLinecap="round" fill="none" />
           </G>
         );
       })}
@@ -125,7 +133,10 @@ function Wedge({ i, open, state, progress }: {
   const outer = useAnimatedStyle(() => {
     const o = open.value, pick = Math.max(e.value, 0), hide = Math.max(-e.value, 0);
     const grow = ARC_R / DIAL_R + (1 - ARC_R / DIAL_R) * o; // from the ring's radius out to the dial's
-    return { opacity: o * (1 - hide), transform: [{ scale: grow * (1 + 0.08 * pick - 0.1 * hide) }] };
+    return {
+      opacity: o * (1 - hide),
+      transform: [{ rotate: `${w.turn * (1 - o)}deg` }, { scale: grow * (1 + 0.08 * pick - 0.1 * hide) }],
+    };
   });
   const idle = useAnimatedStyle(() => ({ opacity: 1 - Math.max(e.value, 0) }));
   const chosen = useAnimatedStyle(() => ({ opacity: Math.max(e.value, 0) }));
@@ -234,26 +245,6 @@ function Patch({ t, i }: { t: SharedValue<number>; i: number }) {
   );
 }
 
-/** The specular highlight: circles the light's pole as the sphere turns, squashing and glinting as it goes. */
-function Highlight({ t }: { t: SharedValue<number> }) {
-  const HW = 12, HH = 20; // radial x tangential, before foreshortening
-  const style = useAnimatedStyle(() => {
-    const [x, y, z] = surface(0.2, 0, t.value);
-    return {
-      opacity: 0.24 + 0.14 * flicker(t.value, 0.6),
-      transform: [
-        { translateX: x * ORB_R }, { translateY: y * ORB_R },
-        { rotate: `${Math.atan2(y, x)}rad` }, { scaleX: Math.max(z, 0.2) * 0.9 }, { scaleY: 0.92 + 0.12 * flicker(t.value, 0.2) },
-      ],
-    };
-  });
-  return (
-    <Animated.View pointerEvents="none" style={[s.abs, { width: HW, height: HH, left: ORB_R - HW / 2, top: ORB_R - HH / 2 }, style]}>
-      <Svg width={HW} height={HH}><Ellipse cx={HW / 2} cy={HH / 2} rx={HW / 2} ry={HH / 2} fill="#FFFFFF" /></Svg>
-    </Animated.View>
-  );
-}
-
 function Ball({ t }: { t: SharedValue<number> }) {
   const D = ORB_R * 2;
   return (
@@ -269,7 +260,6 @@ function Ball({ t }: { t: SharedValue<number> }) {
         <Circle cx={ORB_R} cy={ORB_R} r={ORB_R} fill="url(#orb)" />
       </Svg>
       {PATCHES.map((p, i) => <Patch key={p.color} t={t} i={i} />)}
-      <Highlight t={t} />
     </View>
   );
 }
@@ -407,23 +397,26 @@ export function Dock({ bottom, width, aspects, onNotBuilt }: {
     orb.set(orb.to);
     boost.set(withTiming(1, { duration: 140, easing: Easing.out(Easing.quad) }));
     tap(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light));
-    st.timer = setTimeout(() => {
-      st.timer = null;
-      st.open = true;
-      open.set(withSpring(1, OPEN));
-      orb.set(1.04);
-      tap(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
-    }, HOLD);
+    st.timer = setTimeout(openDial, HOLD); // holding still also opens it
+  };
+
+  const openDial = () => {
+    const st = g.current;
+    if (st.timer) { clearTimeout(st.timer); st.timer = null; }
+    if (st.open) return;
+    st.open = true;
+    open.set(withSpring(1, OPEN));
+    orb.set(1.04);
+    tap(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
   };
 
   const onMove = (e: GestureResponderEvent) => {
     const n = e.nativeEvent, st = g.current;
     if (!st.open) {
-      if (Math.hypot(n.pageX - st.x0, n.pageY - st.y0) > 10) {
-        st.moved = true;
-        if (st.timer) { clearTimeout(st.timer); st.timer = null; }
-      }
-      return;
+      // a swipe off the orb opens the dial straight away; a small wobble still counts as a tap
+      if (Math.hypot(n.pageX - st.x0, n.pageY - st.y0) < SWIPE) return;
+      st.moved = true;
+      openDial();
     }
     const i = sectionAt(n.pageX - st.ox, n.pageY - st.oy);
     if (i !== st.pick) {

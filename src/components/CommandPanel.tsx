@@ -2,7 +2,7 @@ import * as Haptics from 'expo-haptics';
 import { type ComponentRef, useEffect, useRef, useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, {
-  cancelAnimation, Easing, FadeIn, FadeOut, LinearTransition, ReduceMotion, SlideInRight, useAnimatedStyle, useSharedValue,
+  cancelAnimation, Easing, FadeIn, FadeOut, LinearTransition, ReduceMotion, useAnimatedStyle, useSharedValue,
   withRepeat, withTiming,
 } from 'react-native-reanimated';
 import { lightTap, useScale } from '@/components/Glass';
@@ -15,7 +15,6 @@ import { ASPECT_COLOR, C, F } from '@/theme';
 
 // Command mode: the bar across the top ("Command mode", what the agent is doing, Stop or start over) and the
 // agent's live transcript with Talk (hold to say more, through Wispr) and Type (a written reply).
-const SLIDE = SlideInRight.springify().damping(22).stiffness(180).reduceMotion(ReduceMotion.System);
 export const LIVE = ASPECT_COLOR.mission;
 
 const STATUS: Record<AgentState | 'listening' | 'nothing', string> = {
@@ -41,7 +40,7 @@ export function CommandBar({ state, heard, connected, listening, hasItems, onSto
   const key = listening ? 'listening' : heard === 'nothing' && !busy ? 'nothing' : state;
   const tone = key === 'error' || key === 'nothing' ? C.danger : busy || listening ? LIVE : C.muted;
   return (
-    <Animated.View entering={SLIDE} style={s.bar}>
+    <View style={s.bar}>
       <Pulse on={busy || listening} color={tone} />
       <Text style={s.barTitle}>Command mode</Text>
       <Text style={[s.barState, { color: tone }]} numberOfLines={1}>{connected ? STATUS[key] : 'Connecting'}</Text>
@@ -57,7 +56,7 @@ export function CommandBar({ state, heard, connected, listening, hasItems, onSto
           <Sym name="square.and.pencil" size={15} fallback={<Text style={s.iconTxt}>+</Text>} />
         </Pressable>
       ) : null}
-    </Animated.View>
+    </View>
   );
 }
 

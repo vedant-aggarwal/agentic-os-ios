@@ -160,17 +160,18 @@ export function PcMicSheet({
     return () => clearTimeout(id);
   }, [open, p]);
 
+  // A circle grows out of the mic button until it covers the screen, revealing the page in place underneath it
+  // (the page never moves or scales; only the circle that shows it widens). Closing shrinks it back into the button.
+  const reach = Math.hypot(Math.max(origin.x, width - origin.x), Math.max(origin.y, height - origin.y)) + 4;
   const shell = useAnimatedStyle(() => {
-    const t = p.value;
-    return {
-      left: lerp(origin.x - ICON / 2, 0, t), top: lerp(origin.y - ICON / 2, 0, t),
-      width: lerp(ICON, width, t), height: lerp(ICON, height, t),
-      borderRadius: lerp(ICON / 2, 44, t), opacity: clamp01(t * 4),
-    };
+    const r = lerp(ICON / 2, reach, p.value);
+    return { left: origin.x - r, top: origin.y - r, width: r * 2, height: r * 2, borderRadius: r, opacity: clamp01(p.value * 8) };
   });
-  const content = useAnimatedStyle(() => ({
-    opacity: clamp01((p.value - 0.45) / 0.55), transform: [{ translateY: (1 - p.value) * 24 }],
-  }));
+  const stage = useAnimatedStyle(() => {
+    const r = lerp(ICON / 2, reach, p.value);
+    return { left: r - origin.x, top: r - origin.y };
+  });
+  const content = useAnimatedStyle(() => ({ opacity: clamp01(p.value * 2.5) }));
   if (!mounted) return null;
 
   const tone = TONE[phase];
@@ -178,6 +179,7 @@ export function PcMicSheet({
   const flip = (v: View4) => setView((cur) => (cur === v ? 'chat' : v));
   return (
     <Animated.View style={[s.shell, shell]} pointerEvents={open ? 'auto' : 'none'}>
+      <Animated.View style={[s.stage, { width, height }, stage]}>
       <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
       <View style={[StyleSheet.absoluteFill, s.tint]} />
       <Content style={content} insets={insets} width={width} height={height}>
@@ -219,6 +221,7 @@ export function PcMicSheet({
         </View>
         {error ? <Text style={s.error}>{error}</Text> : null}
       </Content>
+      </Animated.View>
     </Animated.View>
   );
 }
@@ -238,7 +241,8 @@ function Content({ style, insets, width, height, children }: {
 }
 
 const s = StyleSheet.create({
-  shell: { position: 'absolute', overflow: 'hidden', borderCurve: 'circular' },
+  shell: { position: 'absolute', overflow: 'hidden' },
+  stage: { position: 'absolute' },
   tint: { backgroundColor: 'rgba(9,10,14,0.94)' },
   content: { position: 'absolute', left: 0, top: 0, paddingHorizontal: 20, gap: 10 },
   header: { height: 40, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

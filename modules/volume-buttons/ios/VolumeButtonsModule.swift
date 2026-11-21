@@ -7,15 +7,11 @@ import UIKit
 /// audio session's output volume: every press, and every auto-repeat step while a button is held, moves it.
 /// Each step is reported ("up" or "down") and the level is put straight back, so the volume never drifts.
 /// A hidden MPVolumeView keeps the system volume HUD from showing and is how the level is put back.
-/// iOS moves the level in sixteenths, and the slider does not always land exactly where it is set, so a change
-/// smaller than half a step is the reset settling, never a press. Counting those
-/// as presses made a feedback loop of fake steps every ~40 ms.
 public final class VolumeButtonsModule: Module {
   private var observation: NSKeyValueObservation?
   private var volumeView: MPVolumeView?
   private var baseline: Float = 0.5
   private var original: Float?
-  private static let step: Float = 1.0 / 16.0
 
   public func definition() -> ModuleDefinition {
     Name("VolumeButtons")
@@ -49,10 +45,13 @@ public final class VolumeButtonsModule: Module {
 
     let level = session.outputVolume
     original = level
-    // On the sixteenths grid, and never at either end, where a press in that direction would not move the level.
-    let snapped = min(max((level * 16).rounded() / 16, 3 * Self.step), 13 * Self.step)
-    baseline = snapped
-    if abs(snapped - level) > 0.001 { setLevel(snapped) }
+    // At either end a press in that direction would not move the level, so start from the middle.
+    if level <= 0.07 || level >= 0.93 {
+      baseline = 0.5
+      setLevel(0.5)
+    } else {
+      baseline = level
+    }
 
     observation = session.observe(\.outputVolume, options: [.new]) { [weak self] _, change in
       guard let value = change.newValue else { return }
@@ -62,8 +61,7 @@ public final class VolumeButtonsModule: Module {
 
   private func changed(_ value: Float) {
     guard observation != nil else { return }
-    // Less than half a step from the baseline: our own reset settling, not a press.
-    if abs(value - baseline) < Self.step / 2 { return }
+    if abs(value - baseline) < 0.001 { return } // our own reset
     let button = value > baseline ? "up" : "down"
     sendEvent("onPress", ["button": button, "at": Date().timeIntervalSince1970 * 1000])
     setLevel(baseline)

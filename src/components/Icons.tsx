@@ -48,6 +48,10 @@ export const Lock = ({ size = 22, color = C.text }: P) => (
     <Circle cx={128} cy={152} r={14} fill="#FF8A4C" />
   </Duo>
 );
+/** Your account: head and shoulders. */
+export const Account = ({ size = 22, color = C.text }: P) => (
+  <Duo size={size} color={color} fill="M128 40a44 44 0 1 1-0.01 0z" line="M128 40a44 44 0 1 1-0.01 0z M44 216c8-44 44-72 84-72s76 28 84 72" />
+);
 export const Plus = ({ size = 24, color = C.text }: P) => (
   <Duo size={size} color={color} stroke={20} line="M40 128h176 M128 40v176" />
 );

@@ -1,13 +1,14 @@
 import ExpoModulesCore
 import UIKit
 
-/// Progressive gaussian blur: clear at the top edge, `radius` points at the bottom, the radius ramping as
-/// t^curve. It puts the system's variable blur filter (the one iOS draws scroll edge effects with) on a
+/// Progressive gaussian blur: clear at one end, `radius` points at the other (the bottom, or the top when
+/// `fromTop`), the radius ramping as t^curve. It puts the system's variable blur filter (the one iOS draws scroll edge effects with) on a
 /// visual effect view's backdrop layer and hides the effect's tint, so there is no frost and no edge.
 public final class VariableBlurView: ExpoView {
   private let effectView = BackdropEffectView(effect: UIBlurEffect(style: .regular))
   private var radius: CGFloat = 16
   private var curve: CGFloat = 2
+  private var fromTop = false
 
   public required init(appContext: AppContext? = nil) {
     super.init(appContext: appContext)
@@ -24,6 +25,11 @@ public final class VariableBlurView: ExpoView {
 
   func setCurve(_ value: CGFloat) {
     curve = value
+    apply()
+  }
+
+  func setFromTop(_ value: Bool) {
+    fromTop = value
     apply()
   }
 
@@ -46,7 +52,7 @@ public final class VariableBlurView: ExpoView {
     guard bounds.width > 0, bounds.height > 0,
           let backdrop = effectView.subviews.first?.layer,
           let filter = VariableBlurView.makeFilter(),
-          let mask = VariableBlurView.makeMask(curve: curve) else { return }
+          let mask = VariableBlurView.makeMask(curve: curve, fromTop: fromTop) else { return }
     filter.setValue(radius, forKey: "inputRadius")
     filter.setValue(mask, forKey: "inputMaskImage")
     filter.setValue(true, forKey: "inputNormalizeEdges")
@@ -64,12 +70,13 @@ public final class VariableBlurView: ExpoView {
     return made?.takeUnretainedValue() as? NSObject
   }
 
-  /// Clear at the top, opaque at the bottom, alpha = t^curve. Row 0 of the image is the top.
-  private static func makeMask(curve: CGFloat) -> CGImage? {
+  /// Clear at the top, opaque at the bottom (flipped when fromTop), alpha = t^curve. Row 0 of the image is the top.
+  private static func makeMask(curve: CGFloat, fromTop: Bool) -> CGImage? {
     let width = 8, height = 256
     var pixels = [UInt8](repeating: 0, count: width * height * 4)
     for y in 0..<height {
-      let t = CGFloat(y) / CGFloat(height - 1)
+      let row = CGFloat(y) / CGFloat(height - 1)
+      let t = fromTop ? 1 - row : row
       let alpha = UInt8(max(0, min(255, (pow(t, curve) * 255).rounded())))
       for x in 0..<width {
         pixels[(y * width + x) * 4 + 3] = alpha // black, premultiplied: colour channels stay 0

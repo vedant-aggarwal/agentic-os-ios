@@ -1,18 +1,18 @@
 import { BlurView } from 'expo-blur';
-import { GlassView, isGlassEffectAPIAvailable, isLiquidGlassAvailable } from 'expo-glass-effect';
 import * as Haptics from 'expo-haptics';
 import { useEffect, useRef, useState } from 'react';
-import { type GestureResponderEvent, Platform, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { type GestureResponderEvent, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import Animated, {
   Easing, ReduceMotion, useAnimatedProps, useAnimatedStyle, useReducedMotion, useSharedValue, withDelay, withRepeat, withSpring, withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
 import Svg, { Circle, Defs, G, LinearGradient, Path, RadialGradient, Stop, Text as SvgText } from 'react-native-svg';
+import { Glass, tap, useScale } from '@/components/Glass';
 import { Home, Nora, Scan, Work } from '@/components/Icons';
 import type { AspectProgress } from '@/lib/today';
 import { ASPECT_COLOR, C, F, FAMILY_LABEL, type AspectKey, type FamilyKey } from '@/theme';
 
-// The Nora bar, from the canvas boards (UI1-Nora, UI2-Today): a black 64 pt pill between two floating
+// The Nora bar, from the canvas boards (UI1-Nora, UI2-Today): a see-through glass 64 pt pill between two floating
 // 64 pt orbs (Home, Work). Scan and Nora's chat sit in the pill as clear 48 pt buttons, the 72 pt orb raised
 // 16 pt above the pill's centre with the nine-section ring over its top. One gap G sets every space in the
 // row: side orb to pill, pill edge to icon, icon to orb. Tap the orb to talk; hold it and the ring opens into the dial.
@@ -39,14 +39,6 @@ const PICK_W = 42; // chosen: a little thicker than an idle wedge, not a new sha
 const LABEL_R = 178;
 const CAN = 200; // half-size of each wedge's canvas, centred on the orb
 const PICK_MOVE = 12; // pt of travel from where the finger landed before it starts choosing
-
-// Liquid Glass is iOS 26+. Older iOS, web and Android get blur under a black tint.
-const LIQUID = (() => {
-  if (Platform.OS !== 'ios') return false;
-  try { return isLiquidGlassAvailable() && isGlassEffectAPIAvailable(); } catch { return false; }
-})();
-
-const tap = (fn: () => Promise<void>) => { if (Platform.OS !== 'web') fn().catch(() => {}); };
 
 // ---- the ring: nine sections over the top of the orb, 9 o'clock to 3 o'clock, as on UI2-Today ----
 // Grouped Self, Work, People. Inside each group the aspects are ordered so the colours run as one spectrum
@@ -367,13 +359,6 @@ function Ball({ t }: { t: SharedValue<number> }) {
 }
 
 // ---- controls ----
-function useScale(to: number) {
-  const scale = useSharedValue(1);
-  const style = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
-  const spring = { duration: 300, dampingRatio: 1, reduceMotion: ReduceMotion.System } as const;
-  return { style, set: (v: number) => { scale.set(withSpring(v, spring)); }, to };
-}
-
 function Round({ label, onPress, children }: { label: string; onPress: () => void; children: React.ReactNode }) {
   const p = useScale(0.92);
   return (
@@ -397,20 +382,7 @@ function useTurn() {
   return t;
 }
 
-function Material({ radius = BAR_H / 2 }: { radius?: number }) {
-  const r = { borderRadius: radius };
-  if (LIQUID) {
-    return <GlassView glassEffectStyle="regular" colorScheme="dark" tintColor="rgba(0,0,0,0.6)" isInteractive style={[StyleSheet.absoluteFill, r]} />;
-  }
-  return (
-    <View style={[StyleSheet.absoluteFill, r, { overflow: 'hidden' }]}>
-      <BlurView intensity={50} tint="dark" style={StyleSheet.absoluteFill} />
-      <View style={[StyleSheet.absoluteFill, r, s.black]} />
-    </View>
-  );
-}
-
-/** A floating orb beside the pill: the same black glass, detached, holding one page. */
+/** A floating orb beside the pill: the same glass, detached, a true circle, holding one page. */
 function SideOrb({ label, side, onPress, children }: {
   label: string; side: 'left' | 'right'; onPress: () => void; children: React.ReactNode;
 }) {
@@ -420,7 +392,7 @@ function SideOrb({ label, side, onPress, children }: {
       onPressIn={() => p.set(p.to)} onPressOut={() => p.set(1)} style={[s.side, side === 'left' ? s.sideLeft : s.sideRight]}>
       {({ pressed }) => (
         <Animated.View style={[s.sideBody, p.style]}>
-          <Material radius={SIDE / 2} />
+          <Glass radius={SIDE / 2} />
           {pressed ? <View style={[StyleSheet.absoluteFill, s.sidePressed]} /> : null}
           {/* own view, so the icon stacks above the glass on web too */}
           <View>{children}</View>
@@ -500,7 +472,7 @@ export function Dock({ bottom, width, aspects, onNotBuilt }: {
       <View pointerEvents="box-none" style={[s.wrap, { width: total, bottom: lift }]}>
         <SideOrb label="Home: what Nora has ready for you" side="left" onPress={() => onNotBuilt('Home')}><Home /></SideOrb>
         <View style={[s.bar, { width: w, paddingHorizontal: Math.max(0, G - (48 - ICON) / 2) }]}>
-          <Material />
+          <Glass radius={BAR_H / 2} />
           <Round label="Scan" onPress={() => onNotBuilt('Scan')}><Scan /></Round>
           <Round label="Chat with Nora" onPress={() => onNotBuilt('Nora chat')}><Nora /></Round>
         </View>
@@ -528,7 +500,6 @@ export function Dock({ bottom, width, aspects, onNotBuilt }: {
 const s = StyleSheet.create({
   wrap: { position: 'absolute', alignSelf: 'center', height: BAR_H, alignItems: 'center' },
   abs: { position: 'absolute' },
-  black: { backgroundColor: 'rgba(8,8,10,0.82)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
   bar: {
     position: 'absolute', top: 0, height: BAR_H, borderRadius: BAR_H / 2,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',

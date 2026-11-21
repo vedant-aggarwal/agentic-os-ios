@@ -6,11 +6,11 @@ import { Backdrop, EdgeGlow } from '@/components/Backdrop';
 import { EdgeBlur } from '@/components/EdgeBlur';
 import { Crystals } from '@/components/Crystals';
 import { Dock, orbFromBottom } from '@/components/Dock';
-import { PcMic, Remote, ToPc, Voices } from '@/components/Icons';
 import { Notice } from '@/components/Notice';
 import { NowCard } from '@/components/NowCard';
 import { SignIn } from '@/components/SignIn';
 import { TaskGroup } from '@/components/TaskRow';
+import { TOP_GAP, TOP_H, TopBar } from '@/components/TopBar';
 import { signOut } from '@/lib/api';
 import { useToday } from '@/lib/useToday';
 import { C, F } from '@/theme';
@@ -29,19 +29,6 @@ function Scene({ width }: { width: number }) {
       <Polygon points={`${cx - 30},0 ${cx + 30},0 ${cx + 150},${h - 80} ${cx - 150},${h - 80}`} fill="url(#beam)" />
       <Polygon points={`${cx - 18},0 ${cx + 18},0 ${cx + 110},${h - 120} ${cx - 110},${h - 120}`} fill="url(#beam)" />
     </Svg>
-  );
-}
-
-function Action({ label, onPress, children }: { label: string; onPress: () => void; children: React.ReactNode }) {
-  return (
-    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={s.action}>
-      {({ pressed }) => (
-        <>
-          <View style={[s.actionCircle, pressed && { backgroundColor: 'rgba(255,255,255,0.12)', transform: [{ scale: 0.94 }] }]}>{children}</View>
-          <Text style={s.actionLabel}>{label}</Text>
-        </>
-      )}
-    </Pressable>
   );
 }
 
@@ -76,17 +63,10 @@ export default function Today() {
       <Backdrop orb={orb} />
       <Scene width={width} />
       <ScrollView
-        contentContainerStyle={{ flexGrow: 1, paddingTop: insets.top + 16 }}
+        contentContainerStyle={{ flexGrow: 1, paddingTop: insets.top + TOP_GAP + TOP_H + 20 }}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={t.refreshing} onRefresh={t.refresh} tintColor={C.muted} />}>
         <View style={s.top}>
-          <View style={s.actions}>
-            <Action label="To PC" onPress={() => notBuilt('To PC')}><ToPc /></Action>
-            <Action label="PC mic" onPress={() => notBuilt('PC mic')}><PcMic /></Action>
-            <Action label="Remote" onPress={() => notBuilt('Remote PC')}><Remote /></Action>
-            <Action label="Voices" onPress={() => notBuilt('Voices')}><Voices /></Action>
-          </View>
-
           <View style={s.hero}>
             <Crystals families={v.families} />
             {v.total > 0 ? (
@@ -122,6 +102,9 @@ export default function Today() {
 
       {/* t^2.6 over the zone: about 1 pt where the navbar's top edge sits (40% down), then dense under the
           bar, 14 pt at the bottom edge */}
+      {/* the same blur under the top bar, dense at the screen's top edge */}
+      <EdgeBlur edge="top" height={insets.top + TOP_GAP + TOP_H + 28} strength={30} curve={2} />
+      <TopBar top={insets.top} width={width} onNotBuilt={notBuilt} />
       <EdgeBlur height={insets.bottom + 150} strength={35} curve={2.6} />
       <EdgeGlow height={insets.bottom + 200} orb={orb} />
       <Notice text={local ?? t.notice} bottom={insets.bottom + 112} onClear={clear} />
@@ -134,10 +117,6 @@ const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: C.scene },
   center: { alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
   top: { paddingHorizontal: 16, gap: 12 },
-  actions: { flexDirection: 'row' },
-  action: { flex: 1, alignItems: 'center', gap: 6 },
-  actionCircle: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: C.glass, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.08)' },
-  actionLabel: { fontFamily: F.regular, fontSize: 12, lineHeight: 16, color: C.muted },
   hero: { alignItems: 'center', paddingBottom: 12 },
   totalRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8, marginTop: 4 },
   totalNum: { fontFamily: F.semibold, fontSize: 36, lineHeight: 40, letterSpacing: -1, color: C.text },

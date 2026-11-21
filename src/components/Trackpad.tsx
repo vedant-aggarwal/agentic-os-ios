@@ -75,8 +75,8 @@ export function Trackpad({ active }: { active: boolean }) {
         onResponderRelease={release}
         onResponderStart={(e) => { const st = g.current; st.maxN = Math.max(st.maxN, e.nativeEvent.touches.length); }}>
         <View pointerEvents="none" style={s.status}>
-          <View style={[s.dot, { backgroundColor: pc.connected ? '#3DDC97' : C.faint }]} />
-          {pc.connected ? null : <Text style={s.statusText}>Connecting</Text>}
+          <View style={[s.dot, { backgroundColor: pc.route === 'direct' ? '#3DDC97' : pc.route === 'tunnel' ? '#FFB547' : C.faint }]} />
+          {pc.route === 'direct' ? null : <Text style={s.statusText}>{pc.route === 'tunnel' ? 'Via internet' : 'Connecting'}</Text>}
         </View>
       </View>
       <View style={s.buttons}>

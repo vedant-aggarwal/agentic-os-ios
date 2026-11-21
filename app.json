@@ -13,7 +13,11 @@
       "supportsTablet": false,
       "icon": "./assets/expo.icon",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSLocalNetworkUsageDescription": "Agentic OS connects straight to your PC on this Wi-Fi so the trackpad has no lag.",
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        }
       },
       "entitlements": {
         "keychain-access-groups": [

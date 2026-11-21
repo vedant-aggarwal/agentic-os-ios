@@ -1,31 +1,66 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { API, currentToken } from './api';
+import { api, API, currentToken } from './api';
 
-// The phone as a trackpad for the PC: one WebSocket (server: /api/v1/pc/pointer), text frames
-// "m dx dy" (move), "s dx dy" (scroll), "d|u|c l|r" (button down, up, click). Movement is summed and sent
-// once per display frame, as soon as the frame comes; the PC glides each one out smoothly.
-const URL_WS = API.replace(/^http/, 'ws') + '/pc/pointer';
+// The phone as a trackpad for the PC: one WebSocket, text frames "m dx dy" (move), "s dx dy" (scroll),
+// "d|u|c l|r" (button down, up, click). Movement is summed and sent once per display frame; the PC glides each
+// one out smoothly.
+// Route: straight to the PC over Wi-Fi or Tailscale when it answers (no internet round trip, so far less lag),
+// with a short-lived ticket from /pc/pointer-ticket; otherwise through the tunnel (/pc/pointer).
+const TUNNEL_WS = API.replace(/^http/, 'ws') + '/pc/pointer';
+const DIRECT_WAIT = 700; // ms to wait for a direct address before trying the next
+
+export type Route = 'direct' | 'tunnel';
+
+function connect(url: string, wait: number): Promise<WebSocket | null> {
+  return new Promise((resolve) => {
+    let done = false;
+    const sock = new WebSocket(url);
+    const finish = (ok: boolean) => {
+      if (done) return;
+      done = true; clearTimeout(timer);
+      if (ok) resolve(sock); else { try { sock.close(); } catch {} resolve(null); }
+    };
+    const timer = setTimeout(() => finish(false), wait);
+    sock.onopen = () => finish(true);
+    sock.onerror = () => finish(false);
+    sock.onclose = () => finish(false);
+  });
+}
+
+async function openBest(): Promise<{ sock: WebSocket; route: Route } | null> {
+  try {
+    const t = await api<{ ticket: string | null; urls: string[] }>('/pc/pointer-ticket');
+    for (const url of t.urls ?? []) {
+      const sock = await connect(url, DIRECT_WAIT);
+      if (sock) return { sock, route: 'direct' };
+    }
+  } catch {}
+  const sock = await connect(`${TUNNEL_WS}?token=${encodeURIComponent(currentToken() ?? '')}`, 8000);
+  return sock ? { sock, route: 'tunnel' } : null;
+}
 
 export function usePointer(active: boolean) {
-  const [connected, setConnected] = useState(false);
+  const [route, setRoute] = useState<Route | null>(null);
   const ws = useRef<WebSocket | null>(null);
   const acc = useRef({ mx: 0, my: 0, sx: 0, sy: 0, frame: null as number | null });
 
   useEffect(() => {
     if (!active) return;
     let alive = true, retry: ReturnType<typeof setTimeout> | null = null;
-    const open = () => {
-      const token = currentToken();
-      const sock = new WebSocket(`${URL_WS}?token=${encodeURIComponent(token ?? '')}`);
+    const open = async () => {
+      const got = await openBest();
+      if (!alive) { got?.sock.close(); return; }
+      if (!got) { retry = setTimeout(open, 1500); return; }
+      const { sock } = got;
       ws.current = sock;
-      sock.onopen = () => { if (alive) setConnected(true); };
+      setRoute(got.route);
+      sock.onerror = () => sock.close();
       sock.onclose = () => {
         if (ws.current === sock) ws.current = null;
         if (!alive) return;
-        setConnected(false);
-        retry = setTimeout(open, 1500);
+        setRoute(null);
+        retry = setTimeout(open, 600);
       };
-      sock.onerror = () => sock.close();
     };
     open();
     return () => {
@@ -33,7 +68,7 @@ export function usePointer(active: boolean) {
       if (retry) clearTimeout(retry);
       ws.current?.close();
       ws.current = null;
-      setConnected(false);
+      setRoute(null);
     };
   }, [active]);
 
@@ -60,5 +95,5 @@ export function usePointer(active: boolean) {
     raw(`${op} ${which}`);
   }, [flush, raw]);
 
-  return { connected, move, scroll, button };
+  return { connected: route !== null, route, move, scroll, button };
 }

@@ -1,15 +1,25 @@
-import { requireOptionalNativeModule } from 'expo';
-import { StyleSheet } from 'react-native';
+import { requireNativeView, requireOptionalNativeModule } from 'expo';
+import type { ComponentType } from 'react';
+import { StyleSheet, type ViewProps } from 'react-native';
 import { BlurStack, type EdgeBlurProps } from './BlurStack';
 
-// One SwiftUI material under a vertical gradient mask: a single blur whose opacity eases in (t squared),
-// so there is no layer edge anywhere. Expo UI ships in the dev client; if a build ever lacks it, fall back
-// to the stacked expo-blur layers rather than crash.
+// Best first: the local VariableBlur module (modules/variable-blur), a true progressive gaussian blur from
+// the system's variable blur filter, clear at the top and `radius` pt at the bottom with no tint. A dev
+// client built before that module falls back to a SwiftUI material under a gradient mask, then to the
+// expo-blur layer stack.
+type VariableProps = ViewProps & { radius: number; curve: number };
+let Variable: ComponentType<VariableProps> | null = null;
+try {
+  if (requireOptionalNativeModule('VariableBlur')) Variable = requireNativeView<VariableProps>('VariableBlur');
+} catch {
+  Variable = null;
+}
+
 type UI = typeof import('@expo/ui/swift-ui');
 type Mods = typeof import('@expo/ui/swift-ui/modifiers');
 let ui: { UI: UI; M: Mods } | null = null;
 try {
-  if (requireOptionalNativeModule('ExpoUI')) {
+  if (!Variable && requireOptionalNativeModule('ExpoUI')) {
     /* eslint-disable @typescript-eslint/no-require-imports */
     ui = { UI: require('@expo/ui/swift-ui'), M: require('@expo/ui/swift-ui/modifiers') };
     /* eslint-enable @typescript-eslint/no-require-imports */
@@ -21,7 +31,11 @@ try {
 // alpha = t^2 at t = 0, .2, .4, .6, .8, 1 (SwiftUI spaces the colours evenly)
 const FADE = ['#00000000', '#0000000A', '#00000029', '#0000005C', '#000000A3', '#000000FF'];
 
-export function EdgeBlur({ height, strength }: EdgeBlurProps) {
+export function EdgeBlur({ height, strength = 40 }: EdgeBlurProps) {
+  if (Variable) {
+    // strength 40 -> 16 pt of blur at the bottom edge, ramping as t^2 from nothing at the top
+    return <Variable pointerEvents="none" radius={strength * 0.4} curve={2} style={[s.edge, { height }]} />;
+  }
   if (!ui) return <BlurStack height={height} strength={strength} />;
   const { Host, Mask, Rectangle } = ui.UI;
   const { foregroundStyle } = ui.M;

@@ -20,6 +20,7 @@ on:
       - app.config.ts
       - assets/**
       - scripts/**
+      - modules/**
       - .github/workflows/ios-dev-client.yml
   workflow_dispatch:
 concurrency:

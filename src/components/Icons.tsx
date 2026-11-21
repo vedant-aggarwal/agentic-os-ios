@@ -54,6 +54,24 @@ export const Plus = ({ size = 24, color = C.text }: P) => (
 export const Keyboard = ({ size = 24, color = C.text }: P) => (
   <Duo size={size} color={color} fill={rr(24, 56, 208, 144)} line={`${rr(24, 56, 208, 144)} M64 96h8 M104 96h8 M144 96h8 M184 96h8 M80 152h96`} />
 );
+/** Home: the proactive panel, what Nora has ready for you. One plain house. */
+export const Home = ({ size = 24, color = C.text }: P) => (
+  <Duo size={size} color={color} fill="M48 208V112l80-68 80 68v96z" line="M48 208V112l80-68 80 68v96z" />
+);
+/** Work: the briefcase from the canvas set, neutral here. */
+export const Work = ({ size = 24, color = C.text }: P) => (
+  <Duo size={size} color={color} fill={rr(32, 80, 192, 128)} line={`${rr(32, 80, 192, 128)} M88 80V64a16 16 0 0 1 16-16h48a16 16 0 0 1 16 16v16 M32 136h192`} />
+);
+/** Scan: viewfinder corners and a scan line, from the canvas set's Scan food. */
+export const Scan = ({ size = 24, color = C.text }: P) => (
+  <Duo size={size} color={color}
+    line="M48 92V64a16 16 0 0 1 16-16h28 M164 48h28a16 16 0 0 1 16 16v28 M208 164v28a16 16 0 0 1-16 16h-28 M92 208H64a16 16 0 0 1-16-16v-28 M84 128h88" />
+);
+/** Nora: her spark, a four-point star, for opening her chat. */
+export const Nora = ({ size = 24, color = C.text }: P) => {
+  const star = 'M128 32c8 56 40 88 96 96-56 8-88 40-96 96-8-56-40-88-96-96 56-8 88-40 96-96z';
+  return <Duo size={size} color={color} fill={star} line={star} />;
+};
 /** The tick inside a filled checkbox. */
 export const Check = ({ size = 14, color = '#0A0B0D' }: P) => (
   <Svg width={size} height={size} viewBox="0 0 256 256" fill="none" stroke={color} strokeWidth={32} strokeLinecap="round" strokeLinejoin="round">

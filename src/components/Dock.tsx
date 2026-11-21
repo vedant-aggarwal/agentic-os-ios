@@ -8,15 +8,18 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 import Svg, { Circle, Defs, G, Path, RadialGradient, Stop, Text as SvgText } from 'react-native-svg';
-import { Keyboard, Plus } from '@/components/Icons';
+import { Home, Nora, Scan, Work } from '@/components/Icons';
 import type { AspectProgress } from '@/lib/today';
 import { ASPECT_COLOR, C, F, type AspectKey } from '@/theme';
 
-// The Nora bar, drawn to the canvas boards (UI1-Nora, UI2-Today): a black 240 x 64 pill, quick add and
-// type-to-Nora as clear 48 pt buttons, the 72 pt orb raised 16 pt above the pill's centre with the
+// The Nora bar, from the canvas boards (UI1-Nora, UI2-Today): a black 208 x 64 pill between two floating
+// 64 pt orbs (Home, Work). Scan and Nora's chat sit in the pill as clear 48 pt buttons, the 72 pt orb raised
+// 16 pt above the pill's centre with the
 // nine-section ring over its top. Tap the orb to talk; hold it and the ring opens into the dial.
 const BAR_H = 64;
-const BAR_W = 240;
+const BAR_W = 208;
+const SIDE = BAR_H; // the floating orbs either side of the pill, as tall as it
+const SIDE_GAP = 8;
 const ORB = 100; // canvas incl. ring and its glow
 const ORB_R = 36; // the ball
 const ARC_R = 46;
@@ -289,15 +292,36 @@ function useTurn() {
   return t;
 }
 
-function Material() {
+function Material({ radius = BAR_H / 2 }: { radius?: number }) {
+  const r = { borderRadius: radius };
   if (LIQUID) {
-    return <GlassView glassEffectStyle="regular" colorScheme="dark" tintColor="rgba(0,0,0,0.6)" isInteractive style={[StyleSheet.absoluteFill, s.radius]} />;
+    return <GlassView glassEffectStyle="regular" colorScheme="dark" tintColor="rgba(0,0,0,0.6)" isInteractive style={[StyleSheet.absoluteFill, r]} />;
   }
   return (
-    <View style={[StyleSheet.absoluteFill, s.radius, { overflow: 'hidden' }]}>
+    <View style={[StyleSheet.absoluteFill, r, { overflow: 'hidden' }]}>
       <BlurView intensity={50} tint="dark" style={StyleSheet.absoluteFill} />
-      <View style={[StyleSheet.absoluteFill, s.radius, s.black]} />
+      <View style={[StyleSheet.absoluteFill, r, s.black]} />
     </View>
+  );
+}
+
+/** A floating orb beside the pill: the same black glass, detached, holding one page. */
+function SideOrb({ label, side, onPress, children }: {
+  label: string; side: 'left' | 'right'; onPress: () => void; children: React.ReactNode;
+}) {
+  const p = useScale(0.92);
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} hitSlop={6}
+      onPressIn={() => p.set(p.to)} onPressOut={() => p.set(1)} style={[s.side, side === 'left' ? s.sideLeft : s.sideRight]}>
+      {({ pressed }) => (
+        <Animated.View style={[s.sideBody, p.style]}>
+          <Material radius={SIDE / 2} />
+          {pressed ? <View style={[StyleSheet.absoluteFill, s.sidePressed]} /> : null}
+          {/* own view, so the icon stacks above the glass on web too */}
+          <View>{children}</View>
+        </Animated.View>
+      )}
+    </Pressable>
   );
 }
 
@@ -305,7 +329,8 @@ export function Dock({ bottom, width, aspects, onNotBuilt }: {
   bottom: number; width: number; aspects: AspectProgress; onNotBuilt: (what: string) => void;
 }) {
   const { height } = useWindowDimensions();
-  const w = Math.min(width - 32, BAR_W);
+  const w = Math.min(width - 32 - 2 * (SIDE + SIDE_GAP), BAR_W);
+  const total = w + 2 * (SIDE + SIDE_GAP);
   const lift = Math.max(bottom, 12) + 12;
   const cx = width / 2, cy = height - lift - BAR_H + 16; // the orb's centre on screen
   const orb = useScale(0.93);
@@ -377,12 +402,14 @@ export function Dock({ bottom, width, aspects, onNotBuilt }: {
   return (
     <>
       <DialLayer cx={cx} cy={cy} open={open} pick={pick} aspects={aspects} />
-      <View pointerEvents="box-none" style={[s.wrap, { width: w, bottom: lift }]}>
+      <View pointerEvents="box-none" style={[s.wrap, { width: total, bottom: lift }]}>
+        <SideOrb label="Home: what Nora has ready for you" side="left" onPress={() => onNotBuilt('Home')}><Home /></SideOrb>
         <View style={[s.bar, { width: w }]}>
           <Material />
-          <Round label="Quick add" onPress={() => onNotBuilt('Quick add')}><Plus /></Round>
-          <Round label="Type to Nora" onPress={() => onNotBuilt('Typing to Nora')}><Keyboard /></Round>
+          <Round label="Scan" onPress={() => onNotBuilt('Scan')}><Scan /></Round>
+          <Round label="Chat with Nora" onPress={() => onNotBuilt('Nora chat')}><Nora /></Round>
         </View>
+        <SideOrb label="Work" side="right" onPress={() => onNotBuilt('Work')}><Work /></SideOrb>
         <View accessible accessibilityRole="button" accessibilityLabel="Nora"
           accessibilityHint="Tap to talk. Hold and slide to open an aspect."
           onAccessibilityTap={() => onNotBuilt('Talking to Nora')}
@@ -406,7 +433,6 @@ export function Dock({ bottom, width, aspects, onNotBuilt }: {
 const s = StyleSheet.create({
   wrap: { position: 'absolute', alignSelf: 'center', height: BAR_H, alignItems: 'center' },
   abs: { position: 'absolute' },
-  radius: { borderRadius: BAR_H / 2 },
   black: { backgroundColor: 'rgba(8,8,10,0.82)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
   bar: {
     position: 'absolute', top: 0, height: BAR_H, borderRadius: BAR_H / 2,
@@ -414,6 +440,14 @@ const s = StyleSheet.create({
     boxShadow: '0 16px 40px rgba(0,0,0,0.5)',
   },
   round: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  side: { position: 'absolute', top: (BAR_H - SIDE) / 2, width: SIDE, height: SIDE },
+  sideLeft: { left: 0 },
+  sideRight: { right: 0 },
+  sideBody: {
+    width: SIDE, height: SIDE, borderRadius: SIDE / 2, alignItems: 'center', justifyContent: 'center',
+    boxShadow: '0 12px 28px rgba(0,0,0,0.45)',
+  },
+  sidePressed: { borderRadius: SIDE / 2, backgroundColor: 'rgba(255,255,255,0.1)' },
   orbWrap: { position: 'absolute', top: ORB_TOP, width: ORB, height: ORB, alignItems: 'center', justifyContent: 'center' },
   ball: {
     width: ORB_R * 2, height: ORB_R * 2, borderRadius: ORB_R, backgroundColor: '#F0457A',

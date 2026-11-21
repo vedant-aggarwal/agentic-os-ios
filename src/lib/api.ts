@@ -17,7 +17,7 @@ export type Channel = {
   handle: string | null;
   name: string;
   perDay: number;
-  slots: { timezone: string; times: string[]; note?: string } | null;
+  slots: { timezone: string; times: string[]; note?: string; source?: string; since?: string } | null;
   stats: {
     followers: number | null;
     followersDelta: number | null;
@@ -121,7 +121,8 @@ export type SlotState = 'posted' | 'queued' | 'missed' | 'open';
 /** One state per posting slot on a day, plus how many posts went over the target. */
 export function slotsFor(ch: Channel, date: string, today: string): { states: SlotState[]; extra: number } {
   const day = ch.days[date] || { posted: 0, queued: 0, failed: 0 };
-  const per = Math.max(ch.perDay, 1);
+  // Before the schedule started there were no slots to fill: show only what actually went out.
+  const per = ch.slots?.since && date < ch.slots.since ? 0 : Math.max(ch.perDay, 1);
   const states: SlotState[] = [];
   for (let i = 0; i < per; i++) {
     if (i < day.posted) states.push('posted');

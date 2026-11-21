@@ -6,6 +6,7 @@ import { Avatar } from '@/components/Avatar';
 import { DaySheet } from '@/components/DaySheet';
 import { Chevron, Eye, Heart, InstagramMark, Person, YouTubeMark } from '@/components/Icons';
 import { Press } from '@/components/Press';
+import { ScheduleEditor, timeLabel, zoneShort } from '@/components/ScheduleEditor';
 import { ErrorBox, Loading } from '@/components/States';
 import { isLive } from '@/components/Tile';
 import { addDays, compact, slotsFor, useHome, useReels, weekOf, weekStart, type Channel, type SlotState } from '@/lib/api';
@@ -23,6 +24,7 @@ export default function ChannelScreen() {
   const { data, error, loading, reload } = useHome();
   const [offset, setOffset] = useState(0);
   const [day, setDay] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
   const slot = slotFor(String(id));
   const ch = data?.channels.find((c) => c.id === id);
   const today = data?.today || new Date().toISOString().slice(0, 10);
@@ -54,19 +56,42 @@ export default function ChannelScreen() {
         </View>
       ) : !data ? (
         <Loading />
-      ) : !live || !ch ? (
+      ) : !ch ? (
         <>
           <Hero slot={slot} />
+          <InProduction channelId={slot.channelId} />
+        </>
+      ) : !ch.perDay ? (
+        // Not posting yet: still show what is being made, and let a schedule be set from here.
+        <>
+          <Hero slot={slot} ch={ch} today={today} live={live} />
+          <InProduction channelId={slot.channelId} />
           <View style={styles.card}>
             <Text style={styles.cardTitle}>No posting schedule yet</Text>
-            <Text style={styles.body}>Once this channel has daily posting slots, its week and calendar show up here.</Text>
+            <Text style={styles.body}>Pick the times this channel posts each day. The week and calendar fill in from there, and Kai plans around it.</Text>
+            <Press style={styles.setBtn} scale={0.97} onPress={() => setEditing(true)} accessibilityLabel="Set a posting schedule">
+              <Text style={styles.setBtnText}>Set posting schedule</Text>
+            </Press>
           </View>
+          {editing ? <ScheduleEditor ch={ch} onClose={() => setEditing(false)} onSaved={reload} /> : null}
         </>
       ) : (
         <>
-          <Hero slot={slot} ch={ch} today={today} />
+          <Hero slot={slot} ch={ch} today={today} live={live} />
           <Today ch={ch} today={today} color={color} onOpen={() => setDay(today)} />
           <InProduction channelId={slot.channelId} />
+          <Press style={styles.schedRow} scale={0.98} onPress={() => setEditing(true)} accessibilityLabel="Edit the posting schedule">
+            <View style={{ flex: 1 }}>
+              <Text style={styles.cardTitle}>
+                {ch.perDay} {ch.perDay === 1 ? 'post' : 'posts'} a day
+              </Text>
+              <Text style={styles.body}>
+                {(ch.slots?.times || []).length ? `${[...(ch.slots?.times || [])].sort().map(timeLabel).join(', ')} ${zoneShort(ch.slots?.timezone)}` : 'Times not set'}
+              </Text>
+            </View>
+            <Text style={styles.editText}>Edit</Text>
+          </Press>
+          {editing ? <ScheduleEditor ch={ch} onClose={() => setEditing(false)} onSaved={reload} /> : null}
           <Calendar
             ch={ch}
             today={today}
@@ -84,17 +109,20 @@ export default function ChannelScreen() {
 
 // Mirrors the home tile, laid out sideways: ringed picture on the left, name and numbers on the right.
 // Tapping the picture opens the week's highlights.
-function Hero({ slot, ch, today }: { slot: Slot; ch?: Channel; today?: string }) {
+function Hero({ slot, ch, today, live = true }: { slot: Slot; ch?: Channel; today?: string; live?: boolean }) {
   const week = ch && today ? weekOf(ch, today) : null;
   const handle = ch?.handle ? (ch.handle.startsWith('@') ? ch.handle : '@' + ch.handle) : null;
 
-  if (!ch || !week) {
+  if (!ch || !week || !ch.perDay || !live) {
     return (
       <View style={styles.hero}>
-        <Avatar slot={slot} size={88} live={false} />
+        <Avatar slot={slot} size={88} live />
         <View style={styles.side}>
-          <Text numberOfLines={1} style={[styles.name, { color: C.muted }]}>{slot.name}</Text>
-          <Text style={styles.handle}>{slot.setupNote || 'Not started'}</Text>
+          <Text numberOfLines={1} style={styles.name}>{slot.name}</Text>
+          {handle ? <Text numberOfLines={1} style={styles.handle}>{handle}</Text> : null}
+          <Text style={[styles.handle, { marginTop: 4 }]}>
+            {slot.setupNote || (ch?.perDay ? `${ch.perDay} ${ch.perDay === 1 ? 'post' : 'posts'} a day, not posting yet` : 'Not posting yet')}
+          </Text>
         </View>
       </View>
     );
@@ -307,6 +335,10 @@ const styles = StyleSheet.create({
   statLabel: { fontFamily: F.r, fontSize: 13, lineHeight: 18, color: C.muted },
   chip: { height: 20, paddingHorizontal: 6, borderRadius: 10, backgroundColor: C.growBg, justifyContent: 'center' },
   chipText: { fontFamily: F.b, fontSize: 11.5, color: C.growInk },
+  setBtn: { height: 46, borderRadius: 23, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' },
+  setBtnText: { fontFamily: F.b, fontSize: 15, color: '#fff' },
+  schedRow: { marginTop: 12, backgroundColor: C.card, borderRadius: 24, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  editText: { fontFamily: F.s, fontSize: 14, color: C.ink },
   reelRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 2 },
   reelTitle: { fontFamily: F.s, fontSize: 15, lineHeight: 20, color: C.ink },
   card: { marginTop: 12, backgroundColor: C.card, borderRadius: 24, padding: 16, gap: 12 },

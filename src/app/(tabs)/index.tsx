@@ -36,15 +36,15 @@ export default function Channels() {
       ) : !data ? (
         <Loading />
       ) : (
-        <View style={styles.row}>
-          {[YOUTUBE, INSTAGRAM].map((col, c) => (
-            <View key={c} style={styles.col}>
-              {col.map((slot) => (
-                <Tile key={slot.channelId} slot={slot} ch={byId[slot.channelId]} today={today} />
-              ))}
+        YOUTUBE.map((yt, i) => {
+          const ig = INSTAGRAM[i];
+          return (
+            <View key={yt.channelId} style={[styles.row, { marginTop: i ? 10 : 8 }]}>
+              <Tile slot={yt} ch={byId[yt.channelId]} today={today} />
+              <Tile slot={ig} ch={byId[ig.channelId]} today={today} />
             </View>
-          ))}
-        </View>
+          );
+        })
       )}
     </ScrollView>
   );
@@ -53,6 +53,5 @@ export default function Channels() {
 const styles = StyleSheet.create({
   header: { flexDirection: 'row', gap: 10, height: 52 },
   colHead: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  row: { marginTop: 8, flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
-  col: { flex: 1, gap: 10 },
+  row: { flexDirection: 'row', gap: 10 },
 });

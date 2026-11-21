@@ -19,22 +19,17 @@ export function Tile({ slot, ch, today }: Props) {
 
   if (!live) {
     return (
-      <Press
-        style={[styles.tile, styles.idle]}
-        onPress={() => router.push(`/channel/${slot.channelId}`)}
-        accessibilityLabel={`${slot.name}, ${slot.setupNote || 'not started'}`}
-      >
-        <Avatar slot={slot} size={36} live={false} ringBg="#F8F8F9" />
-        <View style={styles.idleText}>
-          <Text numberOfLines={1} style={[styles.idleName, { color: C.muted }]}>{slot.name}</Text>
-          <Text numberOfLines={1} style={styles.note}>{slot.setupNote || 'Not started'}</Text>
-        </View>
+      <Press style={[styles.tile, styles.idle]} onPress={() => router.push(`/channel/${slot.channelId}`)} accessibilityLabel={`${slot.name}, not started`}>
+        <Avatar slot={slot} size={60} live={false} ringBg="#F8F8F9" />
+        <Text numberOfLines={1} style={[styles.name, { color: C.muted }]}>{slot.name}</Text>
+        <Text style={styles.note}>{slot.setupNote || 'Not started'}</Text>
       </Press>
     );
   }
 
   const s = ch!.stats;
   const views = s.weekViews ?? s.totalViews ?? null;
+  const second = views != null ? { Icon: Eye, value: views } : s.weekLikes != null ? { Icon: Heart, value: s.weekLikes } : null;
   const start = weekStart(today);
   const week = Array.from({ length: 7 }, (_, i) => {
     const d = addDays(start, i);
@@ -52,31 +47,27 @@ export function Tile({ slot, ch, today }: Props) {
       accessibilityLabel={`${slot.name}: ${compact(s.followers)} ${slot.platform === 'youtube' ? 'subscribers' : 'followers'}`}
     >
       <View style={styles.top}>
-        <Avatar slot={slot} size={56} live />
-        {s.followersDelta ? (
-          <View style={styles.chip}>
-            <Text style={styles.chipText}>+{compact(s.followersDelta)}</Text>
+        <Avatar slot={slot} size={60} live />
+        {/* The numbers sit beside the picture so the tile has no dead corner. */}
+        <View style={styles.side}>
+          <View style={styles.stat}>
+            <Person size={14} />
+            <Text style={styles.big}>{compact(s.followers)}</Text>
           </View>
-        ) : null}
+          {s.followersDelta ? (
+            <View style={styles.chip}>
+              <Text style={styles.chipText}>+{compact(s.followersDelta)}</Text>
+            </View>
+          ) : null}
+          {second ? (
+            <View style={styles.stat}>
+              <second.Icon size={14} />
+              <Text style={styles.big}>{compact(second.value)}</Text>
+            </View>
+          ) : null}
+        </View>
       </View>
       <Text numberOfLines={1} style={styles.name}>{slot.name}</Text>
-      <View style={styles.stats}>
-        <View style={styles.stat}>
-          <Person />
-          <Text style={styles.statText}>{compact(s.followers)}</Text>
-        </View>
-        {views != null ? (
-          <View style={styles.stat}>
-            <Eye />
-            <Text style={styles.statText}>{compact(views)}</Text>
-          </View>
-        ) : s.weekLikes != null ? (
-          <View style={styles.stat}>
-            <Heart />
-            <Text style={styles.statText}>{compact(s.weekLikes)}</Text>
-          </View>
-        ) : null}
-      </View>
       <View style={styles.week}>
         {week.map((w, i) => (
           <View
@@ -96,18 +87,16 @@ export function Tile({ slot, ch, today }: Props) {
 }
 
 const styles = StyleSheet.create({
-  tile: { borderRadius: 24, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 12 },
-  idle: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, paddingLeft: 10, paddingRight: 6, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.5)' },
-  idleText: { flex: 1 },
-  idleName: { fontFamily: F.s, fontSize: 14, lineHeight: 18 },
-  top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  chip: { height: 24, paddingHorizontal: 8, borderRadius: 12, backgroundColor: C.growBg, justifyContent: 'center' },
-  chipText: { fontFamily: F.b, fontSize: 12, color: C.growInk },
-  name: { marginTop: 6, fontFamily: F.s, fontSize: 16, lineHeight: 20, color: C.ink },
-  note: { fontFamily: F.r, fontSize: 12.5, lineHeight: 16, color: '#6B6E76' },
-  stats: { marginTop: 2, flexDirection: 'row', gap: 10 },
-  stat: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  statText: { fontFamily: F.s, fontSize: 14, lineHeight: 20, color: C.ink2 },
-  week: { marginTop: 10, flexDirection: 'row', gap: 3 },
+  tile: { flex: 1, minHeight: 136, borderRadius: 24, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 12 },
+  idle: { backgroundColor: 'rgba(255,255,255,0.5)' },
+  top: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  side: { flex: 1, alignItems: 'flex-end', gap: 3 },
+  chip: { height: 20, paddingHorizontal: 7, borderRadius: 10, backgroundColor: C.growBg, justifyContent: 'center' },
+  chipText: { fontFamily: F.b, fontSize: 11.5, color: C.growInk },
+  name: { marginTop: 8, fontFamily: F.s, fontSize: 16, lineHeight: 20, color: C.ink },
+  note: { marginTop: 2, fontFamily: F.r, fontSize: 14, lineHeight: 20, color: '#6B6E76' },
+  stat: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  big: { fontFamily: F.b, fontSize: 18, lineHeight: 22, letterSpacing: -0.3, color: C.ink },
+  week: { marginTop: 'auto', paddingTop: 10, flexDirection: 'row', gap: 3 },
   bar: { flex: 1, height: 6, borderRadius: 3 },
 });

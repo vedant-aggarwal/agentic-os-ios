@@ -50,8 +50,12 @@ export default function Today() {
   const agentLive = agent.heard === 'listening' || agent.busy;
   const { settle } = mic;
   useEffect(() => { if (agent.busy || agent.heard === 'nothing') settle(); }, [agent.busy, agent.heard, settle]); // the PC took a locked command
-  const [closedLive, setClosedLive] = useState(false); // he shut it while a command ran: stay shut until the next one
-  if (!agentLive && closedLive) setClosedLive(false);
+  // Something is running: a dictation, a command being heard, or the agent working. The PC page opens for it,
+  // and if he closes it, it stays closed (still running) until the next thing starts.
+  const live = agentLive || mic.phase !== 'idle';
+  const [closedLive, setClosedLive] = useState(false);
+  if (!live && closedLive) setClosedLive(false);
+  const [want, setWant] = useState<{ view: 'chat' | 'screen'; n: number } | null>(null);
   const notBuilt = useCallback((what: string) => setLocal(`${what}: not built yet`), []);
   const { clearNotice } = t;
   const clear = useCallback(() => { setLocal(null); clearNotice(); }, [clearNotice]);
@@ -119,15 +123,16 @@ export default function Today() {
           bar, 14 pt at the bottom edge */}
       {/* the same blur under the top bar, dense at the screen's top edge */}
       <EdgeBlur edge="top" height={insets.top + TOP_GAP + TOP_H + 28} strength={30} curve={2} />
-      <TopBar top={insets.top} width={width} onMic={() => setMicOpen(true)} onNotBuilt={notBuilt} />
+      <TopBar top={insets.top} width={width} live={live} onMic={() => { setClosedLive(false); setMicOpen(true); }}
+        onRemote={() => { setWant((w) => ({ view: 'screen', n: (w?.n ?? 0) + 1 })); setClosedLive(false); setMicOpen(true); }} onNotBuilt={notBuilt} />
       <EdgeBlur height={insets.bottom + 150} strength={35} curve={2.6} />
       <EdgeGlow height={insets.bottom + 200} orb={orb} />
       <Notice text={local ?? t.notice} bottom={insets.bottom + 112} onClear={clear} />
       <Dock bottom={insets.bottom} width={width} aspects={v.aspects} onNotBuilt={notBuilt} />
       {/* opens by itself while a volume press has Wispr going, and closes once it has sent */}
-      <PcMicSheet open={micOpen || mic.phase !== 'idle' || (agentLive && !closedLive)} origin={micCenter(insets.top, width)} phase={mic.phase}
+      <PcMicSheet open={micOpen || (live && !closedLive)} want={want} origin={micCenter(insets.top, width)} phase={mic.phase}
         since={mic.since} error={mic.error} source={mic.source} sourceNote={mic.sourceNote} onSource={mic.setSource}
-        onClose={() => { setMicOpen(false); if (agentLive) setClosedLive(true); if (mic.phase === 'handsfree') mic.toggleHandsFree(); }}
+        onClose={() => { setMicOpen(false); if (live) setClosedLive(true); }}
         onTalkIn={mic.startTalk} onTalkOut={mic.endTalk} onHandsFree={mic.toggleHandsFree}
         onSayIn={mic.sayIn} onSayOut={mic.sayOut} onSayLock={mic.sayLock} onSayToggle={mic.sayToggle} sayLocked={mic.locked} agent={agent}
         onStop={() => { agent.stop(); mic.cancel(); api('/pc/keys', { method: 'POST', body: { action: 'stop' } }).catch(() => {}); }} />

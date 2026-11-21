@@ -53,8 +53,8 @@ function RoundButton({ label, onPress, children }: { label: string; onPress: () 
   );
 }
 
-export function TopBar({ top, width, onMic, onNotBuilt }: {
-  top: number; width: number; onMic: () => void; onNotBuilt: (what: string) => void;
+export function TopBar({ top, width, live, onMic, onRemote, onNotBuilt }: {
+  top: number; width: number; live: boolean; onMic: () => void; onRemote: () => void; onNotBuilt: (what: string) => void;
 }) {
   const pill = width - 32 - 2 * (TOP_H + G);
   return (
@@ -62,8 +62,11 @@ export function TopBar({ top, width, onMic, onNotBuilt }: {
       <View style={[s.pill, { width: pill }]}>
         <Glass radius={TOP_H / 2} />
         <PillButton label="Send to PC" onPress={() => onNotBuilt('To PC')}><Sym name="laptopcomputer.and.arrow.down" size={OPTICAL.laptop} fallback={<ToPc size={GLYPH} />} /></PillButton>
-        <PillButton label="PC mic" onPress={onMic}><Sym name="mic.fill" size={OPTICAL.mic} fallback={<PcMic size={GLYPH} />} /></PillButton>
-        <PillButton label="Remote PC" onPress={() => onNotBuilt('Remote PC')}><Sym name="cursorarrow.rays" size={OPTICAL.cursor} fallback={<Remote size={GLYPH} />} /></PillButton>
+        <PillButton label="PC mic" onPress={onMic}>
+          <Sym name="mic.fill" size={OPTICAL.mic} fallback={<PcMic size={GLYPH} />} />
+          {live ? <View style={s.liveDot} /> : null}
+        </PillButton>
+        <PillButton label="Remote PC" onPress={onRemote}><Sym name="cursorarrow.rays" size={OPTICAL.cursor} fallback={<Remote size={GLYPH} />} /></PillButton>
         <PillButton label="Voices" onPress={() => onNotBuilt('Voices')}><Sym name="waveform" size={OPTICAL.wave} fallback={<Voices size={GLYPH} />} /></PillButton>
       </View>
       <RoundButton label="Log mood" onPress={() => onNotBuilt('Mood')}><Smiley size={30} /></RoundButton>
@@ -80,6 +83,8 @@ const s = StyleSheet.create({
   },
   btn: { width: BTN, height: BTN, borderRadius: BTN / 2, alignItems: 'center', justifyContent: 'center' },
   btnPressed: { backgroundColor: 'rgba(255,255,255,0.14)' },
+  // something is running on the PC page while it is closed
+  liveDot: { position: 'absolute', top: 7, right: 7, width: 8, height: 8, borderRadius: 4, backgroundColor: '#3DDC97' },
   round: {
     width: TOP_H, height: TOP_H, borderRadius: TOP_H / 2, alignItems: 'center', justifyContent: 'center',
     boxShadow: '0 12px 28px rgba(0,0,0,0.4)',

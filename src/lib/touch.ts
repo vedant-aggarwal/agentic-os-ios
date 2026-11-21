@@ -1,7 +1,7 @@
 import * as Haptics from 'expo-haptics';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { type GestureResponderEvent, type NativeTouchEvent, Platform } from 'react-native';
-import { useSharedValue, withTiming } from 'react-native-reanimated';
+import { useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 
 // Multi-touch for the PC screen. React Native's responder system lets one view own the touches at a time, so a
 // held button would freeze the trackpad and Alt could not be held while Tab is tapped. These hooks use the raw
@@ -89,13 +89,15 @@ const HOLD_MS = 220; // held this long it is a hold; shorter is a tap
 export const LOCK_PT = 64; // slide up this far while holding to lock it on
 const SLIDE_START = 14; // sliding up this far before HOLD_MS also counts as a hold
 
-/** Hold to talk, slide up to lock, tap for the other action. `lift` runs 0..1 toward the lock while holding. */
+/** Hold to talk, slide up to lock, tap for the other action. While holding, `rise` is how far the finger has slid up
+ *  (the button follows it) and `lift` runs 0..1 toward the lock. */
 export function useHoldLock(h: {
   holdIn: () => void; holdOut: () => void; tap: () => void; lock: () => void; press?: (down: boolean) => void;
 }) {
   const hr = useRef(h);
   useLayoutEffect(() => { hr.current = h; });
   const lift = useSharedValue(0);
+  const rise = useSharedValue(0);
   const [holding, setHolding] = useState(false);
   const st = useRef({ id: -1, y0: 0, timer: null as ReturnType<typeof setTimeout> | null, held: false, locked: false });
   const beginHold = () => {
@@ -119,10 +121,12 @@ export function useHoldLock(h: {
       if (!s.held && up > SLIDE_START) beginHold();
       if (!s.held) return;
       lift.set(Math.min(Math.max(up / LOCK_PT, 0), 1));
+      rise.set(Math.max(0, Math.min(up, LOCK_PT)));
       if (up >= LOCK_PT) {
         s.locked = true;
         setHolding(false);
-        lift.set(withTiming(0, { duration: 180 }));
+        lift.set(withTiming(0, { duration: 220 }));
+        rise.set(withSpring(0, { duration: 420, dampingRatio: 0.6 }));
         if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
         hr.current.lock();
       }
@@ -137,6 +141,7 @@ export function useHoldLock(h: {
       s.held = false;
       setHolding(false);
       lift.set(withTiming(0, { duration: 150 }));
+      rise.set(withSpring(0, { duration: 360, dampingRatio: 0.75 }));
     },
   });
   useEffect(() => () => {
@@ -144,5 +149,5 @@ export function useHoldLock(h: {
     if (s.timer) clearTimeout(s.timer);
     if (s.held && !s.locked) hr.current.holdOut();
   }, []);
-  return { props, lift, holding };
+  return { props, lift, rise, holding };
 }

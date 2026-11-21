@@ -61,7 +61,8 @@
         "expo-audio",
         {
           "microphonePermission": "Agentic OS uses the microphone when you hold the mic in GPT mode, to dictate on your PC.",
-          "recordAudioAndroid": false
+          "recordAudioAndroid": false,
+          "enableBackgroundRecording": true
         }
       ]
     ],

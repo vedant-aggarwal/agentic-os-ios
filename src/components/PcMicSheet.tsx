@@ -1,6 +1,6 @@
 import { BlurView } from 'expo-blur';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Keyboard, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Animated, {
   cancelAnimation, Easing, FadeIn, ReduceMotion, useAnimatedKeyboard, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSpring, withTiming,
 } from 'react-native-reanimated';
@@ -15,7 +15,7 @@ import { RemoteScreen } from '@/components/RemoteScreen';
 import { Trackpad } from '@/components/Trackpad';
 import type { useAgent } from '@/lib/agent';
 import { usePointer } from '@/lib/pointer';
-import { useHoldLock } from '@/lib/touch';
+import { LOCK_PT, useHoldLock } from '@/lib/touch';
 import type { MicSource, Phase } from '@/lib/wispr';
 import { ASPECT_COLOR, C, F } from '@/theme';
 
@@ -74,10 +74,13 @@ function Orb({ phase, since, onTalkIn, onTalkOut, onHandsFree }: {
     tap: () => { lightTap(); onHandsFree(); },
     press: (down) => p.set(down ? p.to : 1),
   });
+  const follow = useAnimatedStyle(() => ({ transform: [{ translateY: -hold.rise.value }] }));
   return (
     <View {...hold.props} accessible accessibilityRole="button" accessibilityLabel="Wispr"
       accessibilityHint="Hold to talk, slide up to lock, tap for hands-free" onAccessibilityTap={onHandsFree}>
-      <Animated.View style={[s.orbBox, p.style]}>
+      {/* the ring sits where the orb's centre arrives: orb centre 52 down, 40 across (the box starts 12 left) */}
+      <LockHint lift={hold.lift} holding={hold.holding} top={52 - LOCK_PT - 20} left={40 - 20} color={tone} />
+      <Animated.View style={[s.orbBox, p.style, follow]}>
         <Ring live={live} delay={0} color={tone} />
         <Ring live={live} delay={600} color={tone} />
         <Ring live={live} delay={1200} color={tone} />
@@ -86,7 +89,6 @@ function Orb({ phase, since, onTalkIn, onTalkOut, onHandsFree }: {
             fallback={<PcMic size={26} color={live ? tone : C.text} />} />
           {live ? <Elapsed since={since} live /> : null}
         </View>
-        <LockHint lift={hold.lift} holding={hold.holding} top={-28} />
       </Animated.View>
     </View>
   );
@@ -138,26 +140,34 @@ function Toggle({ on, label, icon, onPress }: { on: boolean; label: string; icon
 // and the mic row at the bottom (Wispr's orb, its state, the trackpad and keyboard toggles, Wispr | GPT).
 export function PcMicSheet({
   open, origin, phase, since, error, source, sourceNote, onSource, onClose, onTalkIn, onTalkOut, onHandsFree, onSayIn, onSayOut,
-  onSayLock, onSayToggle, sayLocked, agent, onStop,
+  onSayLock, onSayToggle, sayLocked, agent, onStop, want,
 }: {
   open: boolean; origin: { x: number; y: number }; phase: Phase; since: number; error: string | null;
   source: MicSource; sourceNote: string | null; onSource: (v: MicSource) => void;
   onClose: () => void; onTalkIn: () => void; onTalkOut: () => void; onHandsFree: () => void;
   onSayIn: () => void; onSayOut: () => void; onSayLock: () => void; onSayToggle: () => void; sayLocked: boolean;
   agent: ReturnType<typeof useAgent>; onStop: () => void;
+  want?: { view: 'chat' | 'screen'; n: number } | null; // open on this view (the top bar's Remote PC button)
 }) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const p = useSharedValue(0);
-  const [mounted, setMounted] = useState(open);
+  // Once opened it stays mounted: closing only hides it, so the view, what was typed and the held state all come
+  // back as they were. Dictation and commands keep going while it is hidden.
+  const [ever, setEver] = useState(open);
+  const [mounted, setMounted] = useState(open); // shown, or still animating closed
   const [view, setView] = useState<View4>('chat');
+  const [wantSeen, setWantSeen] = useState(0);
+  if (want && want.n !== wantSeen) { setWantSeen(want.n); setView(want.view); }
+  if (open && !ever) setEver(true);
   const pc = usePointer(open); // one PC connection for the trackpad and the keyboard, ready as soon as this opens
   const kb = usePcKeys(pc); // held and latched modifiers, shared by both keyboard views
   if (open && !mounted) setMounted(true); // mount at once on open; unmount after the close animation
   useEffect(() => {
     if (open) { p.set(withSpring(1, OPEN)); return; }
     p.set(withSpring(0, CLOSE));
-    const id = setTimeout(() => { setMounted(false); setView('chat'); }, 460);
+    Keyboard.dismiss();
+    const id = setTimeout(() => setMounted(false), 460);
     return () => clearTimeout(id);
   }, [open, p]);
 
@@ -173,13 +183,13 @@ export function PcMicSheet({
     return { left: r - origin.x, top: r - origin.y };
   });
   const content = useAnimatedStyle(() => ({ opacity: clamp01(p.value * 2.5) }));
-  if (!mounted) return null;
+  if (!ever) return null;
 
   const tone = TONE[phase];
   const agentListening = phase === 'command' || agent.heard === 'listening';
   const flip = (v: View4) => setView((cur) => (cur === v ? 'chat' : v));
   return (
-    <Animated.View style={[s.shell, shell]} pointerEvents={open ? 'auto' : 'none'}>
+    <Animated.View style={[s.shell, shell, !mounted && s.hidden]} pointerEvents={open ? 'auto' : 'none'}>
       <Animated.View style={[s.stage, { width, height }, stage]}>
       <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
       <View style={[StyleSheet.absoluteFill, s.tint]} />
@@ -196,7 +206,7 @@ export function PcMicSheet({
 
         <View style={s.main}>
           {view === 'screen' ? (
-            <RemoteScreen key="screen" pc={pc} />
+            mounted ? <RemoteScreen key="screen" pc={pc} /> : null
           ) : view === 'pad' ? (
             <Animated.View key="pad" entering={FadeIn.duration(200)} style={{ flex: 1 }}><Trackpad pc={pc} /></Animated.View>
           ) : view === 'keys' ? (
@@ -246,6 +256,7 @@ function Content({ style, insets, width, height, children }: {
 
 const s = StyleSheet.create({
   shell: { position: 'absolute', overflow: 'hidden' },
+  hidden: { display: 'none' },
   stage: { position: 'absolute' },
   tint: { backgroundColor: 'rgba(9,10,14,0.94)' },
   content: { position: 'absolute', left: 0, top: 0, paddingHorizontal: 20, gap: 10 },

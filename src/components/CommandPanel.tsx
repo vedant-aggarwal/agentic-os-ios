@@ -10,7 +10,7 @@ import { LockHint } from '@/components/HoldLock';
 import { PcMic } from '@/components/Icons';
 import { Sym } from '@/components/Sym';
 import type { AgentItem, AgentState } from '@/lib/agent';
-import { useHoldLock } from '@/lib/touch';
+import { LOCK_PT, useHoldLock } from '@/lib/touch';
 import { ASPECT_COLOR, C, F } from '@/theme';
 
 // Command mode: the bar across the top ("Command mode", what the agent is doing, Stop or start over) and the
@@ -104,16 +104,17 @@ function TalkButton({ listening, locked, onIn, onOut, onLock, onToggle }: {
     },
   });
   const lit = listening || hold.holding;
+  const follow = useAnimatedStyle(() => ({ transform: [{ translateY: -hold.rise.value }] }));
   return (
     <View {...hold.props} style={{ flex: 1 }} accessible accessibilityRole="button" accessibilityLabel="Talk to the PC agent"
       accessibilityHint="Hold to talk, slide up to lock, tap to send" onAccessibilityTap={onToggle}>
-      <Animated.View style={[s.btn, p.style, lit && s.btnOn]}>
+      <LockHint lift={hold.lift} holding={hold.holding} top={28 - LOCK_PT - 20} color={LIVE} />
+      <Animated.View style={[s.btn, p.style, lit && s.btnOn, follow]}>
         <View pointerEvents="none" style={s.talkInner}>
           <Sym name={locked ? 'lock.fill' : 'mic.fill'} size={22} color={lit ? LIVE : C.text} fallback={<PcMic size={22} color={C.text} />} />
           {locked ? <Text style={s.talkHint}>Tap to send</Text> : null}
         </View>
       </Animated.View>
-      <LockHint lift={hold.lift} holding={hold.holding} />
     </View>
   );
 }

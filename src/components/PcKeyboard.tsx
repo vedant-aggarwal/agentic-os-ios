@@ -17,7 +17,8 @@ const MODS: { id: Mod; label: string }[] = [
 const MOD_HOLD = 250; // a modifier held this long goes down on the PC; a shorter tap latches it
 const REPEAT_AFTER = 380;
 const REPEAT_EVERY = 70;
-const REPEATS = new Set(['up', 'down', 'left', 'right', 'backspace', 'delete', 'pgup', 'pgdn']);
+const REPEATS = new Set(['up', 'down', 'left', 'right', 'backspace', 'delete', 'pgup', 'pgdn', 'volup', 'voldown']);
+const MEDIA: [string, string][] = [['voldown', 'Vol −'], ['mute', 'Mute'], ['volup', 'Vol +'], ['prev', '⏮'], ['playpause', '⏯'], ['next', '⏭']];
 const SHORTCUTS: [string, string][][] = [
   [['ctrl+c', 'Copy'], ['ctrl+v', 'Paste'], ['ctrl+z', 'Undo'], ['ctrl+a', 'All']],
   [['win+shift+s', 'Snip'], ['win+d', 'Desktop'], ['win+tab', 'Tasks'], ['alt+f4', 'Close']],
@@ -144,6 +145,9 @@ export function PcKeysPad({ kb }: { kb: PcKeys }) {
     <Animated.View entering={FadeIn.duration(200)} style={s.wrap}>
       <Echo kb={kb} idle="Hold Alt and tap Tab to switch windows" />
       <View style={{ flex: 1 }} />
+      <View style={s.row}>
+        {MEDIA.map(([k, label]) => <RepeatKey key={k} k={k} label={label} kb={kb} />)}
+      </View>
       {SHORTCUTS.map((row, i) => (
         <View key={i} style={s.row}>
           {row.map(([k, label]) => <Key key={k} label={label} small onDown={() => kb.shortcut(k)} />)}

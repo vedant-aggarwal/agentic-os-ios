@@ -28,8 +28,11 @@ const ICON = 44; // the button it grows from
 
 const TONE: Record<Phase, string> = {
   idle: C.muted, listening: ASPECT_COLOR.body, handsfree: ASPECT_COLOR.mission, sent: ASPECT_COLOR.friends, command: ASPECT_COLOR.growth,
+  transcribing: ASPECT_COLOR.friends,
 };
-const TITLE: Record<Phase, string> = { idle: 'Ready', listening: 'Listening', handsfree: 'Hands-free', sent: 'Sent to PC', command: 'Command' };
+const TITLE: Record<Phase, string> = {
+  idle: 'Ready', listening: 'Listening', handsfree: 'Hands-free', sent: 'Sent to PC', command: 'Command', transcribing: 'Transcribing',
+};
 const SEG = { duration: 380, dampingRatio: 0.86, reduceMotion: ReduceMotion.System } as const;
 const clamp01 = (v: number) => { 'worklet'; return Math.min(Math.max(v, 0), 1); };
 const lerp = (a: number, b: number, t: number) => { 'worklet'; return a + (b - a) * t; };
@@ -88,7 +91,7 @@ function Orb({ phase, since, onTalkIn, onTalkOut, onHandsFree }: {
   );
 }
 
-/** Where Wispr hears from: a two-way switch with a sliding thumb. */
+/** Who transcribes: Wispr (the PC's mic) or GPT (this phone's mic, transcribed by Codex on the PC). */
 function SourceSwitch({ value, onChange, note }: { value: MicSource; onChange: (v: MicSource) => void; note: string | null }) {
   const [w, setW] = useState(0);
   const x = useSharedValue(value === 'phone' ? 1 : 0);
@@ -105,8 +108,8 @@ function SourceSwitch({ value, onChange, note }: { value: MicSource; onChange: (
     <View style={{ gap: 6 }}>
       <View style={s.seg} onLayout={(e) => setW(e.nativeEvent.layout.width)}>
         {w > 0 ? <Animated.View style={[s.segThumb, thumb]} /> : null}
-        {opt('pc', 'PC mic', 'desktopcomputer')}
-        {opt('phone', 'Phone mic', 'iphone')}
+        {opt('pc', 'Wispr', 'desktopcomputer')}
+        {opt('phone', 'GPT', 'iphone')}
       </View>
       {note ? <Text style={s.segNote}>{note}</Text> : null}
     </View>
@@ -131,7 +134,7 @@ function Toggle({ on, label, icon, onPress }: { on: boolean; label: string; icon
 }
 
 // The PC screen: command mode by default (the agent's bar and transcript), the trackpad or the PC keyboard on a tap,
-// and the mic row at the bottom (Wispr's orb, its state, the trackpad and keyboard toggles, PC mic | Phone mic).
+// and the mic row at the bottom (Wispr's orb, its state, the trackpad and keyboard toggles, Wispr | GPT).
 export function PcMicSheet({
   open, origin, phase, since, error, source, sourceNote, onSource, onClose, onTalkIn, onTalkOut, onHandsFree, onSayIn, onSayOut,
   onSayLock, onSayToggle, sayLocked, agent, onStop,

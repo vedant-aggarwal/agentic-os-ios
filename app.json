@@ -56,7 +56,14 @@
       ],
       "expo-font",
       "expo-secure-store",
-      "@bacons/apple-targets"
+      "@bacons/apple-targets",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Agentic OS uses the microphone when you hold the mic in GPT mode, to dictate on your PC.",
+          "recordAudioAndroid": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

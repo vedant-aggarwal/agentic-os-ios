@@ -130,7 +130,7 @@ export default function Today() {
         onClose={() => { setMicOpen(false); if (agentLive) setClosedLive(true); if (mic.phase === 'handsfree') mic.toggleHandsFree(); }}
         onTalkIn={mic.startTalk} onTalkOut={mic.endTalk} onHandsFree={mic.toggleHandsFree}
         onSayIn={mic.sayIn} onSayOut={mic.sayOut} onSayLock={mic.sayLock} onSayToggle={mic.sayToggle} sayLocked={mic.locked} agent={agent}
-        onStop={() => { agent.stop(); mic.settle(); api('/pc/keys', { method: 'POST', body: { action: 'stop' } }).catch(() => {}); }} />
+        onStop={() => { agent.stop(); mic.cancel(); api('/pc/keys', { method: 'POST', body: { action: 'stop' } }).catch(() => {}); }} />
     </View>
   );
 }

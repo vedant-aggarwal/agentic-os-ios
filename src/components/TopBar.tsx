@@ -10,7 +10,10 @@ import { Sym } from '@/components/Sym';
 export const TOP_H = 52; // pill and round buttons, one height
 const G = 8;
 const BTN = 44; // tap target inside the pill
-const GLYPH = 20;
+const GLYPH = 22; // the drawn fallback icons
+// SF Symbols are fitted into a square box, so a wide one (the laptop) comes out short and a tall one (the
+// mic) tall. Each gets its own box so all of them read about 22 pt tall, one optical size.
+const OPTICAL = { laptop: 34, mic: 25, cursor: 27, wave: 27, person: 24 } as const;
 
 /** Space the bar takes from the top of the screen, below the safe area. */
 export const TOP_GAP = 6;
@@ -49,13 +52,13 @@ export function TopBar({ top, width, onNotBuilt }: { top: number; width: number;
     <View pointerEvents="box-none" style={[s.row, { top: top + TOP_GAP }]}>
       <View style={[s.pill, { width: pill }]}>
         <Glass radius={TOP_H / 2} />
-        <PillButton label="Send to PC" onPress={() => onNotBuilt('To PC')}><Sym name="laptopcomputer.and.arrow.down" size={GLYPH} fallback={<ToPc size={GLYPH} />} /></PillButton>
-        <PillButton label="PC mic" onPress={() => onNotBuilt('PC mic')}><Sym name="mic.fill" size={GLYPH} fallback={<PcMic size={GLYPH} />} /></PillButton>
-        <PillButton label="Remote PC" onPress={() => onNotBuilt('Remote PC')}><Sym name="cursorarrow.rays" size={GLYPH} fallback={<Remote size={GLYPH} />} /></PillButton>
-        <PillButton label="Voices" onPress={() => onNotBuilt('Voices')}><Sym name="waveform" size={GLYPH} fallback={<Voices size={GLYPH} />} /></PillButton>
+        <PillButton label="Send to PC" onPress={() => onNotBuilt('To PC')}><Sym name="laptopcomputer.and.arrow.down" size={OPTICAL.laptop} fallback={<ToPc size={GLYPH} />} /></PillButton>
+        <PillButton label="PC mic" onPress={() => onNotBuilt('PC mic')}><Sym name="mic.fill" size={OPTICAL.mic} fallback={<PcMic size={GLYPH} />} /></PillButton>
+        <PillButton label="Remote PC" onPress={() => onNotBuilt('Remote PC')}><Sym name="cursorarrow.rays" size={OPTICAL.cursor} fallback={<Remote size={GLYPH} />} /></PillButton>
+        <PillButton label="Voices" onPress={() => onNotBuilt('Voices')}><Sym name="waveform" size={OPTICAL.wave} fallback={<Voices size={GLYPH} />} /></PillButton>
       </View>
       <RoundButton label="Log mood" onPress={() => onNotBuilt('Mood')}><Smiley size={30} /></RoundButton>
-      <RoundButton label="Your account" onPress={() => onNotBuilt('Account')}><Sym name="person.fill" size={GLYPH} fallback={<Account size={GLYPH + 2} />} /></RoundButton>
+      <RoundButton label="Your account" onPress={() => onNotBuilt('Account')}><Sym name="person.fill" size={OPTICAL.person} fallback={<Account size={GLYPH + 2} />} /></RoundButton>
     </View>
   );
 }

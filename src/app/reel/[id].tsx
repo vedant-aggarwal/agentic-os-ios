@@ -1,12 +1,15 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar } from '@/components/Avatar';
 import { Chevron, InstagramMark, YouTubeMark } from '@/components/Icons';
+import { BeatEditor } from '@/components/BeatEditor';
+import { ConceptEditor } from '@/components/concepts/ConceptEditor';
+import { KAI_BAR_SPACE, KaiBar } from '@/components/KaiBar';
 import { Press } from '@/components/Press';
 import { ErrorBox, Loading } from '@/components/States';
-import { rebuildStructure, REEL_STAGES, useReels } from '@/lib/api';
+import { rebuildStructure, REEL_STAGES, refreshReels, undoReel, updateReel, useReels, type Beat } from '@/lib/api';
 import { STAGE_INFO } from '@/lib/reels';
 import { slotFor } from '@/lib/lineup';
 import { C, F } from '@/theme';
@@ -19,6 +22,24 @@ export default function ReelScreen() {
   const slot = reel ? slotFor(reel.channelId) : undefined;
   const doneUpTo = reel ? REEL_STAGES.indexOf(reel.stage) : -1;
   const working = !!reel?.working;
+  const [editConcept, setEditConcept] = useState(false);
+  const [beatAt, setBeatAt] = useState<number | null>(null); // index being edited; beats.length = a new beat
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const kaiDone = useCallback(() => {
+    refreshReels().catch(() => {});
+  }, []);
+
+  const save = async (patch: Parameters<typeof updateReel>[1]) => {
+    if (!reel) return;
+    setSaveError(null);
+    try {
+      await updateReel(reel.id, patch);
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : String(e));
+    }
+  };
+  const beats = reel?.structure?.beats || [];
+  const saveBeats = (next: Beat[]) => save({ structure: { lengthSeconds: reel?.structure?.lengthSeconds || 30, beats: next } });
 
   // While the PC is building a step, check back every few seconds.
   useEffect(() => {
@@ -28,9 +49,11 @@ export default function ReelScreen() {
   }, [working, reload]);
 
   return (
+    <View style={{ flex: 1, backgroundColor: C.bg }}>
     <ScrollView
       style={{ flex: 1, backgroundColor: C.bg }}
-      contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: 16, paddingBottom: insets.bottom + 32 }}
+      contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: 16, paddingBottom: insets.bottom + KAI_BAR_SPACE }}
+      keyboardShouldPersistTaps="handled"
       refreshControl={<RefreshControl refreshing={false} onRefresh={reload} tintColor={C.ink} />}
     >
       <View style={styles.bar}>
@@ -59,6 +82,9 @@ export default function ReelScreen() {
               <Avatar slot={slot} size={40} live />
               <Text style={styles.channelName}>{slot.name}</Text>
               {slot.platform === 'youtube' ? <YouTubeMark size={20} /> : <InstagramMark size={17} />}
+              <Press style={styles.pill} scale={0.94} onPress={() => setEditConcept(true)} accessibilityLabel="Edit the concept">
+                <Text style={styles.pillText}>Edit</Text>
+              </Press>
             </View>
             <Text style={styles.title}>{reel.title}</Text>
             {reel.hook ? <Text style={styles.hook}>{reel.hook}</Text> : null}
@@ -71,7 +97,15 @@ export default function ReelScreen() {
             {reel.notes ? <Text style={styles.notes}>Your note: {reel.notes}</Text> : null}
           </View>
 
-          <Text style={styles.h2}>Structure</Text>
+          <View style={styles.h2Row}>
+            <Text style={[styles.h2, { flex: 1, marginTop: 0 }]}>Structure</Text>
+            {reel.previous?.length ? (
+              <Press style={styles.pill} scale={0.94} onPress={() => undoReel(reel.id).catch((e) => setSaveError(String(e?.message || e)))} accessibilityLabel="Undo the last change">
+                <Text style={styles.pillText}>Undo</Text>
+              </Press>
+            ) : null}
+          </View>
+          {saveError ? <Text style={styles.err}>{saveError}</Text> : null}
           {reel.working === 'structure' ? (
             <View style={[styles.card, styles.busy]}>
               <ActivityIndicator color={C.ink} />
@@ -79,20 +113,25 @@ export default function ReelScreen() {
             </View>
           ) : reel.structure ? (
             <View style={styles.card}>
-              <Text style={styles.len}>About {reel.structure.lengthSeconds} seconds · {reel.structure.beats.length} beats</Text>
+              <Text style={styles.len}>About {reel.structure.lengthSeconds} seconds · {reel.structure.beats.length} beats · tap a beat to edit</Text>
               {reel.structure.beats.map((b, i) => (
-                <View key={i} style={[styles.beat, i > 0 && styles.beatLine]}>
+                <Press key={i} scale={0.99} onPress={() => setBeatAt(i)} style={[styles.beat, i > 0 && styles.beatLine]} accessibilityLabel={`Edit beat ${i + 1}: ${b.beat}`}>
                   <Text style={styles.time}>{b.time}</Text>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.beatText}>{b.beat}</Text>
                     <Text style={styles.visual}>{b.visual}</Text>
                     {b.line ? <Text style={styles.line2}>“{b.line}”</Text> : null}
                   </View>
-                </View>
+                </Press>
               ))}
-              <Press style={styles.redo} scale={0.97} onPress={() => rebuildStructure(reel.id).catch(() => {})} accessibilityLabel="Build the structure again">
-                <Text style={styles.redoText}>Build again</Text>
-              </Press>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <Press style={styles.redo} scale={0.97} onPress={() => setBeatAt(beats.length)} accessibilityLabel="Add a beat">
+                  <Text style={styles.redoText}>Add beat</Text>
+                </Press>
+                <Press style={styles.redo} scale={0.97} onPress={() => rebuildStructure(reel.id).catch(() => {})} accessibilityLabel="Build the structure again">
+                  <Text style={styles.redoText}>Build again</Text>
+                </Press>
+              </View>
             </View>
           ) : (
             <View style={styles.card}>
@@ -134,11 +173,50 @@ export default function ReelScreen() {
         </>
       )}
     </ScrollView>
+
+      {reel ? (
+        <KaiBar
+          context={{ screen: 'reel', reelId: reel.id, channelId: reel.channelId }}
+          placeholder="Ask Kai to change this reel"
+          suggestions={['Make the hook hit harder', 'Tighten it to 30 seconds', 'Make the ending more shareable', 'Make it clear to anyone']}
+          onDone={kaiDone}
+        />
+      ) : null}
+
+      {reel && editConcept ? (
+        <ConceptEditor
+          concept={{ title: reel.title, hook: reel.hook || '', premise: reel.premise || reel.idea || '', why: reel.why || '' }}
+          onClose={() => setEditConcept(false)}
+          onSave={(c) => {
+            setEditConcept(false);
+            save({ title: c.title, hook: c.hook, premise: c.premise, why: c.why });
+          }}
+        />
+      ) : null}
+
+      {reel && beatAt != null ? (
+        <BeatEditor
+          beat={beats[beatAt] || { time: '', beat: '', visual: '', line: '' }}
+          isNew={beatAt >= beats.length}
+          onClose={() => setBeatAt(null)}
+          onDelete={beatAt < beats.length && beats.length > 1 ? () => { const i = beatAt; setBeatAt(null); saveBeats(beats.filter((_, j) => j !== i)); } : undefined}
+          onSave={(b) => {
+            const i = beatAt;
+            setBeatAt(null);
+            saveBeats(i >= beats.length ? [...beats, b] : beats.map((x, j) => (j === i ? b : x)));
+          }}
+        />
+      ) : null}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   bar: { flexDirection: 'row', alignItems: 'center', height: 44 },
+  pill: { height: 32, paddingHorizontal: 14, borderRadius: 16, backgroundColor: C.bg, justifyContent: 'center' },
+  pillText: { fontFamily: F.s, fontSize: 13, color: C.ink },
+  h2Row: { marginTop: 24, flexDirection: 'row', alignItems: 'center' },
+  err: { marginTop: 8, fontFamily: F.m, fontSize: 13, color: '#B4232F' },
   round: { width: 44, height: 44, borderRadius: 22, backgroundColor: C.card, alignItems: 'center', justifyContent: 'center' },
   barTitle: { flex: 1, textAlign: 'center', fontFamily: F.b, fontSize: 18, lineHeight: 24, color: C.ink },
   card: { marginTop: 12, padding: 16, borderRadius: 24, backgroundColor: C.card },

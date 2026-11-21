@@ -198,6 +198,8 @@ export type Reel = {
   idea: string;
   /** The furthest step finished. */
   stage: ReelStage;
+  /** Earlier versions, newest first, for undo. */
+  previous?: { at: string }[];
   createdAt: string;
   updatedAt: string;
 };
@@ -256,6 +258,24 @@ export async function createReels(input: { channelId: string; ideas: Concept[]; 
   const { reels } = await act<{ reels: Reel[] }>('reels.create', input);
   setReels([...reels, ...(reelsMemo || [])]);
   return reels;
+}
+
+/** Save a hand edit to a reel (concept fields and/or the whole structure). The old version is kept for undo. */
+export async function updateReel(id: string, patch: Partial<Pick<Reel, 'title' | 'hook' | 'premise' | 'why' | 'notes'>> & { structure?: { lengthSeconds: number; beats: Beat[] } }) {
+  const { reel } = await act<{ reel: Reel }>('reels.update', { id, ...patch });
+  if (reelsMemo) setReels(reelsMemo.map((r) => (r.id === id ? reel : r)));
+  return reel;
+}
+
+export async function undoReel(id: string) {
+  const { reel } = await act<{ reel: Reel }>('reels.undo', { id });
+  if (reelsMemo) setReels(reelsMemo.map((r) => (r.id === id ? reel : r)));
+  return reel;
+}
+
+/** Fetch the reel list again (after Kai changed something). */
+export async function refreshReels() {
+  setReels((await api<{ reels: Reel[] }>('/api/reels')).reels);
 }
 
 export async function rebuildStructure(id: string) {

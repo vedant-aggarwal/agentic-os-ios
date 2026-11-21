@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar } from '@/components/Avatar';
@@ -7,9 +7,10 @@ import { DaySheet } from '@/components/DaySheet';
 import { Chevron, Eye, Heart, InstagramMark, Person, YouTubeMark } from '@/components/Icons';
 import { Press } from '@/components/Press';
 import { ScheduleEditor, timeLabel, zoneShort } from '@/components/ScheduleEditor';
+import { KAI_BAR_SPACE, KaiBar } from '@/components/KaiBar';
 import { ErrorBox, Loading } from '@/components/States';
 import { isLive } from '@/components/Tile';
-import { addDays, compact, slotsFor, useHome, useReels, weekOf, weekStart, type Channel, type SlotState } from '@/lib/api';
+import { addDays, compact, refreshReels, slotsFor, useHome, useReels, weekOf, weekStart, type Channel, type SlotState } from '@/lib/api';
 import { slotFor, type Slot } from '@/lib/lineup';
 import { nextStage, STAGE_INFO } from '@/lib/reels';
 import { C, F } from '@/theme';
@@ -29,14 +30,21 @@ export default function ChannelScreen() {
   const ch = data?.channels.find((c) => c.id === id);
   const today = data?.today || new Date().toISOString().slice(0, 10);
 
+  const kaiDone = useCallback(() => {
+    refreshReels().catch(() => {});
+    reload();
+  }, [reload]);
+
   if (!slot) return null;
   const live = isLive(slot, ch);
   const color = slot.platform === 'youtube' ? C.yt : C.ig;
 
   return (
+    <View style={{ flex: 1, backgroundColor: C.bg }}>
     <ScrollView
       style={{ flex: 1, backgroundColor: C.bg }}
-      contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: 16, paddingBottom: insets.bottom + 32 }}
+      keyboardShouldPersistTaps="handled"
+      contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: 16, paddingBottom: insets.bottom + KAI_BAR_SPACE }}
       refreshControl={<RefreshControl refreshing={loading && !!data} onRefresh={reload} tintColor={C.ink} />}
     >
       <View style={styles.bar}>
@@ -104,6 +112,13 @@ export default function ChannelScreen() {
         </>
       )}
     </ScrollView>
+      <KaiBar
+        context={{ screen: 'channel', channelId: slot.channelId }}
+        placeholder={`Ask Kai about ${slot.name}`}
+        suggestions={['What should I post next?', 'Plan this week for me', 'Give me 3 new reel ideas', 'Why are views down?']}
+        onDone={kaiDone}
+      />
+    </View>
   );
 }
 

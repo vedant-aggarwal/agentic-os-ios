@@ -10,9 +10,11 @@ import { Notice } from '@/components/Notice';
 import { NowCard } from '@/components/NowCard';
 import { SignIn } from '@/components/SignIn';
 import { TaskGroup } from '@/components/TaskRow';
-import { TOP_GAP, TOP_H, TopBar } from '@/components/TopBar';
+import { PcMicSheet } from '@/components/PcMicSheet';
+import { micCenter, TOP_GAP, TOP_H, TopBar } from '@/components/TopBar';
 import { signOut } from '@/lib/api';
 import { useToday } from '@/lib/useToday';
+import { useWispr, volumeButtonsAvailable } from '@/lib/wispr';
 import { C, F } from '@/theme';
 
 /** One light falling from above onto the crystals, over the app background. */
@@ -38,6 +40,9 @@ export default function Today() {
   const t = useToday();
   const [local, setLocal] = useState<string | null>(null);
   const [allCarried, setAllCarried] = useState(false);
+  const [micOpen, setMicOpen] = useState(false); // opened by tapping the PC mic button
+  // volume buttons drive Wispr on the PC while Today is up
+  const mic = useWispr(!!t.view);
   const notBuilt = useCallback((what: string) => setLocal(`${what}: not built yet`), []);
   const { clearNotice } = t;
   const clear = useCallback(() => { setLocal(null); clearNotice(); }, [clearNotice]);
@@ -104,11 +109,16 @@ export default function Today() {
           bar, 14 pt at the bottom edge */}
       {/* the same blur under the top bar, dense at the screen's top edge */}
       <EdgeBlur edge="top" height={insets.top + TOP_GAP + TOP_H + 28} strength={30} curve={2} />
-      <TopBar top={insets.top} width={width} onNotBuilt={notBuilt} />
+      <TopBar top={insets.top} width={width} onMic={() => setMicOpen(true)} onNotBuilt={notBuilt} />
       <EdgeBlur height={insets.bottom + 150} strength={35} curve={2.6} />
       <EdgeGlow height={insets.bottom + 200} orb={orb} />
       <Notice text={local ?? t.notice} bottom={insets.bottom + 112} onClear={clear} />
       <Dock bottom={insets.bottom} width={width} aspects={v.aspects} onNotBuilt={notBuilt} />
+      {/* opens by itself while a volume press has Wispr going, and closes once it has sent */}
+      <PcMicSheet open={micOpen || mic.phase !== 'idle'} origin={micCenter(insets.top, width)} phase={mic.phase} since={mic.since}
+        error={mic.error} volumeReady={volumeButtonsAvailable}
+        onClose={() => { setMicOpen(false); if (mic.phase === 'handsfree') mic.toggleHandsFree(); }}
+        onTalkIn={mic.startTalk} onTalkOut={mic.endTalk} onHandsFree={mic.toggleHandsFree} />
     </View>
   );
 }

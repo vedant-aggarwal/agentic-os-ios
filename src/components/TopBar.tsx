@@ -18,6 +18,13 @@ const OPTICAL = { laptop: 34, mic: 25, cursor: 27, wave: 27, person: 24 } as con
 /** Space the bar takes from the top of the screen, below the safe area. */
 export const TOP_GAP = 6;
 
+/** Where the PC mic button sits on screen: the PC mic screen grows out of it. */
+export function micCenter(top: number, width: number) {
+  const pill = width - 32 - 2 * (TOP_H + G);
+  const gap = (pill - 4 * BTN) / 5; // the pill spaces its four buttons evenly
+  return { x: 16 + 2 * gap + 1.5 * BTN, y: top + TOP_GAP + TOP_H / 2 };
+}
+
 function PillButton({ label, onPress, children }: { label: string; onPress: () => void; children: React.ReactNode }) {
   const p = useScale(0.86);
   return (
@@ -46,14 +53,16 @@ function RoundButton({ label, onPress, children }: { label: string; onPress: () 
   );
 }
 
-export function TopBar({ top, width, onNotBuilt }: { top: number; width: number; onNotBuilt: (what: string) => void }) {
+export function TopBar({ top, width, onMic, onNotBuilt }: {
+  top: number; width: number; onMic: () => void; onNotBuilt: (what: string) => void;
+}) {
   const pill = width - 32 - 2 * (TOP_H + G);
   return (
     <View pointerEvents="box-none" style={[s.row, { top: top + TOP_GAP }]}>
       <View style={[s.pill, { width: pill }]}>
         <Glass radius={TOP_H / 2} />
         <PillButton label="Send to PC" onPress={() => onNotBuilt('To PC')}><Sym name="laptopcomputer.and.arrow.down" size={OPTICAL.laptop} fallback={<ToPc size={GLYPH} />} /></PillButton>
-        <PillButton label="PC mic" onPress={() => onNotBuilt('PC mic')}><Sym name="mic.fill" size={OPTICAL.mic} fallback={<PcMic size={GLYPH} />} /></PillButton>
+        <PillButton label="PC mic" onPress={onMic}><Sym name="mic.fill" size={OPTICAL.mic} fallback={<PcMic size={GLYPH} />} /></PillButton>
         <PillButton label="Remote PC" onPress={() => onNotBuilt('Remote PC')}><Sym name="cursorarrow.rays" size={OPTICAL.cursor} fallback={<Remote size={GLYPH} />} /></PillButton>
         <PillButton label="Voices" onPress={() => onNotBuilt('Voices')}><Sym name="waveform" size={OPTICAL.wave} fallback={<Voices size={GLYPH} />} /></PillButton>
       </View>

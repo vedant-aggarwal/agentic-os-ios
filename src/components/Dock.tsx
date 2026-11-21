@@ -35,7 +35,7 @@ export function orbFromBottom(bottom: number) {
 // The dial the ring opens into: each ring section grows out along its own angle into a wedge at r140, 36 thick
 const DIAL_R = 140;
 const DIAL_W = 36;
-const PICK_W = 44;
+const PICK_W = 42; // chosen: a little thicker than an idle wedge, not a new shape
 const LABEL_R = 178;
 const CAN = 200; // half-size of each wedge's canvas, centred on the orb
 const PICK_MIN = 60; // finger must be this far from the orb's centre to choose
@@ -100,11 +100,11 @@ const DIAL = WHEEL.map((k, i) => {
 function wedgeShape(mid: number, o: number, ev: number) {
   'worklet';
   const pick = Math.max(ev, 0), hide = Math.max(-ev, 0);
-  const r = ARC_R + (DIAL_R - ARC_R) * o - 12 * hide;
+  const r = ARC_R + (DIAL_R - ARC_R) * o - 12 * hide + 4 * pick;
   const wd = LINE + (DIAL_W - LINE) * o + (PICK_W - DIAL_W) * pick;
   const rest = RING_SPAN / 2 - GAP;
-  const half = rest + (RING_SPAN * 0.85 - rest) * pick; // chosen, it spreads into its hidden neighbours' room
-  const rc = LINE / 2 + (6 - LINE / 2) * o + 6 * pick;
+  const half = rest + 2.5 * pick; // chosen, it widens a touch; its neighbours fall away
+  const rc = LINE / 2 + (6 - LINE / 2) * o + 2 * pick;
   return { ri: r - wd / 2, ro: r + wd / 2, a0: mid - half, a1: mid + half, rc };
 }
 
@@ -159,7 +159,7 @@ function Wedge({ i, open, state, progress }: {
   const track = useAnimatedProps(() => {
     const o = open.value, pick = Math.max(e.value, 0), g = wedgeShape(w.mid, o, e.value);
     const dim = 0.6 + (0.32 - 0.6) * o; // the ring's track, dimmer once it is a wedge
-    return { d: sector(CAN, g.ri, g.ro, g.a0, g.a1, g.rc), fillOpacity: dim + (1 - dim) * pick, strokeOpacity: 0.22 * pick };
+    return { d: sector(CAN, g.ri, g.ro, g.a0, g.a1, g.rc), fillOpacity: dim + (1 - dim) * pick, strokeOpacity: 0.28 * pick };
   });
   const lit = useAnimatedProps(() => {
     const o = open.value, g = wedgeShape(w.mid, o, e.value);
@@ -174,7 +174,7 @@ function Wedge({ i, open, state, progress }: {
   return (
     <Animated.View pointerEvents="none" style={[s.wedge, wrap]}>
       <Svg width={CAN * 2} height={CAN * 2}>
-        <APath animatedProps={track} fill={w.color} stroke={w.color} strokeWidth={16} strokeLinejoin="round" />
+        <APath animatedProps={track} fill={w.color} stroke={w.color} strokeWidth={8} strokeLinejoin="round" />
         {frac > 0 ? <APath animatedProps={lit} fill={w.color} stroke={w.color} strokeWidth={3.5} strokeLinejoin="round" /> : null}
       </Svg>
       <Animated.View style={[StyleSheet.absoluteFill, label]}>

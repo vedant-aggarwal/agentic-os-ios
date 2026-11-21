@@ -12,14 +12,13 @@ import { Home, Nora, Scan, Work } from '@/components/Icons';
 import type { AspectProgress } from '@/lib/today';
 import { ASPECT_COLOR, C, F, type AspectKey } from '@/theme';
 
-// The Nora bar, from the canvas boards (UI1-Nora, UI2-Today): a black 208 x 64 pill between two floating
+// The Nora bar, from the canvas boards (UI1-Nora, UI2-Today): a black 64 pt pill between two floating
 // 64 pt orbs (Home, Work). Scan and Nora's chat sit in the pill as clear 48 pt buttons, the 72 pt orb raised
-// 16 pt above the pill's centre with the
-// nine-section ring over its top. Tap the orb to talk; hold it and the ring opens into the dial.
+// 16 pt above the pill's centre with the nine-section ring over its top. One gap G sets every space in the
+// row: side orb to pill, pill edge to icon, icon to orb. Tap the orb to talk; hold it and the ring opens into the dial.
 const BAR_H = 64;
-const BAR_W = 208;
 const SIDE = BAR_H; // the floating orbs either side of the pill, as tall as it
-const SIDE_GAP = 8;
+const ICON = 24; // the glyph inside each 48 pt button
 const ORB = 100; // canvas incl. ring and its glow
 const ORB_R = 36; // the ball
 const ARC_R = 46;
@@ -27,6 +26,11 @@ const ORB_TOP = BAR_H / 2 - 16 - ORB / 2; // orb centre 16 above the pill's cent
 const TURN = 12000; // one turn of the sphere, ms
 const HOLD = 280; // ms before a press held still becomes a hold
 const SWIPE = 8; // pt of travel that turns a press into a swipe
+
+/** The orb's centre, measured up from the screen's bottom edge; the backdrop glow rises from here. */
+export function orbFromBottom(bottom: number) {
+  return Math.max(bottom, 12) + 12 + BAR_H / 2 + 16;
+}
 
 // The dial the ring opens into (board: wedges at r140, 36 thick, labels at r172)
 const DIAL_R = 140;
@@ -329,8 +333,10 @@ export function Dock({ bottom, width, aspects, onNotBuilt }: {
   bottom: number; width: number; aspects: AspectProgress; onNotBuilt: (what: string) => void;
 }) {
   const { height } = useWindowDimensions();
-  const w = Math.min(width - 32 - 2 * (SIDE + SIDE_GAP), BAR_W);
-  const total = w + 2 * (SIDE + SIDE_GAP);
+  // fixed parts: two side orbs, the ball, two icons; the rest is six equal gaps, 8 to 18 pt
+  const G = Math.round(Math.max(8, Math.min(18, (width - 32 - 2 * SIDE - 2 * ORB_R - 2 * ICON) / 6)));
+  const w = 2 * (ORB_R + ICON + 2 * G); // pill: gap, icon, gap, ball, gap, icon, gap
+  const total = w + 2 * (SIDE + G);
   const lift = Math.max(bottom, 12) + 12;
   const cx = width / 2, cy = height - lift - BAR_H + 16; // the orb's centre on screen
   const orb = useScale(0.93);
@@ -404,7 +410,7 @@ export function Dock({ bottom, width, aspects, onNotBuilt }: {
       <DialLayer cx={cx} cy={cy} open={open} pick={pick} aspects={aspects} />
       <View pointerEvents="box-none" style={[s.wrap, { width: total, bottom: lift }]}>
         <SideOrb label="Home: what Nora has ready for you" side="left" onPress={() => onNotBuilt('Home')}><Home /></SideOrb>
-        <View style={[s.bar, { width: w }]}>
+        <View style={[s.bar, { width: w, paddingHorizontal: Math.max(0, G - (48 - ICON) / 2) }]}>
           <Material />
           <Round label="Scan" onPress={() => onNotBuilt('Scan')}><Scan /></Round>
           <Round label="Chat with Nora" onPress={() => onNotBuilt('Nora chat')}><Nora /></Round>
@@ -436,7 +442,7 @@ const s = StyleSheet.create({
   black: { backgroundColor: 'rgba(8,8,10,0.82)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
   bar: {
     position: 'absolute', top: 0, height: BAR_H, borderRadius: BAR_H / 2,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     boxShadow: '0 16px 40px rgba(0,0,0,0.5)',
   },
   round: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },

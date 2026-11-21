@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Polygon, Stop } from 'react-native-svg';
 import { Backdrop, EdgeBlur, EdgeGlow } from '@/components/Backdrop';
 import { Crystals } from '@/components/Crystals';
-import { Dock } from '@/components/Dock';
+import { Dock, orbFromBottom } from '@/components/Dock';
 import { Lock, Mood, PcMic, Remote, ToPc, Voices } from '@/components/Icons';
 import { Notice } from '@/components/Notice';
 import { NowCard } from '@/components/NowCard';
@@ -75,10 +75,11 @@ export default function Today() {
   }
 
   const v = t.view;
+  const orb = orbFromBottom(insets.bottom);
   const empty = !v.groups.length && !v.carried;
   return (
     <View style={s.screen}>
-      <Backdrop />
+      <Backdrop orb={orb} />
       <Scene width={width} />
       <ScrollView
         contentContainerStyle={{ flexGrow: 1, paddingTop: insets.top + 4 }}
@@ -138,8 +139,8 @@ export default function Today() {
         </View>
       </ScrollView>
 
-      <EdgeBlur height={insets.bottom + 150} />
-      <EdgeGlow height={insets.bottom + 260} />
+      <EdgeBlur height={insets.bottom + 180} />
+      <EdgeGlow height={insets.bottom + 240} orb={orb} />
       <Notice text={local ?? t.notice} bottom={insets.bottom + 112} onClear={clear} />
       <Dock bottom={insets.bottom} width={width} aspects={v.aspects} onNotBuilt={notBuilt} />
     </View>

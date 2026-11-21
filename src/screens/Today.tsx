@@ -19,6 +19,7 @@ import { api, signOut } from '@/lib/api';
 import { gazeTouch } from '@/lib/gaze';
 import { useToday } from '@/lib/useToday';
 import { useWispr } from '@/lib/wispr';
+import { useKeyboardMic } from '@/lib/kbmic';
 import { C, F } from '@/theme';
 
 /** One light falling from above onto the crystals, over the app background. */
@@ -49,6 +50,7 @@ export default function Today() {
   const [filesOpen, setFilesOpen] = useState(false); // the top bar's To PC button
   // volume buttons drive Wispr on the PC while Today is up
   const mic = useWispr(!!t.view);
+  const kbMic = useKeyboardMic(); // records for the keyboard extension (agenticos://flow)
   const agent = useAgent(!!t.view);
   // A command is being taken or worked on (the Action button may have started it with the app shut): show it.
   const agentLive = agent.heard === 'listening' || agent.busy;
@@ -132,7 +134,7 @@ export default function Today() {
         onVoices={() => setVoicesOpen(true)} onFiles={() => setFilesOpen(true)} onNotBuilt={notBuilt} />
       <EdgeBlur height={insets.bottom + 150} strength={35} curve={2.6} />
       <EdgeGlow height={insets.bottom + 200} orb={orb} />
-      <Notice text={local ?? t.notice} bottom={insets.bottom + 112} onClear={clear} />
+      <Notice text={kbMic.state === 'recording' ? 'Listening for the keyboard. Swipe back to your app and talk.' : kbMic.error ?? local ?? t.notice} bottom={insets.bottom + 112} onClear={clear} />
       <Dock bottom={insets.bottom} width={width} aspects={v.aspects} onNotBuilt={notBuilt} />
       {/* opens by itself while a volume press has Wispr going, and closes once it has sent */}
       <PcMicSheet open={micOpen || (live && !closedLive)} want={want} origin={micCenter(insets.top, width)} phase={mic.phase}

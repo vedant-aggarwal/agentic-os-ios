@@ -17,7 +17,7 @@ const fs: FS | null = requireOptionalNativeModule('FileSystem') ? require('expo-
 /* eslint-enable @typescript-eslint/no-require-imports */
 export const gptAvailable = !!audio && !!fs;
 
-export type DictateTo = 'type' | 'agent';
+export type DictateTo = 'type' | 'agent' | 'none'; // none: save it and return the text (the keyboard inserts it)
 export type DictateResult = { text: string; enter: boolean; ms: number };
 /** A take as this phone remembers it. */
 export type LocalTake = { id: string; uri: string; rate: number; createdAt: string; sent: number; finished: boolean };
@@ -79,7 +79,7 @@ function prune() {
 }
 
 // ---- sending a take's file to the PC ----
-type Sender = { t: LocalTake; h: import('expo-file-system').FileHandle | null; created: boolean; busy: Promise<void> | null };
+type Sender = { t: LocalTake; h: import('expo-file-system').FileHandle | null; created: boolean; busy: Promise<void> | null; stop?: boolean };
 
 /** Send everything in the file past what the PC has. Throws if the PC can't be reached. */
 async function pushAll(s: Sender) {
@@ -96,6 +96,7 @@ async function pushAll(s: Sender) {
     const out = await res.json().catch(() => null);
     if (!res.ok && res.status !== 409) throw new ApiError(res.status, out?.error ?? `Upload failed (HTTP ${res.status}).`);
     s.t.sent = Number(out?.have ?? s.t.sent); // on 409 the PC says where it is; carry on from there
+    if (out?.stop) s.stop = true; // the keyboard pressed stop
     if (res.ok && bytes.length < PIECE) return;
   }
 }
@@ -111,7 +112,7 @@ async function pushHard(s: Sender, tries = 4) {
     catch (e) { if (i >= tries - 1) throw e; await new Promise((r) => setTimeout(r, 600 * 2 ** i)); }
   }
 }
-function close(s: Sender) { try { s.h?.close(); } catch {} s.h = null; }
+function closeFile(s: Sender) { try { s.h?.close(); } catch {} s.h = null; }
 
 /** Takes the PC never fully got: send the rest and save them there (not typed: that moment has passed). */
 let recovering = false;
@@ -127,7 +128,7 @@ async function recover(skip?: string) {
         await pushHard(s, 2);
         await call('POST', `/pc/take/${t.id}/finish`, { bytes: t.sent, to: 'none' });
         t.finished = true; remember(t);
-      } catch { /* the PC is away; next launch */ } finally { close(s); }
+      } catch { /* the PC is away; next launch */ } finally { closeFile(s); }
     }
   } finally { recovering = false; }
 }
@@ -139,9 +140,13 @@ export function useGptRecorder() {
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const [live, setLive] = useState('');
   const [offline, setOffline] = useState(false); // the PC isn't getting the audio right now (it's still saved here)
+  const streaming = useRef(false); // the mic is open (recording, or kept warm between keyboard takes)
+  const cool = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onCold = useRef<(() => void) | null>(null);
+  const warmFor = useRef(0); // ms to keep the mic open after a take (the keyboard's warm mic); 0 closes it at once
 
   useEffect(() => { void recover(); }, []);
-  useEffect(() => () => { if (timer.current) clearInterval(timer.current); try { stream?.stop(); } catch {} }, [stream]);
+  useEffect(() => () => { if (timer.current) clearInterval(timer.current); if (cool.current) clearTimeout(cool.current); try { stream?.stop(); } catch {} }, [stream]);
 
   /** Show the PC's text as it comes, until the take is done or another one starts. */
   const follow = useCallback(async (s: Sender) => {
@@ -156,43 +161,66 @@ export function useGptRecorder() {
     }
   }, []);
 
-  const start = useCallback(async () => {
+  /** Start a take. `id` comes from the keyboard (it follows the take by that id); `onRemoteStop` runs when the
+   *  keyboard presses stop. */
+  const start = useCallback(async (opts: { id?: string; onRemoteStop?: () => void } = {}) => {
     if (!audio || !fs || !stream) throw new Error('GPT mic arrives with the next app build.');
-    const perm = await audio.requestRecordingPermissionsAsync();
-    if (!perm.granted) throw new Error('Allow the microphone for Agentic OS in Settings.');
-    await audio.setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true, allowsBackgroundRecording: true, shouldPlayInBackground: true });
+    if (cur.current) throw new Error('Already recording.');
     const d = takesDir();
     if (!d.exists) d.create({ intermediates: true, idempotent: true });
-    const id = `t_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-    await stream.start();
+    const id = opts.id ?? `t_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    if (cool.current) { clearTimeout(cool.current); cool.current = null; }
+    if (!streaming.current) {
+      const perm = await audio.requestRecordingPermissionsAsync();
+      if (!perm.granted) throw new Error('Allow the microphone for Agentic OS in Settings.');
+      await audio.setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true, allowsBackgroundRecording: true, shouldPlayInBackground: true });
+      await stream.start();
+      streaming.current = true;
+    }
     let uri: string;
     try { ({ uri } = await stream.startFileRecordingAsync({ uri: new fs.File(d, `${id}.wav`).uri, format: 'wav' })); }
-    catch (e) { try { stream.stop(); } catch {} throw e; }
+    catch (e) { try { stream.stop(); } catch {} streaming.current = false; throw e; }
     const s: Sender = { t: { id, uri, rate: stream.sampleRate || RATE, createdAt: new Date().toISOString(), sent: 0, finished: false }, h: null, created: false, busy: null };
     remember(s.t);
     cur.current = s;
     setLive(''); setOffline(false);
-    let following = false;
+    let following = false, stopped = false;
     timer.current = setInterval(() => {
       push(s).then(() => {
         setOffline(false);
         if (!following && s.created) { following = true; void follow(s); }
+        if (s.stop && !stopped && cur.current === s) { stopped = true; opts.onRemoteStop?.(); }
       }, () => setOffline(true));
     }, TICK);
   }, [stream, follow]);
 
+  /** Close the mic now. */
+  const close = useCallback(() => {
+    if (cool.current) { clearTimeout(cool.current); cool.current = null; }
+    if (!streaming.current || cur.current) return;
+    streaming.current = false;
+    try { stream?.stop(); } catch {}
+    audio?.setAudioModeAsync({ allowsRecording: false }).catch(() => {});
+    onCold.current?.();
+  }, [stream]);
+
+  /** Stop recording this take; the mic closes, or stays open for `warmFor` so the next take starts at once. */
   const stop = useCallback(async () => {
     if (timer.current) { clearInterval(timer.current); timer.current = null; }
     try { await stream?.stopFileRecordingAsync(); } catch {}
+    const keep = warmFor.current;
+    if (keep > 0) { if (cool.current) clearTimeout(cool.current); cool.current = setTimeout(close, keep); return; }
+    streaming.current = false;
     try { stream?.stop(); } catch {}
     audio?.setAudioModeAsync({ allowsRecording: false }).catch(() => {});
-  }, [stream]);
+  }, [stream, close]);
 
   /** Stop and deliver: resolves with what the PC heard. */
   const finish = useCallback(async (to: DictateTo): Promise<DictateResult> => {
     const s = cur.current;
     if (!s) throw new Error('Not recording.');
     const t0 = Date.now();
+    cur.current = null; // free for the next take as soon as the mic file is closed
     await stop();
     try {
       await pushHard(s);
@@ -205,8 +233,7 @@ export function useGptRecorder() {
       if (e instanceof ApiError && (s.t.finished || (e.status < 500 && e.status !== 409))) throw e;
       throw new Error('Saved on this phone. It goes to the PC when it can be reached.');
     } finally {
-      close(s);
-      if (cur.current === s) cur.current = null;
+      closeFile(s);
       void recover(s.t.id);
     }
   }, [stop]);
@@ -222,9 +249,13 @@ export function useGptRecorder() {
         await pushHard(s);
         await call('POST', `/pc/take/${s.t.id}/finish`, { bytes: s.t.sent, to: 'none' });
         s.t.finished = true; remember(s.t);
-      } catch {} finally { close(s); }
+      } catch {} finally { closeFile(s); }
     });
   }, [stop]);
 
-  return { start, finish, cancel, live, offline };
+  /** Keep the mic open `ms` after each take (0: close at once); `cold` runs when it finally closes. */
+  const setWarm = useCallback((ms: number, cold?: () => void) => { warmFor.current = ms; onCold.current = cold ?? null; }, []);
+  const recording = useCallback(() => !!cur.current, []);
+
+  return { start, finish, cancel, live, offline, setWarm, close, recording };
 }

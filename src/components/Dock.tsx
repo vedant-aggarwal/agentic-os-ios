@@ -2,9 +2,9 @@ import { BlurView } from 'expo-blur';
 import { GlassView, isGlassEffectAPIAvailable, isLiquidGlassAvailable } from 'expo-glass-effect';
 import * as Haptics from 'expo-haptics';
 import { useEffect, useRef, useState } from 'react';
-import { type GestureResponderEvent, Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { type GestureResponderEvent, Platform, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import Animated, {
-  Easing, ReduceMotion, useAnimatedProps, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withSpring, withTiming,
+  Easing, ReduceMotion, useAnimatedProps, useAnimatedStyle, useReducedMotion, useSharedValue, withDelay, withRepeat, withSpring, withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
 import Svg, { Circle, Defs, G, LinearGradient, Path, RadialGradient, Stop, Text as SvgText } from 'react-native-svg';
@@ -38,7 +38,7 @@ const DIAL_W = 36;
 const PICK_W = 42; // chosen: a little thicker than an idle wedge, not a new shape
 const LABEL_R = 178;
 const CAN = 200; // half-size of each wedge's canvas, centred on the orb
-const PICK_MIN = 60; // finger must be this far from the orb's centre to choose
+const PICK_MIN = 40; // choosing starts as soon as the finger is off the ball (radius 36)
 
 // Liquid Glass is iOS 26+. Older iOS, web and Android get blur under a black tint.
 const LIQUID = (() => {
@@ -49,9 +49,9 @@ const LIQUID = (() => {
 const tap = (fn: () => Promise<void>) => { if (Platform.OS !== 'web') fn().catch(() => {}); };
 
 // ---- the ring: nine sections over the top of the orb, 9 o'clock to 3 o'clock, as on UI2-Today ----
-// Grouped Self, Work, People. Inside each group the aspects are ordered so the colours sweep one way round
-// the arc: orange, amber, gold | lime, mint, teal | violet, magenta, pink.
-const WHEEL: AspectKey[] = ['body', 'mind', 'soul', 'growth', 'mission', 'money', 'friends', 'romance', 'family'];
+// Grouped Self, Work, People. Inside each group the aspects are ordered so the colours run as one spectrum
+// round the arc: orange, amber, gold | green, mint, teal | violet, magenta, pink.
+const WHEEL: AspectKey[] = ['body', 'mind', 'soul', 'money', 'mission', 'growth', 'friends', 'romance', 'family'];
 const GROUPS: { key: FamilyKey; from: number }[] = [{ key: 'self', from: 0 }, { key: 'work', from: 3 }, { key: 'people', from: 6 }];
 const LABEL: Record<AspectKey, string> = {
   body: 'Body', mind: 'Mind', soul: 'Soul', mission: 'Mission', money: 'Money', growth: 'Growth',
@@ -143,6 +143,8 @@ function Ring({ aspects }: { aspects: AspectProgress }) {
 const OPEN = { duration: 320, dampingRatio: 0.88, reduceMotion: ReduceMotion.System } as const;
 const CLOSE = { duration: 300, dampingRatio: 1, reduceMotion: ReduceMotion.System } as const;
 const SWAP = { duration: 260, dampingRatio: 0.9, reduceMotion: ReduceMotion.System } as const;
+const POP = { duration: 420, dampingRatio: 0.6, reduceMotion: ReduceMotion.System } as const; // the chosen wedge springs out past its size
+const SLIDE = { duration: 340, dampingRatio: 0.82, reduceMotion: ReduceMotion.System } as const;
 
 const APath = Animated.createAnimatedComponent(Path);
 const clamp01 = (v: number) => { 'worklet'; return Math.min(Math.max(v, 0), 1); };
@@ -151,17 +153,22 @@ const clamp01 = (v: number) => { 'worklet'; return Math.min(Math.max(v, 0), 1); 
  * One wedge: its ring section, grown outward along the same angle as the dial opens. The lit part (how much of
  * that aspect is done) grows with it. Chosen, it swells into its neighbours' room and the rest fall away.
  */
-function Wedge({ i, open, state, progress }: {
-  i: number; open: SharedValue<number>; state: 'idle' | 'picked' | 'hidden'; progress?: { done: number; total: number };
+function Wedge({ i, open, state, pick, progress }: {
+  i: number; open: SharedValue<number>; state: 'idle' | 'picked' | 'hidden'; pick: number; progress?: { done: number; total: number };
 }) {
   const w = DIAL[i];
   const e = useSharedValue(0); // -1 hidden, 0 idle, 1 chosen
-  useEffect(() => { e.set(withSpring(state === 'picked' ? 1 : state === 'hidden' ? -1 : 0, SWAP)); }, [state, e]);
+  useEffect(() => {
+    // chosen pops out; the rest fall away in a ripple outward from it
+    if (state === 'picked') e.set(withSpring(1, POP));
+    else if (state === 'hidden') e.set(withDelay(Math.abs(i - pick) * 22, withSpring(-1, SWAP)));
+    else e.set(withSpring(0, SWAP));
+  }, [state, pick, i, e]);
   const frac = progress?.total ? Math.min(progress.done / progress.total, 1) : 0;
   const has = !!progress?.total;
   const track = useAnimatedProps(() => {
     const o = open.value, pick = Math.max(e.value, 0), g = wedgeShape(w.mid, o, e.value);
-    const dim = 0.6 + (0.5 - 0.6) * o; // the ring's track; as a wedge, bright enough to read its colour
+    const dim = 0.6; // the ring's track, and the wedge's: every colour reads, lit parts at full
     return { d: sector(CAN, g.ri, g.ro, g.a0, g.a1, g.rc), fillOpacity: dim + (1 - dim) * pick, strokeOpacity: 0.28 * pick };
   });
   const lit = useAnimatedProps(() => {
@@ -226,7 +233,7 @@ function GroupBand({ g, open, state, progress }: {
           {/* set along the band, so it reads as part of it */}
           <SvgText x={lx} y={ly + 4} textAnchor="middle" fontFamily={F.semibold} fontSize={11} fill={C.text}
             transform={`rotate(${mid > 180 ? mid - 360 : mid} ${lx} ${ly})`}>
-            {progress.total ? `${FAMILY_LABEL[g.key]}  ${progress.done}/${progress.total}` : FAMILY_LABEL[g.key]}
+            {FAMILY_LABEL[g.key]}
           </SvgText>
         </Svg>
       </Animated.View>
@@ -234,13 +241,31 @@ function GroupBand({ g, open, state, progress }: {
   );
 }
 
+/** One aspect's name in the title row. It sits centred when chosen and slides off sideways as the choice moves. */
+function TitleWord({ i, pos, shown }: { i: number; pos: SharedValue<number>; shown: SharedValue<number> }) {
+  const st = useAnimatedStyle(() => {
+    const d = i - pos.value, near = Math.min(Math.abs(d), 1);
+    return {
+      opacity: shown.value * clamp01(1 - Math.abs(d) * 1.6),
+      transform: [{ translateX: d * 64 }, { translateY: (1 - shown.value) * 12 }, { scale: (0.9 + 0.1 * shown.value) * (1 - 0.12 * near) }],
+    };
+  });
+  const k = WHEEL[i];
+  return <Animated.Text style={[s.dialWord, { color: ASPECT_COLOR[k] }, st]}>{LABEL[k]}</Animated.Text>;
+}
+
 function DialLayer({ cx, cy, open, pick, aspects }: {
   cx: number; cy: number; open: SharedValue<number>; pick: number; aspects: AspectProgress;
 }) {
   // the scrim and title come in over the second half, so a quick tap only nudges the ring
   const fade = useAnimatedStyle(() => ({ opacity: clamp01((open.value - 0.5) / 0.5) }));
-  const k = pick >= 0 ? WHEEL[pick] : null;
-  const p = k ? aspects[k] : undefined;
+  // the chosen aspect's name, big above the dial; switching slides the names along like the finger
+  const pos = useSharedValue(0), shown = useSharedValue(0);
+  useEffect(() => {
+    if (pick < 0) { shown.set(withSpring(0, CLOSE)); return; }
+    if (shown.get() < 0.05) pos.set(pick); else pos.set(withSpring(pick, SLIDE));
+    shown.set(withSpring(1, SLIDE));
+  }, [pick, pos, shown]);
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
       <Animated.View style={[StyleSheet.absoluteFill, fade]}>
@@ -256,13 +281,12 @@ function DialLayer({ cx, cy, open, pick, aspects }: {
           return <GroupBand key={g.key} g={g} open={open} progress={sum} state={pick < 0 ? 'idle' : mine ? 'active' : 'dim'} />;
         })}
         {WHEEL.map((key, i) => (
-          <Wedge key={key} i={i} open={open} progress={aspects[key]} state={pick < 0 ? 'idle' : pick === i ? 'picked' : 'hidden'} />
+          <Wedge key={key} i={i} open={open} pick={pick} progress={aspects[key]} state={pick < 0 ? 'idle' : pick === i ? 'picked' : 'hidden'} />
         ))}
       </View>
-      <Animated.View style={[s.dialTitle, { top: cy - LABEL_R - 84 }, fade]}>
-        <Text style={s.dialHead}>{k ? `Release to open ${LABEL[k]}` : 'Slide to an aspect'}</Text>
-        <Text style={s.dialSub}>{k ? (p?.total ? `${p.done} of ${p.total} done today` : 'Nothing due today') : 'Let go to close'}</Text>
-      </Animated.View>
+      <View style={[s.dialTitle, { top: cy - LABEL_R - 72 }]}>
+        {WHEEL.map((key, i) => <TitleWord key={key} i={i} pos={pos} shown={shown} />)}
+      </View>
     </View>
   );
 }
@@ -517,7 +541,9 @@ const s = StyleSheet.create({
   },
   clip: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: ORB_R, overflow: 'hidden' },
   wedge: { position: 'absolute', left: 0, top: 0, width: CAN * 2, height: CAN * 2 },
-  dialTitle: { position: 'absolute', left: 24, right: 24, alignItems: 'center', gap: 4 },
-  dialHead: { fontFamily: F.semibold, fontSize: 16, lineHeight: 24, color: C.text },
-  dialSub: { fontFamily: F.regular, fontSize: 12, lineHeight: 16, color: C.muted },
+  dialTitle: { position: 'absolute', left: 0, right: 0, height: 44 },
+  dialWord: {
+    position: 'absolute', left: 0, right: 0, textAlign: 'center',
+    fontFamily: F.semibold, fontSize: 34, lineHeight: 44, letterSpacing: -0.8,
+  },
 });

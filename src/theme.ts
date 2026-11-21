@@ -26,7 +26,7 @@ export type FamilyKey = 'self' | 'work' | 'people';
 
 export const ASPECT_COLOR: Record<AspectKey, string> = {
   body: '#FF8A5B', mind: '#FFB547', soul: '#FFD27A',
-  mission: '#3DDC97', money: '#2EC4B6', growth: '#7EE787',
+  mission: '#3DDC97', money: '#62D96B', growth: '#2EC4B6', // green, mint, teal
   family: '#FF7AB6', romance: '#F472D0', friends: '#B79CFF',
 };
 

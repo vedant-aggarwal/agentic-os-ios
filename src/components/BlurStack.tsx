@@ -1,7 +1,8 @@
 import { BlurView } from 'expo-blur';
 import { StyleSheet, View } from 'react-native';
 
-export type EdgeBlurProps = { height: number; strength?: number };
+/** strength: blur at the bottom edge (iOS: strength x 0.4 pt). curve: the blur grows as t^curve from the top. */
+export type EdgeBlurProps = { height: number; strength?: number; curve?: number };
 
 /** Thin expo-blur layers, each starting lower, whose strengths sum to a quadratic ramp toward the bottom. */
 export function BlurStack({ height, strength = 40, steps = 12 }: EdgeBlurProps & { steps?: number }) {

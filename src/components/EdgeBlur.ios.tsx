@@ -31,11 +31,9 @@ try {
 // alpha = t^2 at t = 0, .2, .4, .6, .8, 1 (SwiftUI spaces the colours evenly)
 const FADE = ['#00000000', '#0000000A', '#00000029', '#0000005C', '#000000A3', '#000000FF'];
 
-export function EdgeBlur({ height, strength = 40 }: EdgeBlurProps) {
+export function EdgeBlur({ height, strength = 40, curve = 1.8 }: EdgeBlurProps) {
   if (Variable) {
-    // strength 25 -> 10 pt of blur at the bottom edge, growing as t^1.8 from nothing at the top: barely there
-    // for the first third, then a long steady build rather than a jump near the bottom
-    return <Variable pointerEvents="none" radius={strength * 0.4} curve={1.8} style={[s.edge, { height }]} />;
+    return <Variable pointerEvents="none" radius={strength * 0.4} curve={curve} style={[s.edge, { height }]} />;
   }
   if (!ui) return <BlurStack height={height} strength={strength} />;
   const { Host, Mask, Rectangle } = ui.UI;

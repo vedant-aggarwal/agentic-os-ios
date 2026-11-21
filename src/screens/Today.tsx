@@ -140,7 +140,9 @@ export default function Today() {
         </View>
       </ScrollView>
 
-      <EdgeBlur height={insets.bottom + 150} strength={25} />
+      {/* t^2.6 over the zone: about 1 pt where the navbar's top edge sits (40% down), then dense under the
+          bar, 14 pt at the bottom edge */}
+      <EdgeBlur height={insets.bottom + 150} strength={35} curve={2.6} />
       <EdgeGlow height={insets.bottom + 200} orb={orb} />
       <Notice text={local ?? t.notice} bottom={insets.bottom + 112} onClear={clear} />
       <Dock bottom={insets.bottom} width={width} aspects={v.aspects} onNotBuilt={notBuilt} />

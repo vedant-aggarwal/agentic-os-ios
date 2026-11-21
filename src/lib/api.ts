@@ -32,6 +32,7 @@ const store: Store = (() => {
 let token: string | null = null;
 export async function loadToken() { token = await store.get(); return token; }
 export async function setToken(v: string | null) { token = v; await store.set(v); }
+export const currentToken = () => token;
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }

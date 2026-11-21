@@ -14,7 +14,7 @@ import { PcMicSheet } from '@/components/PcMicSheet';
 import { micCenter, TOP_GAP, TOP_H, TopBar } from '@/components/TopBar';
 import { signOut } from '@/lib/api';
 import { useToday } from '@/lib/useToday';
-import { useWispr, volumeButtonsAvailable } from '@/lib/wispr';
+import { useWispr } from '@/lib/wispr';
 import { C, F } from '@/theme';
 
 /** One light falling from above onto the crystals, over the app background. */
@@ -116,7 +116,7 @@ export default function Today() {
       <Dock bottom={insets.bottom} width={width} aspects={v.aspects} onNotBuilt={notBuilt} />
       {/* opens by itself while a volume press has Wispr going, and closes once it has sent */}
       <PcMicSheet open={micOpen || mic.phase !== 'idle'} origin={micCenter(insets.top, width)} phase={mic.phase} since={mic.since}
-        error={mic.error} volumeReady={volumeButtonsAvailable}
+        error={mic.error}
         onClose={() => { setMicOpen(false); if (mic.phase === 'handsfree') mic.toggleHandsFree(); }}
         onTalkIn={mic.startTalk} onTalkOut={mic.endTalk} onHandsFree={mic.toggleHandsFree} />
     </View>

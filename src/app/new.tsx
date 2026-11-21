@@ -37,6 +37,22 @@ const ORDER: Slot[] = [...YOUTUBE, ...INSTAGRAM];
 type Chat = { role: 'you' | 'kai'; text: string; error?: string };
 const key = (v: number, i: number) => `${v}:${i}`;
 
+/** Everything one channel's page holds. Each channel keeps its own, so switching channels mid-draft loses nothing. */
+type Board = {
+  raw: string;
+  strength: number;
+  directionId: string | null;
+  other: string;
+  versions: Concept[][];
+  vi: number;
+  picked: string[];
+  chat: Chat[];
+  say: string;
+  busy: 'draft' | 'refine' | null;
+  error: string | null;
+};
+const EMPTY: Board = { raw: '', strength: 2, directionId: null, other: '', versions: [], vi: 0, picked: [], chat: [], say: '', busy: null, error: null };
+
 /**
  * Concept Generator: pick a channel, see what works there, give a raw idea (typed or spoken) and how closely to
  * follow it, then draft concepts. Each draft or chat change is a version; picks can come from any version.
@@ -51,23 +67,30 @@ export default function ConceptGenerator() {
   const SHEET = H - TOP;
 
   const [channelId, setChannelId] = useState<string | null>(ORDER.some((s) => s.channelId === params.channel) ? String(params.channel) : null);
-  const [raw, setRaw] = useState(params.idea ? String(params.idea) : '');
-  const [strength, setStrength] = useState(2);
-  const [directionId, setDirectionId] = useState<string | null>(null);
-  const [other, setOther] = useState('');
-  const [versions, setVersions] = useState<Concept[][]>([]);
-  const [vi, setVi] = useState(0);
-  const [picked, setPicked] = useState<string[]>([]);
+  const [seedIdea] = useState(params.idea ? String(params.idea) : '');
+  const [boards, setBoards] = useState<Record<string, Board>>({});
   const [editing, setEditing] = useState<{ v: number; i: number } | null>(null);
-  const [chat, setChat] = useState<Chat[]>([]);
-  const [say, setSay] = useState('');
-  const [busy, setBusy] = useState<'draft' | 'refine' | null>(null);
   const [building, setBuilding] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [buildError, setBuildError] = useState<string | null>(null);
   const [flying, setFlying] = useState(false);
   const [kb, setKb] = useState(false);
   const sessionId = useRef('c' + Date.now().toString(36)).current;
-  const cancel = useRef<(() => void) | null>(null);
+  const cancels = useRef<Record<string, () => void>>({});
+  const current = useRef(channelId);
+  current.current = channelId;
+
+  /** Change one channel's board; streaming replies keep landing on their own channel even after switching. */
+  const upd = (ch: string, f: (b: Board) => Partial<Board>) =>
+    setBoards((all) => {
+      const b = all[ch] || { ...EMPTY, raw: seedIdea };
+      return { ...all, [ch]: { ...b, ...f(b) } };
+    });
+  const board = (channelId && boards[channelId]) || { ...EMPTY, raw: seedIdea };
+  const { raw, strength, directionId, other, versions, vi, picked, chat, say, busy } = board;
+  const error = board.error || buildError;
+  const set = (patch: Partial<Board>) => channelId && upd(channelId, () => patch);
+  const setRaw = (t: string) => set({ raw: t });
+  const setSay = (t: string) => set({ say: t });
 
   const dirs = useDirections();
   const slot = ORDER.find((s) => s.channelId === channelId);
@@ -81,13 +104,17 @@ export default function ConceptGenerator() {
     return () => {
       a.remove();
       b.remove();
-      cancel.current?.();
-      resetSession('refine:' + sessionId);
+      const all = cancels.current;
+      Object.keys(all).forEach((ch) => {
+        all[ch]?.();
+        resetSession(`refine:${sessionId}:${ch}`);
+      });
     };
   }, [sessionId]);
 
   // ---------- scrolling helpers ----------
   const scroller = useRef<ComponentRef<typeof ScrollView>>(null);
+  const chatScroll = useRef<ComponentRef<typeof ScrollView>>(null);
   const ys = useRef<Record<string, number>>({});
   const at = (name: string) => (e: { nativeEvent: { layout: { y: number } } }) => (ys.current[name] = e.nativeEvent.layout.y);
   const scrollToY = (y: number, delay = 80) => setTimeout(() => scroller.current?.scrollTo({ y: Math.max(0, y), animated: true }), delay);
@@ -167,16 +194,9 @@ export default function ConceptGenerator() {
   // ---------- actions ----------
   const pickChannel = (id: string) => {
     if (id === channelId) return;
-    cancel.current?.();
-    resetSession('refine:' + sessionId);
     setChannelId(id);
-    setVersions([]);
-    setVi(0);
-    setPicked([]);
-    setChat([]);
-    setDirectionId(null);
-    setBusy(null);
-    setError(null);
+    setEditing(null);
+    setBuildError(null);
   };
 
   const direction = () => ({ directionId: dirId || '', directionOther: dirId === 'other' ? other.trim() : '' });
@@ -184,16 +204,14 @@ export default function ConceptGenerator() {
   /** A new version fills in as concepts stream from the PC. */
   const draft = () => {
     if (!channelId || busy) return;
+    const ch = channelId;
     Keyboard.dismiss();
-    setError(null);
-    setBusy('draft');
     const v = versions.length;
-    setVersions((vs) => [...vs, []]);
-    setVi(v);
+    upd(ch, (b) => ({ error: null, busy: 'draft', versions: [...b.versions, []], vi: v }));
     scrollToY(pad('concepts') - 8, 150);
     let got = 0;
-    cancel.current = live('draft', {
-      channelId,
+    cancels.current[ch] = live('draft', {
+      channelId: ch,
       direction: raw.trim(),
       strength,
       ...direction(),
@@ -201,17 +219,15 @@ export default function ConceptGenerator() {
     }, {
       onConcept: (c) => {
         got++;
-        setVersions((vs) => vs.map((x, j) => (j === v ? [...x, c] : x)));
+        upd(ch, (b) => ({ versions: b.versions.map((x, j) => (j === v ? [...x, c] : x)) }));
       },
-      onDone: () => setBusy(null),
-      onError: (e) => {
-        setBusy(null);
-        setError(e);
-        if (!got) {
-          setVersions((vs) => vs.filter((_, j) => j !== v));
-          setVi((x) => Math.max(0, Math.min(x, v - 1)));
-        }
-      },
+      onDone: () => upd(ch, () => ({ busy: null })),
+      onError: (e) =>
+        upd(ch, (b) =>
+          got
+            ? { busy: null, error: e }
+            : { busy: null, error: e, versions: b.versions.filter((_, j) => j !== v), vi: Math.max(0, Math.min(b.vi, v - 1)) },
+        ),
     });
   };
 
@@ -219,34 +235,34 @@ export default function ConceptGenerator() {
   const refine = () => {
     const message = say.trim();
     if (!channelId || !message || busy) return;
-    setSay('');
-    setError(null);
-    setBusy('refine');
+    const ch = channelId;
     const turn = chat.length;
-    setChat((c) => [...c, { role: 'you', text: message }, { role: 'kai', text: '' }]);
+    upd(ch, (b) => ({ say: '', error: null, busy: 'refine', chat: [...b.chat, { role: 'you', text: message }, { role: 'kai', text: '' }] }));
     const base = shown;
     const v = versions.length; // no draft can be running (busy), so the next version goes here
     let first = true;
-    cancel.current = live('refine', { sessionId, channelId, message, concepts: base, ...direction() }, {
-      onText: (t) => setChat((c) => c.map((m, j) => (j === turn + 1 ? { ...m, text: m.text + t } : m))),
+    const reply = (f: (m: Chat) => Chat) => upd(ch, (b) => ({ chat: b.chat.map((m, j) => (j === turn + 1 ? f(m) : m)) }));
+    cancels.current[ch] = live('refine', { sessionId: `${sessionId}:${ch}`, channelId: ch, message, concepts: base, ...direction() }, {
+      onText: (t) => reply((m) => ({ ...m, text: m.text + t })),
       onConcept: (c) => {
         if (first) {
           first = false;
-          setVersions((vs) => [...vs, [c]]);
-          setVi(v);
+          upd(ch, (b) => ({ versions: [...b.versions, [c]], vi: v }));
+          if (current.current === ch) scrollToY(pad('concepts') - 8, 120);
           return;
         }
-        setVersions((vs) => vs.map((x, j) => (j === v ? [...x, c] : x)));
+        upd(ch, (b) => ({ versions: b.versions.map((x, j) => (j === v ? [...x, c] : x)) }));
       },
-      onDone: () => setBusy(null),
+      onDone: () => upd(ch, () => ({ busy: null })),
       onError: (e) => {
-        setBusy(null);
-        setChat((c) => c.map((m, j) => (j === turn + 1 ? { ...m, error: e } : m)));
+        upd(ch, () => ({ busy: null }));
+        reply((m) => ({ ...m, error: e }));
       },
     });
   };
 
-  const toggle = (i: number) => setPicked((p) => (p.includes(key(vi, i)) ? p.filter((x) => x !== key(vi, i)) : [...p, key(vi, i)]));
+  const setVi = (n: number) => set({ vi: n });
+  const toggle = (i: number) => set({ picked: picked.includes(key(vi, i)) ? picked.filter((x) => x !== key(vi, i)) : [...picked, key(vi, i)] });
   const chosen = picked.map((k) => { const [v, i] = k.split(':').map(Number); return versions[v]?.[i]; }).filter(Boolean) as Concept[];
   const pickedHere = shown.filter((_, i) => picked.includes(key(vi, i))).length;
   const ready = !!channelId && chosen.length > 0 && !building && !busy;
@@ -254,14 +270,14 @@ export default function ConceptGenerator() {
   const build = async () => {
     if (!ready || !channelId) return;
     setBuilding(true);
-    setError(null);
+    setBuildError(null);
     try {
       // What Vedant told Kai while refining is direction for the structure too.
       const notes = chat.filter((m) => m.role === 'you').map((m) => m.text).join(' / ').slice(0, 2000);
       await createReels({ channelId, ideas: chosen, notes, mode: 'separate', ...direction() });
       flyAway(channelId);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setBuildError(e instanceof Error ? e.message : String(e));
       setBuilding(false);
     }
   };
@@ -347,13 +363,13 @@ export default function ConceptGenerator() {
               <>
                 <ChannelContext channelId={slot.channelId} />
 
-                <DirectionPicker channelId={slot.channelId} value={dirId} onChange={setDirectionId} other={other} onOther={setOther} />
+                <DirectionPicker channelId={slot.channelId} value={dirId} onChange={(id) => set({ directionId: id })} other={other} onOther={(t) => set({ other: t })} />
 
                 <View onLayout={at('raw')}>
                   <Text style={styles.h2}>Raw idea</Text>
                   <VoiceField value={raw} onChangeText={setRaw} placeholder="Type or say your idea" minHeight={88} onFocus={() => scrollToY(pad('raw') - 12, 300)} />
                 </View>
-                <StrengthSlider value={strength} onChange={setStrength} disabled={!raw.trim()} />
+                <StrengthSlider value={strength} onChange={(n) => set({ strength: n })} disabled={!raw.trim()} />
 
                 <Press style={[styles.draft, !!busy && { opacity: 0.6 }]} disabled={!!busy} onPress={draft} accessibilityLabel="Draft concepts with AI">
                   {busy === 'draft' ? <ActivityIndicator color={C.ink} /> : <SparkIcon size={18} />}
@@ -392,19 +408,30 @@ export default function ConceptGenerator() {
 
                       <View onLayout={at('chat')}>
                         <Text style={styles.h2}>Shape them with Kai</Text>
-                        {chat.length ? (
-                          <View style={{ gap: 8, marginBottom: 10 }}>
-                            {chat.map((m, i) => (
-                              <View key={i} style={[styles.bubble, m.role === 'you' ? styles.mine : styles.theirs]}>
-                                {m.role === 'kai' && !m.text && !m.error ? (
-                                  <ActivityIndicator size="small" color={C.muted} />
-                                ) : (
-                                  <Text style={[styles.bubbleText, m.role === 'you' && { color: '#fff' }]}>{m.error ? m.error : m.text.trim()}</Text>
-                                )}
-                              </View>
-                            ))}
-                          </View>
-                        ) : null}
+                        {/* A fixed-height panel: the chat scrolls inside it instead of stretching the page. */}
+                        <View style={styles.chatBox}>
+                          <ScrollView
+                            ref={chatScroll}
+                            style={styles.chatScroll}
+                            contentContainerStyle={{ gap: 8, padding: 10 }}
+                            nestedScrollEnabled
+                            onContentSizeChange={() => chatScroll.current?.scrollToEnd({ animated: true })}
+                          >
+                            {chat.length ? (
+                              chat.map((m, i) => (
+                                <View key={i} style={[styles.bubble, m.role === 'you' ? styles.mine : styles.theirs]}>
+                                  {m.role === 'kai' && !m.text && !m.error ? (
+                                    <ActivityIndicator size="small" color={C.muted} />
+                                  ) : (
+                                    <Text style={[styles.bubbleText, m.role === 'you' && { color: '#fff' }, m.error && { color: '#B4232F' }]}>{m.error ? m.error : m.text.trim()}</Text>
+                                  )}
+                                </View>
+                              ))
+                            ) : (
+                              <Text style={styles.chatHint}>Tell Kai what to change: hooks, titles, tone, merge or replace. Each change comes back as a new version above.</Text>
+                            )}
+                          </ScrollView>
+                        </View>
                         <VoiceField
                           value={say}
                           onChangeText={setSay}
@@ -449,7 +476,7 @@ export default function ConceptGenerator() {
           onClose={() => setEditing(null)}
           onSave={(c) => {
             const e = editing;
-            setVersions((vs) => vs.map((x, j) => (j === e.v ? x.map((y2, k) => (k === e.i ? c : y2)) : x)));
+            set({ versions: versions.map((x, j) => (j === e.v ? x.map((y2, k) => (k === e.i ? c : y2)) : x)) });
             setEditing(null);
           }}
         />
@@ -601,6 +628,9 @@ const styles = StyleSheet.create({
   cWhy: { marginTop: 8, fontFamily: F.m, fontSize: 13, lineHeight: 18, color: C.growInk },
   tick: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: C.empty, alignItems: 'center', justifyContent: 'center' },
   tickOn: { backgroundColor: C.ink, borderColor: C.ink },
+  chatBox: { marginBottom: 8, borderRadius: 20, backgroundColor: C.card, overflow: 'hidden' },
+  chatScroll: { maxHeight: 220 },
+  chatHint: { padding: 4, fontFamily: F.r, fontSize: 14, lineHeight: 20, color: C.muted },
   bubble: { maxWidth: '86%', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 18 },
   mine: { alignSelf: 'flex-end', backgroundColor: C.ink, borderBottomRightRadius: 6 },
   theirs: { alignSelf: 'flex-start', backgroundColor: C.card, borderBottomLeftRadius: 6 },

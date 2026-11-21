@@ -141,3 +141,30 @@ export const Check = ({ size = 14, color = '#fff' }: P) => (
     <Path d="M5 12.5l4.5 4.5L19 7.5" />
   </Svg>
 );
+
+/** Kai in the dock: a sparkle drawn at the same size and stroke as the other tab icons. */
+export const KaiIcon = ({ size = 22, color = '#5E6169' }: P) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.7} strokeLinejoin="round">
+    <Path d="M10.5 3c.5 4.4 2.2 6.6 7 7.4-4.8.8-6.5 3-7 7.4-.5-4.4-2.2-6.6-7-7.4 4.8-.8 6.5-3 7-7.4z" />
+    <Path d="M18.5 14.6c.25 2 1 3 3 3.4-2 .4-2.75 1.4-3 3.4-.25-2-1-3-3-3.4 2-.4 2.75-1.4 3-3.4z" />
+  </Svg>
+);
+
+export const LockIcon = ({ size = 18, color = '#141414' }: P) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <Path d="M6 11h12v9H6z" />
+    <Path d="M8.5 11V8a3.5 3.5 0 0 1 7 0v3" />
+  </Svg>
+);
+
+export const XIcon = ({ size = 18, color = '#141414' }: P) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2.2} strokeLinecap="round">
+    <Path d="M6 6l12 12M18 6L6 18" />
+  </Svg>
+);
+
+export const SendArrow = ({ size = 26, color = '#fff' }: P) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
+    <Path d="M12 19V5M6 11l6-6 6 6" />
+  </Svg>
+);

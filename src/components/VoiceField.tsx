@@ -11,12 +11,19 @@ type Props = { value: string; onChangeText: (t: string) => void; placeholder: st
 /** A text box with a mic: speech streams in live (Codex dictation through the PC) and is added after what is already typed. */
 export function VoiceField({ value, onChangeText, placeholder, minHeight = 96, maxLength = 2000, onFocus, autoFocus, right }: Props) {
   const base = useRef('');
-  const { state, error, start, stop } = useDictation((text) => {
+  const { state, error, start, stop, cancel } = useDictation((text) => {
     if (!text) return; // an empty end (error or no speech) keeps what is already there
     const b = base.current;
     onChangeText((b && text ? b.replace(/\s+$/, '') + ' ' : b) + text);
   });
   const on = state !== 'idle';
+
+  // The message was sent (the box was emptied from outside) while the mic was on: stop listening and drop the rest.
+  const prev = useRef(value);
+  useEffect(() => {
+    if (prev.current && !value && state !== 'idle') cancel();
+    prev.current = value;
+  }, [value, state, cancel]);
 
   const pulse = useSharedValue(0);
   useEffect(() => {

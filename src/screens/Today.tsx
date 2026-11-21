@@ -6,7 +6,7 @@ import { Backdrop, EdgeGlow } from '@/components/Backdrop';
 import { EdgeBlur } from '@/components/EdgeBlur';
 import { Crystals } from '@/components/Crystals';
 import { Dock, orbFromBottom } from '@/components/Dock';
-import { Lock, Mood, PcMic, Remote, ToPc, Voices } from '@/components/Icons';
+import { PcMic, Remote, ToPc, Voices } from '@/components/Icons';
 import { Notice } from '@/components/Notice';
 import { NowCard } from '@/components/NowCard';
 import { SignIn } from '@/components/SignIn';
@@ -45,13 +45,6 @@ function Action({ label, onPress, children }: { label: string; onPress: () => vo
   );
 }
 
-function IconButton({ label, onPress, children }: { label: string; onPress: () => void; children: React.ReactNode }) {
-  return (
-    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} hitSlop={4}
-      style={({ pressed }) => [s.iconBtn, pressed && { opacity: 0.6 }]}>{children}</Pressable>
-  );
-}
-
 export default function Today() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -83,23 +76,10 @@ export default function Today() {
       <Backdrop orb={orb} />
       <Scene width={width} />
       <ScrollView
-        contentContainerStyle={{ flexGrow: 1, paddingTop: insets.top + 4 }}
+        contentContainerStyle={{ flexGrow: 1, paddingTop: insets.top + 16 }}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={t.refreshing} onRefresh={t.refresh} tintColor={C.muted} />}>
         <View style={s.top}>
-          <Pressable accessibilityRole="button" onPress={() => notBuilt('Your board')} style={s.handle}>
-            <View style={s.handleBar} />
-            <Text style={s.handleText}>Your board</Text>
-          </Pressable>
-
-          <View style={s.dateRow}>
-            <Text style={s.date}>{v.dateLabel}</Text>
-            <View style={s.dateIcons}>
-              <IconButton label="Log mood" onPress={() => notBuilt('Mood')}><Mood /></IconButton>
-              <IconButton label="Your reason, sealed" onPress={() => notBuilt('Sealed reason')}><Lock /></IconButton>
-            </View>
-          </View>
-
           <View style={s.actions}>
             <Action label="To PC" onPress={() => notBuilt('To PC')}><ToPc /></Action>
             <Action label="PC mic" onPress={() => notBuilt('PC mic')}><PcMic /></Action>
@@ -154,13 +134,6 @@ const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: C.scene },
   center: { alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
   top: { paddingHorizontal: 16, gap: 12 },
-  handle: { alignItems: 'center', gap: 4, minHeight: 44, justifyContent: 'center' },
-  handleBar: { width: 36, height: 4, borderRadius: 2, backgroundColor: '#33363B' },
-  handleText: { fontFamily: F.regular, fontSize: 12, lineHeight: 16, color: C.faint },
-  dateRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  date: { fontFamily: F.medium, fontSize: 16, lineHeight: 24, color: C.textSoft },
-  dateIcons: { flexDirection: 'row', marginRight: -10 },
-  iconBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   actions: { flexDirection: 'row' },
   action: { flex: 1, alignItems: 'center', gap: 6 },
   actionCircle: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: C.glass, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.08)' },

@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
-import { Avatar } from './Avatar';
+import { Avatar, type WeekDay } from './Avatar';
 import { Eye, Heart, Person } from './Icons';
 import { Press } from './Press';
 import { addDays, compact, slotsFor, weekStart, type Channel } from '@/lib/api';
@@ -15,7 +15,6 @@ export function isLive(slot: Slot, ch?: Channel) {
 
 export function Tile({ slot, ch, today }: Props) {
   const live = isLive(slot, ch);
-  const color = slot.platform === 'youtube' ? C.yt : C.ig;
 
   if (!live) {
     return (
@@ -31,23 +30,27 @@ export function Tile({ slot, ch, today }: Props) {
   const views = s.weekViews ?? s.totalViews ?? null;
   const second = views != null ? { Icon: Eye, value: views } : s.weekLikes != null ? { Icon: Heart, value: s.weekLikes } : null;
   const start = weekStart(today);
-  const week = Array.from({ length: 7 }, (_, i) => {
+  let posted = 0;
+  const week: WeekDay[] = Array.from({ length: 7 }, (_, i) => {
     const d = addDays(start, i);
-    if (d === today) return 'today';
-    if (d > today) return 'future';
+    if (d > today) return { state: 'future', today: false };
     const st = slotsFor(ch!, d, today).states;
     const done = st.filter((x) => x === 'posted').length;
-    return done === 0 ? 'none' : done >= st.length ? 'full' : 'part';
+    posted += done;
+    return { state: done === 0 ? 'none' : done >= st.length ? 'full' : 'part', today: d === today };
   });
+  const target = Math.max(ch!.perDay, 1) * 7;
+  // Needs you: a post is due today and nothing is posted or queued for it yet.
+  const due = slotsFor(ch!, today, today).states.filter((x) => x === 'open').length;
 
   return (
     <Press
       style={[styles.tile, { backgroundColor: C.card }]}
       onPress={() => router.push(`/channel/${slot.channelId}`)}
-      accessibilityLabel={`${slot.name}: ${compact(s.followers)} ${slot.platform === 'youtube' ? 'subscribers' : 'followers'}`}
+      accessibilityLabel={`${slot.name}: ${compact(s.followers)} ${slot.platform === 'youtube' ? 'subscribers' : 'followers'}, ${posted} of ${target} posts this week${due ? ', post due today' : ''}`}
     >
       <View style={styles.top}>
-        <Avatar slot={slot} size={60} live />
+        <Avatar slot={slot} size={60} live week={week} glow={due > 0} />
         {/* The numbers sit beside the picture so the tile has no dead corner. */}
         <View style={styles.side}>
           <View style={styles.stat}>
@@ -68,20 +71,9 @@ export function Tile({ slot, ch, today }: Props) {
         </View>
       </View>
       <Text numberOfLines={1} style={styles.name}>{slot.name}</Text>
-      <View style={styles.week}>
-        {week.map((w, i) => (
-          <View
-            key={i}
-            style={[
-              styles.bar,
-              w === 'full' && { backgroundColor: color },
-              w === 'part' && { backgroundColor: color, opacity: 0.35 },
-              (w === 'none' || w === 'future') && { backgroundColor: C.empty },
-              w === 'today' && { borderWidth: 1.5, borderColor: C.ink },
-            ]}
-          />
-        ))}
-      </View>
+      <Text style={styles.weekLine}>
+        <Text style={styles.weekNum}>{posted}</Text>/{target} this week
+      </Text>
     </Press>
   );
 }
@@ -97,6 +89,6 @@ const styles = StyleSheet.create({
   note: { marginTop: 2, fontFamily: F.r, fontSize: 14, lineHeight: 20, color: '#6B6E76' },
   stat: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   big: { fontFamily: F.b, fontSize: 18, lineHeight: 22, letterSpacing: -0.3, color: C.ink },
-  week: { marginTop: 'auto', paddingTop: 10, flexDirection: 'row', gap: 3 },
-  bar: { flex: 1, height: 6, borderRadius: 3 },
+  weekLine: { marginTop: 2, fontFamily: F.m, fontSize: 13, lineHeight: 18, color: C.muted },
+  weekNum: { fontFamily: F.b, color: C.ink },
 });

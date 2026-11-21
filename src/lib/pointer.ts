@@ -98,6 +98,9 @@ export function usePointer(active: boolean) {
   // keyboard: "t <text>" types it on the PC, "k <combo>" presses keys ("ctrl+c", "backspace", "f5")
   const type = useCallback((text: string) => { if (text) raw(`t ${text}`); }, [raw]);
   const key = useCallback((combo: string) => { if (combo) raw(`k ${combo}`); }, [raw]);
+  // "kd <key>" / "ku <key>": hold a key down and let it go (hold Alt, tap Tab); the PC lets go of all if this drops
+  const keyDown = useCallback((k: string) => raw(`kd ${k}`), [raw]);
+  const keyUp = useCallback((k: string) => raw(`ku ${k}`), [raw]);
 
-  return { connected: route !== null, route, move, scroll, button, type, key };
+  return { connected: route !== null, route, move, scroll, button, type, key, keyDown, keyUp };
 }

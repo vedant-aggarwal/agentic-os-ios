@@ -1,17 +1,19 @@
 import * as Haptics from 'expo-haptics';
 import { useRef } from 'react';
-import { type GestureResponderEvent, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useScale } from '@/components/Glass';
 import { ScrollWheel } from '@/components/ScrollWheel';
 import type { usePointer } from '@/lib/pointer';
+import { type Finger, useOwnTouches, usePress } from '@/lib/touch';
 import { C, F } from '@/theme';
 
 // A trackpad for the PC. One finger moves the cursor; two fingers scroll (natural direction, like a Mac);
 // a quick tap clicks, a two-finger tap right-clicks. Three- and four-finger swipes do what they do on a Windows
 // precision touchpad: three across switches apps, up opens Task view, down shows the desktop; four across moves
 // between virtual desktops. The two buttons below press and hold like real ones,
-// so holding Left while moving drags. No labels: left is left.
+// so holding Left while moving drags. No labels: left is left. Only fingers that land on the pad count, so a
+// thumb holding a mic button or a click button doesn't throw the cursor around.
 // PC pixels per finger point, before Windows' own acceleration: slow strokes stay precise, quick ones travel.
 const GAIN_SLOW = 1.2;
 const GAIN_FAST = 2.4;
@@ -31,23 +33,20 @@ function swipeCombo(fingers: number, dx: number, dy: number) {
 const tick = () => { if (Platform.OS !== 'web') Haptics.selectionAsync().catch(() => {}); };
 const thud = () => { if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); };
 
-function centroid(e: GestureResponderEvent) {
-  const t = e.nativeEvent.touches;
-  if (!t.length) return { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY, n: 0 };
+function centroid(t: Finger[]) {
   let x = 0, y = 0;
-  for (const p of t) { x += p.pageX; y += p.pageY; }
-  return { x: x / t.length, y: y / t.length, n: t.length };
+  for (const p of t) { x += p.x; y += p.y; }
+  return { x: x / Math.max(t.length, 1), y: y / Math.max(t.length, 1), n: t.length };
 }
 
 function ClickButton({ label, onDown, onUp }: { label: string; onDown: () => void; onUp: () => void }) {
   const p = useScale(0.96);
+  const { props, pressed } = usePress(() => { p.set(p.to); thud(); onDown(); }, () => { p.set(1); onUp(); });
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={label} style={{ flex: 1 }}
-      onPressIn={() => { p.set(p.to); thud(); onDown(); }} onPressOut={() => { p.set(1); onUp(); }}>
-      {({ pressed }) => (
-        <Animated.View style={[s.click, p.style, pressed && s.clickPressed]} />
-      )}
-    </Pressable>
+    <View {...props} style={{ flex: 1 }} accessible accessibilityRole="button" accessibilityLabel={label}
+      onAccessibilityTap={() => { onDown(); onUp(); }}>
+      <Animated.View pointerEvents="none" style={[s.click, p.style, pressed && s.clickPressed]} />
+    </View>
   );
 }
 
@@ -55,12 +54,12 @@ function ClickButton({ label, onDown, onUp }: { label: string; onDown: () => voi
 export function Trackpad({ pc }: { pc: ReturnType<typeof usePointer> }) {
   const g = useRef({ x: 0, y: 0, n: 0, maxN: 0, t0: 0, travel: 0, t: 0, speed: 0, gx: 0, gy: 0 });
 
-  const grant = (e: GestureResponderEvent) => {
-    const c = centroid(e);
+  const grant = (mine: Finger[]) => {
+    const c = centroid(mine);
     g.current = { x: c.x, y: c.y, n: c.n, maxN: c.n, t0: Date.now(), travel: 0, t: Date.now(), speed: 0, gx: 0, gy: 0 };
   };
-  const move = (e: GestureResponderEvent) => {
-    const st = g.current, c = centroid(e);
+  const move = (mine: Finger[]) => {
+    const st = g.current, c = centroid(mine);
     if (c.n !== st.n) { st.x = c.x; st.y = c.y; st.n = c.n; st.maxN = Math.max(st.maxN, c.n); return; } // a finger landed or lifted: no jump
     const dx = c.x - st.x, dy = c.y - st.y, now = Date.now(), d = Math.hypot(dx, dy);
     // finger speed, smoothed so one uneven touch sample doesn't jerk the gain
@@ -80,23 +79,30 @@ export function Trackpad({ pc }: { pc: ReturnType<typeof usePointer> }) {
     if (Date.now() - st.t0 < TAP_MS && st.travel < TAP_PT) { pc.button('c', st.maxN >= 2 ? 'r' : 'l'); tick(); }
   };
 
+  const touches = useOwnTouches({
+    start: (_f, mine) => {
+      if (mine.length === 1) { grant(mine); return; }
+      const st = g.current, c = centroid(mine); // another finger landed: re-anchor so the cursor doesn't jump
+      st.x = c.x; st.y = c.y; st.n = c.n; st.maxN = Math.max(st.maxN, c.n);
+    },
+    move,
+    end: (_f, mine) => {
+      if (!mine.length) { release(); return; }
+      const st = g.current, c = centroid(mine);
+      st.x = c.x; st.y = c.y; st.n = c.n;
+    },
+  });
+
   return (
     <View style={s.wrap}>
       <View style={s.row}>
-      <View style={s.pad}
-        onStartShouldSetResponder={() => true}
-        onMoveShouldSetResponder={() => true}
-        onResponderTerminationRequest={() => false}
-        onResponderGrant={grant}
-        onResponderMove={move}
-        onResponderRelease={release}
-        onResponderStart={(e) => { const st = g.current; st.maxN = Math.max(st.maxN, e.nativeEvent.touches.length); }}>
-        <View pointerEvents="none" style={s.status}>
-          <View style={[s.dot, { backgroundColor: pc.route === 'direct' ? '#3DDC97' : pc.route === 'tunnel' ? '#FFB547' : C.faint }]} />
-          {pc.route === 'direct' ? null : <Text style={s.statusText}>{pc.route === 'tunnel' ? 'Via internet' : 'Connecting'}</Text>}
+        <ScrollWheel onScroll={(dy) => pc.scroll(0, dy)} />
+        <View style={s.pad} {...touches}>
+          <View pointerEvents="none" style={s.status}>
+            <View style={[s.dot, { backgroundColor: pc.route === 'direct' ? '#3DDC97' : pc.route === 'tunnel' ? '#FFB547' : C.faint }]} />
+            {pc.route === 'direct' ? null : <Text style={s.statusText}>{pc.route === 'tunnel' ? 'Via internet' : 'Connecting'}</Text>}
+          </View>
         </View>
-      </View>
-      <ScrollWheel onScroll={(dy) => pc.scroll(0, dy)} />
       </View>
       <View style={s.buttons}>
         <ClickButton label="Left" onDown={() => pc.button('d', 'l')} onUp={() => pc.button('u', 'l')} />

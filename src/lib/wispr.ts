@@ -23,7 +23,7 @@ type Native = { start(): void; stop(): void; addListener(e: 'onPress', cb: (p: {
 const native = Platform.OS === 'ios' ? requireOptionalNativeModule<Native>('VolumeButtons') : null;
 export const volumeButtonsAvailable = !!native;
 
-type Action = 'ptt-down' | 'ptt-up' | 'handsfree' | 'stop' | 'beat' | 'cmd-down' | 'cmd-up' | 'say-down' | 'say-up';
+type Action = 'ptt-down' | 'ptt-up' | 'handsfree' | 'stop' | 'beat' | 'cmd-down' | 'cmd-up' | 'say-down' | 'say-up' | 'cmd-lock' | 'cmd-toggle';
 const haptic = (s: Haptics.ImpactFeedbackStyle) => { if (Platform.OS !== 'web') Haptics.impactAsync(s).catch(() => {}); };
 
 export function useWispr(enabled: boolean) {
@@ -31,11 +31,12 @@ export function useWispr(enabled: boolean) {
   const [error, setError] = useState<string | null>(null);
   const [since, setSince] = useState(0); // when the phase began
   const [command, setCommand] = useState(false); // the command view is open (from the first command until closed)
+  const [locked, setLocked] = useState(false); // a command is listening hands-free: Talk was slid up to lock, or tapped
   const [source, setSourceState] = useState<MicSource>('pc');
   const [sourceNote, setSourceNote] = useState<string | null>(null);
   // gesture state, read and written only in handlers and timers
   const g = useRef({
-    mode: 'idle' as 'idle' | 'ptt' | 'hfHeld' | 'handsfree' | 'stopHeld' | 'cmd',
+    mode: 'idle' as 'idle' | 'ptt' | 'hfHeld' | 'handsfree' | 'stopHeld' | 'cmd' | 'cmdHf',
     ticks: [] as number[], t0: 0, // this press sequence's step times, ms from its first step
     steps: 0, quiet: null as ReturnType<typeof setTimeout> | null, beat: null as ReturnType<typeof setInterval> | null,
     sent: null as ReturnType<typeof setTimeout> | null,
@@ -63,6 +64,7 @@ export function useWispr(enabled: boolean) {
     const st = g.current;
     clearTimers();
     st.mode = 'idle'; st.steps = 0;
+    setLocked(false);
     if (st.sent) clearTimeout(st.sent);
     if (sent) {
       show('sent');
@@ -151,6 +153,8 @@ export function useWispr(enabled: boolean) {
         if (button === 'down') { handsFree(true); quietAfter(QUIET_FIRST, () => { st.mode = 'handsfree'; }); }
         else quietAfter(st.steps > 1 ? QUIET_REPEAT : QUIET_FIRST, endTalk);
         break;
+      case 'cmdHf':
+        break;
       case 'cmd':
         if (button === 'up') quietAfter(st.steps > 1 ? QUIET_REPEAT : QUIET_FIRST, () => endCommand(false));
         break;
@@ -185,7 +189,7 @@ export function useWispr(enabled: boolean) {
   // Leaving with a hold still on lets it go.
   useEffect(() => () => {
     if (g.current.mode === 'ptt') send('ptt-up');
-    if (g.current.mode === 'cmd') send('stop');
+    if (g.current.mode === 'cmd' || g.current.mode === 'cmdHf') send('stop');
     clearTimers();
   }, [send, clearTimers]);
 
@@ -198,6 +202,31 @@ export function useWispr(enabled: boolean) {
   // The Talk button in the command view: hold to say more to the agent.
   const sayIn = useCallback(() => { g.current.ticks = []; startCommand(true); }, [startCommand]);
   const sayOut = useCallback(() => endCommand(true), [endCommand]);
+  // Slid up while holding Talk: the PC turns the hold into hands-free, so he can let go and keep talking.
+  const sayLock = useCallback(() => {
+    const st = g.current;
+    if (st.mode !== 'cmd') return;
+    clearTimers(); // hands-free needs no keep-alive
+    st.mode = 'cmdHf';
+    setLocked(true);
+    send('cmd-lock');
+  }, [clearTimers, send]);
+  // A tap on Talk: sends a locked command, or starts one hands-free.
+  const sayToggle = useCallback(() => {
+    const st = g.current;
+    if (st.mode === 'cmdHf') {
+      send('cmd-toggle');
+      haptic(Haptics.ImpactFeedbackStyle.Light);
+      toIdle(false);
+    } else if (st.mode === 'idle') {
+      st.mode = 'cmdHf';
+      send('cmd-toggle');
+      setLocked(true); setCommand(true); show('command');
+      haptic(Haptics.ImpactFeedbackStyle.Heavy);
+    }
+  }, [send, show, toIdle]);
+  // The PC took the command (or it was stopped elsewhere): a locked one is over.
+  const settle = useCallback(() => { if (g.current.mode === 'cmdHf') toIdle(false); }, [toIdle]);
   const closeCommand = useCallback(() => setCommand(false), []);
   const openCommand = useCallback(() => setCommand(true), []);
   // Phone mic streams this phone's microphone to the PC for Wispr; it needs native audio capture (next build).
@@ -206,5 +235,8 @@ export function useWispr(enabled: boolean) {
     setSourceState(v); setSourceNote(null);
   }, []);
 
-  return { phase, since, error, command, source, sourceNote, setSource, startTalk, endTalk, toggleHandsFree, sayIn, sayOut, closeCommand, openCommand };
+  return {
+    phase, since, error, command, locked, source, sourceNote, setSource, startTalk, endTalk, toggleHandsFree,
+    sayIn, sayOut, sayLock, sayToggle, settle, closeCommand, openCommand,
+  };
 }

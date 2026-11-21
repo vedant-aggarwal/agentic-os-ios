@@ -6,9 +6,11 @@ import Animated, {
   withRepeat, withTiming,
 } from 'react-native-reanimated';
 import { lightTap, useScale } from '@/components/Glass';
+import { LockHint } from '@/components/HoldLock';
 import { PcMic } from '@/components/Icons';
 import { Sym } from '@/components/Sym';
 import type { AgentItem, AgentState } from '@/lib/agent';
+import { useHoldLock } from '@/lib/touch';
 import { ASPECT_COLOR, C, F } from '@/theme';
 
 // Command mode: the bar across the top ("Command mode", what the agent is doing, Stop or start over) and the
@@ -77,14 +79,11 @@ function Row({ it }: { it: AgentItem }) {
   );
 }
 
-function PadButton({ label, icon, onIn, onOut, onPress, active }: {
-  label: string; icon: React.ReactNode; onIn?: () => void; onOut?: () => void; onPress?: () => void; active?: boolean;
-}) {
+function PadButton({ label, icon, onPress, active }: { label: string; icon: React.ReactNode; onPress: () => void; active?: boolean }) {
   const p = useScale(0.96);
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={label} style={{ flex: 1 }}
-      onPressIn={() => { p.set(p.to); if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); onIn?.(); }}
-      onPressOut={() => { p.set(1); onOut?.(); }} onPress={onPress}>
+      onPressIn={() => p.set(p.to)} onPressOut={() => p.set(1)} onPress={onPress}>
       {({ pressed }) => (
         <Animated.View style={[s.btn, p.style, (pressed || active) && s.btnOn]}>{icon}</Animated.View>
       )}
@@ -92,9 +91,38 @@ function PadButton({ label, icon, onIn, onOut, onPress, active }: {
   );
 }
 
+/** Talk: hold to speak to the agent, slide up while holding to lock it on, then tap to send. A tap on its own starts
+ *  a locked one. Multi-touch, so other controls keep working while it is held. */
+function TalkButton({ listening, locked, onIn, onOut, onLock, onToggle }: {
+  listening: boolean; locked: boolean; onIn: () => void; onOut: () => void; onLock: () => void; onToggle: () => void;
+}) {
+  const p = useScale(0.96);
+  const hold = useHoldLock({
+    holdIn: onIn, holdOut: onOut, lock: onLock, tap: () => { lightTap(); onToggle(); },
+    press: (down) => {
+      p.set(down ? p.to : 1);
+      if (down && Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    },
+  });
+  const lit = listening || hold.holding;
+  return (
+    <View {...hold.props} style={{ flex: 1 }} accessible accessibilityRole="button" accessibilityLabel="Talk to the PC agent"
+      accessibilityHint="Hold to talk, slide up to lock, tap to send" onAccessibilityTap={onToggle}>
+      <Animated.View style={[s.btn, p.style, lit && s.btnOn]}>
+        <View pointerEvents="none" style={s.talkInner}>
+          <Sym name={locked ? 'lock.fill' : 'mic.fill'} size={22} color={lit ? LIVE : C.text} fallback={<PcMic size={22} color={C.text} />} />
+          {locked ? <Text style={s.talkHint}>Tap to send</Text> : null}
+        </View>
+      </Animated.View>
+      <LockHint lift={hold.lift} holding={hold.holding} />
+    </View>
+  );
+}
+
 /** The transcript, with Talk and Type under it. */
-export function ChatView({ items, error, listening, onTalkIn, onTalkOut, onType }: {
-  items: AgentItem[]; error: string | null; listening: boolean; onTalkIn: () => void; onTalkOut: () => void; onType: (t: string) => void;
+export function ChatView({ items, error, listening, locked, onTalkIn, onTalkOut, onLock, onToggle, onType }: {
+  items: AgentItem[]; error: string | null; listening: boolean; locked: boolean;
+  onTalkIn: () => void; onTalkOut: () => void; onLock: () => void; onToggle: () => void; onType: (t: string) => void;
 }) {
   const [typing, setTyping] = useState(false);
   const [draft, setDraft] = useState('');
@@ -120,7 +148,7 @@ export function ChatView({ items, error, listening, onTalkIn, onTalkOut, onType 
           onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: true })}>
           {items.length === 0 ? (
             <Text style={s.empty}>
-              {listening ? 'Say what the PC should do.' : 'Press the Action button, or hold Talk, and say what the PC should do.'}
+              {listening ? 'Say what the PC should do.' : 'Hold Talk (slide up to lock) or press the Action button, and say what the PC should do.'}
             </Text>
           ) : (
             <Animated.View layout={LinearTransition.duration(180)} style={{ gap: 10 }}>
@@ -131,8 +159,7 @@ export function ChatView({ items, error, listening, onTalkIn, onTalkOut, onType 
         </ScrollView>
       </Animated.View>
       <View style={s.buttons}>
-        <PadButton label="Talk to the PC agent" active={listening} onIn={onTalkIn} onOut={onTalkOut}
-          icon={<Sym name="mic.fill" size={22} color={listening ? LIVE : C.text} fallback={<PcMic size={22} color={C.text} />} />} />
+        <TalkButton listening={listening} locked={locked} onIn={onTalkIn} onOut={onTalkOut} onLock={onLock} onToggle={onToggle} />
         <PadButton label="Type to the PC agent" active={typing} onPress={() => setTyping((v) => !v)}
           icon={<Sym name="text.bubble" size={22} color={typing ? LIVE : C.text} fallback={<Text style={s.kb}>Aa</Text>} />} />
       </View>
@@ -180,5 +207,7 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.07)', borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.14)',
   },
   btnOn: { backgroundColor: 'rgba(255,255,255,0.16)' },
+  talkInner: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  talkHint: { fontFamily: F.semibold, fontSize: 14, lineHeight: 18, color: LIVE },
   kb: { fontFamily: F.semibold, fontSize: 18, color: C.text },
 });

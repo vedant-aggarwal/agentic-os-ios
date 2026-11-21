@@ -1,9 +1,10 @@
 import * as Haptics from 'expo-haptics';
 import { useEffect, useRef, useState } from 'react';
-import { type GestureResponderEvent, Platform, StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import Animated, { type SharedValue, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
+import { type Finger, useOwnTouches } from '@/lib/touch';
 
-// A scroll wheel beside the trackpad: a ridged knob seen edge-on. Drag it to scroll the PC; flick it and it keeps
+// A scroll wheel to the left of the trackpad (multi-touch, like the pad): a ridged knob seen edge-on. Drag it to scroll the PC; flick it and it keeps
 // spinning and slows down like a real wheel. The ridges roll round a cylinder (bunching and fading toward the top
 // and bottom edges), and every ridge that passes the middle is a notch: one haptic tick.
 const NOTCH = 14; // pt between ridges
@@ -45,13 +46,13 @@ export function ScrollWheel({ onScroll }: { onScroll: (dy: number) => void }) {
   const stopCoast = () => { const st = g.current; if (st.frame !== null) cancelAnimationFrame(st.frame); st.frame = null; };
   useEffect(() => stopCoast, []);
 
-  const grant = (e: GestureResponderEvent) => {
+  const grant = (f: Finger) => {
     stopCoast();
     const st = g.current;
-    st.y = e.nativeEvent.pageY; st.t = Date.now(); st.v = 0;
+    st.y = f.y; st.t = Date.now(); st.v = 0;
   };
-  const move = (e: GestureResponderEvent) => {
-    const st = g.current, y = e.nativeEvent.pageY, now = Date.now();
+  const move = (f: Finger) => {
+    const st = g.current, y = f.y, now = Date.now();
     const dy = y - st.y;
     st.v = st.v * 0.5 + (dy / Math.max(now - st.t, 8)) * 16 * 0.5; // pt per frame, smoothed
     st.y = y; st.t = now;
@@ -69,11 +70,16 @@ export function ScrollWheel({ onScroll }: { onScroll: (dy: number) => void }) {
     if (Math.abs(st.v) >= 0.3) st.frame = requestAnimationFrame(coast);
   };
 
+  // the first finger on the wheel turns it
+  const first = useRef(-1);
+  const touches = useOwnTouches({
+    start: (f) => { if (first.current === -1) { first.current = f.id; grant(f); } },
+    move: (mine) => { const f = mine.find((m) => m.id === first.current); if (f) move(f); },
+    end: (f) => { if (f.id === first.current) { first.current = -1; release(); } },
+  });
+
   return (
-    <View style={s.wheel} onLayout={(e) => height.set(e.nativeEvent.layout.height)}
-      onStartShouldSetResponder={() => true} onMoveShouldSetResponder={() => true}
-      onResponderTerminationRequest={() => false}
-      onResponderGrant={grant} onResponderMove={move} onResponderRelease={release}
+    <View style={s.wheel} onLayout={(e) => height.set(e.nativeEvent.layout.height)} {...touches}
       accessibilityRole="adjustable" accessibilityLabel="Scroll wheel"
       onAccessibilityAction={(e) => onScroll(e.nativeEvent.actionName === 'increment' ? 120 : -120)}
       accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}>

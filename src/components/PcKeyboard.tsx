@@ -1,136 +1,219 @@
 import * as Haptics from 'expo-haptics';
-import { type ComponentRef, useRef, useState } from 'react';
-import { Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { type ComponentRef, useLayoutEffect, useRef, useState } from 'react';
+import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
-import { lightTap } from '@/components/Glass';
-import { Sym } from '@/components/Sym';
+import type { usePointer } from '@/lib/pointer';
+import { usePress } from '@/lib/touch';
 import { C, F } from '@/theme';
 
-// A keyboard for the PC. The phone's own keyboard types into whatever has focus on the PC; the switch swaps it for
-// the keys a phone keyboard lacks: Esc and F1–F12, Tab, Delete, Home/End, Page Up/Down, arrows and a few shortcuts.
-// Ctrl, Win, Alt and Shift stay on top in both modes and latch: tap Ctrl, then C (on either keyboard) sends Ctrl+C.
+// A keyboard for the PC, in two views: Type (the phone's own keyboard types into whatever has focus on the PC) and
+// Keys (what a phone keyboard lacks). Keys are multi-touch: hold Alt and tap Tab to switch windows, hold Shift and
+// tap arrows to select. A quick tap on Ctrl, Win, Alt or Shift latches it for the next key instead (tap Ctrl, then
+// C). The most-used keys sit at the bottom, under the thumb.
 type Mod = 'ctrl' | 'win' | 'alt' | 'shift';
 const MODS: { id: Mod; label: string }[] = [
   { id: 'ctrl', label: 'Ctrl' }, { id: 'win', label: 'Win' }, { id: 'alt', label: 'Alt' }, { id: 'shift', label: 'Shift' },
 ];
-const FROW = ['esc', ...Array.from({ length: 12 }, (_, i) => `f${i + 1}`)];
-const NAV: { k: string; label: string }[] = [
-  { k: 'tab', label: 'Tab' }, { k: 'home', label: 'Home' }, { k: 'end', label: 'End' }, { k: 'pgup', label: 'PgUp' },
-  { k: 'pgdn', label: 'PgDn' }, { k: 'delete', label: 'Del' }, { k: 'backspace', label: '⌫' },
-];
-const SHORTCUTS: { k: string; label: string }[] = [
-  { k: 'ctrl+c', label: 'Copy' }, { k: 'ctrl+v', label: 'Paste' }, { k: 'ctrl+z', label: 'Undo' }, { k: 'ctrl+a', label: 'All' },
-  { k: 'alt+tab', label: 'Alt Tab' }, { k: 'win+d', label: 'Desktop' }, { k: 'win+shift+s', label: 'Snip' }, { k: 'alt+f4', label: 'Close' },
+const MOD_HOLD = 250; // a modifier held this long goes down on the PC; a shorter tap latches it
+const REPEAT_AFTER = 380;
+const REPEAT_EVERY = 70;
+const REPEATS = new Set(['up', 'down', 'left', 'right', 'backspace', 'delete', 'pgup', 'pgdn']);
+const SHORTCUTS: [string, string][][] = [
+  [['ctrl+c', 'Copy'], ['ctrl+v', 'Paste'], ['ctrl+z', 'Undo'], ['ctrl+a', 'All']],
+  [['win+shift+s', 'Snip'], ['win+d', 'Desktop'], ['win+tab', 'Tasks'], ['alt+f4', 'Close']],
 ];
 
 const tick = () => { if (Platform.OS !== 'web') Haptics.selectionAsync().catch(() => {}); };
+type Pc = ReturnType<typeof usePointer>;
+type Held = { sent: boolean; used: boolean; timer: ReturnType<typeof setTimeout> | null };
 
-function Key({ label, onPress, on, wide, flex }: { label: string; onPress: () => void; on?: boolean; wide?: boolean; flex?: boolean }) {
+/** The keyboard's state, shared by both views: which modifiers are held or latched, and an echo of what was sent. */
+export function usePcKeys(pc: Pc) {
+  const [latched, setLatched] = useState<Mod[]>([]);
+  const [held, setHeld] = useState<Mod[]>([]);
+  const [echo, setEcho] = useState('');
+  const pcr = useRef(pc);
+  useLayoutEffect(() => { pcr.current = pc; });
+  const st = useRef({ held: new Map<Mod, Held>(), latched: [] as Mod[] });
+
+  const [api] = useState(() => {
+    const shown = (t: string) => setEcho((e) => (e + t).slice(-40));
+    const sync = () => { setHeld([...st.current.held.keys()]); setLatched([...st.current.latched]); };
+    // another key while a modifier is held: the modifier goes down on the PC first
+    const flushHeld = () => {
+      for (const [m, h] of st.current.held) {
+        h.used = true;
+        if (!h.sent) { h.sent = true; if (h.timer) clearTimeout(h.timer); h.timer = null; pcr.current.keyDown(m); }
+      }
+    };
+    const modDown = (m: Mod) => {
+      const S = st.current;
+      if (S.held.has(m)) return;
+      const h: Held = { sent: false, used: false, timer: null };
+      h.timer = setTimeout(() => { h.timer = null; if (!h.sent) { h.sent = true; pcr.current.keyDown(m); } }, MOD_HOLD);
+      S.held.set(m, h);
+      sync();
+    };
+    const modUp = (m: Mod) => {
+      const S = st.current;
+      const h = S.held.get(m);
+      if (!h) return;
+      S.held.delete(m);
+      if (h.timer) clearTimeout(h.timer);
+      if (h.sent) pcr.current.keyUp(m);
+      else if (!h.used) S.latched = S.latched.includes(m) ? S.latched.filter((x) => x !== m) : [...S.latched, m];
+      sync();
+    };
+    const press = (k: string) => {
+      const S = st.current;
+      flushHeld();
+      const lat = S.latched.filter((m) => !S.held.has(m));
+      pcr.current.key([...lat, k].join('+'));
+      const mods = [...S.held.keys(), ...lat];
+      shown(mods.length ? ` ${[...mods, k].join('+')} ` : k.length === 1 ? k : ` ${k} `);
+      if (S.latched.length) { S.latched = []; sync(); }
+    };
+    const type = (t: string) => {
+      if (!t) return;
+      const S = st.current;
+      if ((S.latched.length || S.held.size) && [...t].length === 1) { press(t.toLowerCase()); return; }
+      pcr.current.type(t); shown(t);
+    };
+    const shortcut = (combo: string) => { pcr.current.key(combo); shown(` ${combo} `); };
+    return { modDown, modUp, press, type, shortcut };
+  });
+  return { ...api, latched, held, echo, connected: pc.connected };
+}
+export type PcKeys = ReturnType<typeof usePcKeys>;
+
+function Key({ label, onDown, onUp, on, flex = 1, small }: {
+  label: string; onDown: () => void; onUp?: () => void; on?: boolean; flex?: number; small?: boolean;
+}) {
+  const { props, pressed } = usePress(() => { tick(); onDown(); }, onUp);
+  const lit = pressed || on;
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={() => { tick(); onPress(); }}
-      style={({ pressed }) => [s.key, wide && { minWidth: 64 }, flex && { flex: 1 }, (pressed || on) && s.keyOn]}>
-      <Text style={[s.keyText, on && { color: '#0B0C10' }]}>{label}</Text>
-    </Pressable>
+    <View {...props} accessible accessibilityRole="button" accessibilityLabel={label}
+      onAccessibilityTap={() => { onDown(); onUp?.(); }} style={[s.key, { flex }, lit && s.keyOn]}>
+      <Text pointerEvents="none" style={[s.keyText, small && s.small, lit && { color: '#0B0C10' }]} numberOfLines={1}>{label}</Text>
+    </View>
   );
 }
 
-export function PcKeyboard({ connected, onType, onKey }: {
-  connected: boolean; onType: (text: string) => void; onKey: (combo: string) => void;
-}) {
-  const [extra, setExtra] = useState(false);
-  const [mods, setMods] = useState<Mod[]>([]);
-  const [echo, setEcho] = useState(''); // the last few things sent, so he can see it typed
-  const input = useRef<ComponentRef<typeof TextInput>>(null);
+/** A key that repeats while held (arrows, Backspace, Delete, Page Up/Down). */
+function RepeatKey({ k, label, kb, flex }: { k: string; label: string; kb: PcKeys; flex?: number }) {
+  const t = useRef<{ wait: ReturnType<typeof setTimeout> | null; every: ReturnType<typeof setInterval> | null }>({ wait: null, every: null });
+  const stop = () => {
+    if (t.current.wait) clearTimeout(t.current.wait);
+    if (t.current.every) clearInterval(t.current.every);
+    t.current = { wait: null, every: null };
+  };
+  const down = () => {
+    kb.press(k);
+    if (!REPEATS.has(k)) return;
+    t.current.wait = setTimeout(() => { t.current.every = setInterval(() => kb.press(k), REPEAT_EVERY); }, REPEAT_AFTER);
+  };
+  return <Key label={label} flex={flex} onDown={down} onUp={stop} />;
+}
 
-  const shown = (t: string) => setEcho((e) => (e + t).slice(-40));
-  const press = (k: string) => {
-    const combo = [...mods, k].join('+');
-    onKey(combo); setMods([]);
-    shown(k.length === 1 ? (mods.length ? ` ${combo} ` : k) : ` ${combo} `);
-  };
-  const typed = (t: string) => {
-    if (!t) return;
-    // a latched modifier turns the next character into a shortcut
-    if (mods.length && t.length === 1) { press(t.toLowerCase()); return; }
-    onType(t); shown(t);
-  };
-  const toggleMod = (m: Mod) => setMods((cur) => (cur.includes(m) ? cur.filter((x) => x !== m) : [...cur, m]));
-  const swap = () => {
-    lightTap();
-    if (extra) { setExtra(false); setTimeout(() => input.current?.focus(), 60); }
-    else { setExtra(true); Keyboard.dismiss(); }
-  };
+function ModRow({ kb }: { kb: PcKeys }) {
+  return (
+    <View style={s.row}>
+      {MODS.map((m) => (
+        <Key key={m.id} label={m.label} on={kb.held.includes(m.id) || kb.latched.includes(m.id)}
+          onDown={() => kb.modDown(m.id)} onUp={() => kb.modUp(m.id)} />
+      ))}
+    </View>
+  );
+}
 
+function Echo({ kb, idle }: { kb: PcKeys; idle: string }) {
+  return (
+    <View style={s.top}>
+      <View style={[s.dot, { backgroundColor: kb.connected ? '#3DDC97' : C.faint }]} />
+      <Text style={s.echo} numberOfLines={1}>{kb.echo || (kb.connected ? idle : 'Connecting')}</Text>
+    </View>
+  );
+}
+
+const Gap = () => <View style={{ flex: 1 }} />;
+
+/** The keys a phone keyboard lacks, bottom-heavy: modifiers on the bottom row, then Space and Enter, arrows. */
+export function PcKeysPad({ kb }: { kb: PcKeys }) {
+  const fn = (from: number) => Array.from({ length: 6 }, (_, i) => `f${from + i}`);
   return (
     <Animated.View entering={FadeIn.duration(200)} style={s.wrap}>
-      <View style={s.top}>
-        <View style={[s.dot, { backgroundColor: connected ? '#3DDC97' : C.faint }]} />
-        <Text style={s.echo} numberOfLines={1}>{echo || (connected ? 'Typing on your PC' : 'Connecting')}</Text>
-        <Pressable accessibilityRole="button" accessibilityLabel={extra ? 'Phone keyboard' : 'Extra keys'} onPress={swap} style={s.swap}>
-          <Sym name={extra ? 'keyboard' : 'command'} size={16} fallback={<Text style={s.keyText}>{extra ? 'ABC' : '⌘'}</Text>} />
-          <Text style={s.swapText}>{extra ? 'ABC' : 'Keys'}</Text>
-        </Pressable>
+      <Echo kb={kb} idle="Hold Alt and tap Tab to switch windows" />
+      <View style={{ flex: 1 }} />
+      {SHORTCUTS.map((row, i) => (
+        <View key={i} style={s.row}>
+          {row.map(([k, label]) => <Key key={k} label={label} small onDown={() => kb.shortcut(k)} />)}
+        </View>
+      ))}
+      {[1, 7].map((from) => (
+        <View key={from} style={s.row}>
+          {fn(from).map((k) => <RepeatKey key={k} k={k} label={k.toUpperCase()} kb={kb} />)}
+        </View>
+      ))}
+      <View style={s.row}>
+        <RepeatKey k="esc" label="Esc" kb={kb} />
+        <RepeatKey k="home" label="Home" kb={kb} />
+        <RepeatKey k="pgup" label="PgUp" kb={kb} />
+        <Gap />
+        <RepeatKey k="up" label="↑" kb={kb} />
+        <Gap />
       </View>
-
-      <View style={s.mods}>
-        {MODS.map((m) => <Key key={m.id} label={m.label} on={mods.includes(m.id)} flex onPress={() => toggleMod(m.id)} />)}
+      <View style={s.row}>
+        <RepeatKey k="delete" label="Del" kb={kb} />
+        <RepeatKey k="end" label="End" kb={kb} />
+        <RepeatKey k="pgdn" label="PgDn" kb={kb} />
+        <RepeatKey k="left" label="←" kb={kb} />
+        <RepeatKey k="down" label="↓" kb={kb} />
+        <RepeatKey k="right" label="→" kb={kb} />
       </View>
+      <View style={s.row}>
+        <RepeatKey k="tab" label="Tab" kb={kb} flex={1.2} />
+        <RepeatKey k="space" label="Space" kb={kb} flex={2.4} />
+        <RepeatKey k="backspace" label="⌫" kb={kb} />
+        <RepeatKey k="enter" label="Enter" kb={kb} flex={1.4} />
+      </View>
+      <ModRow kb={kb} />
+    </Animated.View>
+  );
+}
 
-      {extra ? (
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ gap: 8, paddingBottom: 8 }}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
-            {FROW.map((k) => <Key key={k} label={k === 'esc' ? 'Esc' : k.toUpperCase()} onPress={() => press(k)} />)}
-          </ScrollView>
-          <View style={s.grid}>{NAV.map((n) => <Key key={n.k} label={n.label} onPress={() => press(n.k)} />)}</View>
-          <View style={s.arrows}>
-            <View style={{ flexDirection: 'row', justifyContent: 'center' }}><Key label="↑" wide onPress={() => press('up')} /></View>
-            <View style={{ flexDirection: 'row', gap: 6, justifyContent: 'center' }}>
-              <Key label="←" wide onPress={() => press('left')} />
-              <Key label="↓" wide onPress={() => press('down')} />
-              <Key label="→" wide onPress={() => press('right')} />
-            </View>
-          </View>
-          <View style={s.grid}>
-            <Key label="Space" flex onPress={() => press('space')} />
-            <Key label="Enter" flex onPress={() => press('enter')} />
-          </View>
-          <View style={s.grid}>{SHORTCUTS.map((c) => <Key key={c.k} label={c.label} onPress={() => { onKey(c.k); shown(` ${c.k} `); }} />)}</View>
-        </ScrollView>
-      ) : (
-        <Pressable style={{ flex: 1 }} onPress={() => input.current?.focus()}>
-          <TextInput ref={input} autoFocus value="" onChangeText={typed} style={s.capture}
-            autoCorrect={false} autoCapitalize="none" spellCheck={false} autoComplete="off" keyboardAppearance="dark"
-            onKeyPress={(e) => { if (e.nativeEvent.key === 'Backspace') press('backspace'); }}
-            onSubmitEditing={() => press('enter')} submitBehavior="submit" returnKeyType="default"
-            placeholder="Tap here and type" placeholderTextColor={C.faint} />
-        </Pressable>
-      )}
+/** The phone's keyboard typing on the PC, with the modifier row just above it. */
+export function PcTypePad({ kb }: { kb: PcKeys }) {
+  const input = useRef<ComponentRef<typeof TextInput>>(null);
+  return (
+    <Animated.View entering={FadeIn.duration(200)} style={s.wrap}>
+      <Echo kb={kb} idle="Typing on your PC" />
+      <Pressable style={{ flex: 1 }} onPress={() => input.current?.focus()} accessibilityLabel="Show the keyboard" />
+      <ModRow kb={kb} />
+      <TextInput ref={input} autoFocus value="" onChangeText={kb.type} style={s.capture}
+        autoCorrect={false} autoCapitalize="none" spellCheck={false} autoComplete="off" keyboardAppearance="dark"
+        onKeyPress={(e) => { if (e.nativeEvent.key === 'Backspace') kb.press('backspace'); }}
+        onSubmitEditing={() => kb.press('enter')} submitBehavior="submit" returnKeyType="default"
+        placeholder="Tap here and type" placeholderTextColor={C.faint} />
     </Animated.View>
   );
 }
 
 const s = StyleSheet.create({
   wrap: {
-    flex: 1, gap: 10, padding: 12, borderRadius: 24, borderCurve: 'continuous', backgroundColor: 'rgba(255,255,255,0.05)',
+    flex: 1, gap: 6, padding: 10, borderRadius: 24, borderCurve: 'continuous', backgroundColor: 'rgba(255,255,255,0.05)',
     borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.14)',
   },
-  top: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  top: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 4, paddingTop: 2 },
   dot: { width: 6, height: 6, borderRadius: 3 },
   echo: { flex: 1, fontFamily: F.medium, fontSize: 13, lineHeight: 18, color: C.muted },
-  swap: {
-    flexDirection: 'row', alignItems: 'center', gap: 6, height: 34, paddingHorizontal: 12, borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-  },
-  swapText: { fontFamily: F.semibold, fontSize: 13, lineHeight: 18, color: C.text },
-  mods: { flexDirection: 'row', gap: 6 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  arrows: { gap: 6 },
+  row: { flexDirection: 'row', gap: 6, flexBasis: 44, flexShrink: 1, minHeight: 32 },
   key: {
-    minWidth: 46, height: 42, paddingHorizontal: 10, borderRadius: 10, alignItems: 'center', justifyContent: 'center',
+    borderRadius: 10, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 2,
     backgroundColor: 'rgba(255,255,255,0.09)', borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.14)',
   },
   keyOn: { backgroundColor: '#3DDC97' },
   keyText: { fontFamily: F.semibold, fontSize: 14, lineHeight: 18, color: C.text },
+  small: { fontSize: 13, fontFamily: F.medium },
   capture: {
     height: 46, borderRadius: 14, paddingHorizontal: 14, fontFamily: F.medium, fontSize: 15, color: C.text,
     backgroundColor: 'rgba(255,255,255,0.08)',

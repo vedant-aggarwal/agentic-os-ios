@@ -1,5 +1,5 @@
 import { BlurView } from 'expo-blur';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Animated, {
   cancelAnimation, Easing, FadeIn, ReduceMotion, useAnimatedKeyboard, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSpring, withTiming,
@@ -7,12 +7,14 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChatView, CommandBar, LIVE } from '@/components/CommandPanel';
 import { lightTap, useScale } from '@/components/Glass';
+import { LockHint } from '@/components/HoldLock';
 import { PcMic } from '@/components/Icons';
 import { Sym } from '@/components/Sym';
-import { PcKeyboard } from '@/components/PcKeyboard';
+import { PcKeysPad, PcTypePad, usePcKeys } from '@/components/PcKeyboard';
 import { Trackpad } from '@/components/Trackpad';
 import type { useAgent } from '@/lib/agent';
 import { usePointer } from '@/lib/pointer';
+import { useHoldLock } from '@/lib/touch';
 import type { MicSource, Phase } from '@/lib/wispr';
 import { ASPECT_COLOR, C, F } from '@/theme';
 
@@ -23,7 +25,6 @@ import { ASPECT_COLOR, C, F } from '@/theme';
 const OPEN = { duration: 560, dampingRatio: 0.86, reduceMotion: ReduceMotion.System } as const;
 const CLOSE = { duration: 440, dampingRatio: 1, reduceMotion: ReduceMotion.System } as const;
 const ICON = 44; // the button it grows from
-const HOLD_MS = 220; // held this long, the orb is talking; shorter is a tap
 
 const TONE: Record<Phase, string> = {
   idle: C.muted, listening: ASPECT_COLOR.body, handsfree: ASPECT_COLOR.mission, sent: ASPECT_COLOR.friends, command: ASPECT_COLOR.growth,
@@ -53,36 +54,37 @@ function Elapsed({ since, live }: { since: number; live: boolean }) {
     return () => clearInterval(id);
   }, [live]);
   const sec = live ? Math.max(0, Math.floor((now - since) / 1000)) : 0;
-  return <Text style={[s.elapsed, !live && { opacity: 0 }]}>{`${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`}</Text>;
+  return <Text style={[s.elapsed, !live && { opacity: 0 }]} numberOfLines={1}>{`${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`}</Text>;
 }
 
-/** The voice orb is the control: hold it to talk, tap it to toggle hands-free. */
-function Orb({ phase, onTalkIn, onTalkOut, onHandsFree }: { phase: Phase; onTalkIn: () => void; onTalkOut: () => void; onHandsFree: () => void }) {
+/** The voice orb is the control: hold it to talk, slide up while holding to lock it on (hands-free), tap it to
+ *  toggle hands-free. Multi-touch, so the trackpad and keys keep working while it is held. */
+function Orb({ phase, since, onTalkIn, onTalkOut, onHandsFree }: {
+  phase: Phase; since: number; onTalkIn: () => void; onTalkOut: () => void; onHandsFree: () => void;
+}) {
   const p = useScale(0.94);
-  const hold = useRef<{ timer: ReturnType<typeof setTimeout> | null; talking: boolean }>({ timer: null, talking: false });
   const live = phase === 'listening' || phase === 'handsfree' || phase === 'command';
   const tone = TONE[phase];
+  const hold = useHoldLock({
+    holdIn: onTalkIn, holdOut: onTalkOut, lock: onHandsFree, // locking turns the hold into hands-free
+    tap: () => { lightTap(); onHandsFree(); },
+    press: (down) => p.set(down ? p.to : 1),
+  });
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel="Wispr" accessibilityHint="Hold to talk, tap for hands-free"
-      onPressIn={() => {
-        p.set(p.to);
-        hold.current.timer = setTimeout(() => { hold.current.timer = null; hold.current.talking = true; onTalkIn(); }, HOLD_MS);
-      }}
-      onPressOut={() => {
-        p.set(1);
-        const h = hold.current;
-        if (h.timer) { clearTimeout(h.timer); h.timer = null; lightTap(); onHandsFree(); }
-        else if (h.talking) { h.talking = false; onTalkOut(); }
-      }}>
+    <View {...hold.props} accessible accessibilityRole="button" accessibilityLabel="Wispr"
+      accessibilityHint="Hold to talk, slide up to lock, tap for hands-free" onAccessibilityTap={onHandsFree}>
       <Animated.View style={[s.orbBox, p.style]}>
         <Ring live={live} delay={0} color={tone} />
         <Ring live={live} delay={600} color={tone} />
         <Ring live={live} delay={1200} color={tone} />
-        <View style={[s.orb, { borderColor: tone, backgroundColor: live ? `${tone}26` : 'rgba(255,255,255,0.05)' }]}>
-          <Sym name="mic.fill" size={26} color={live ? tone : C.text} fallback={<PcMic size={26} color={live ? tone : C.text} />} />
+        <View pointerEvents="none" style={[s.orb, { borderColor: tone, backgroundColor: live ? `${tone}26` : 'rgba(255,255,255,0.05)' }]}>
+          <Sym name={phase === 'handsfree' ? 'lock.fill' : 'mic.fill'} size={live ? 22 : 26} color={live ? tone : C.text}
+            fallback={<PcMic size={26} color={live ? tone : C.text} />} />
+          {live ? <Elapsed since={since} live /> : null}
         </View>
+        <LockHint lift={hold.lift} holding={hold.holding} top={-28} />
       </Animated.View>
-    </Pressable>
+    </View>
   );
 }
 
@@ -111,16 +113,18 @@ function SourceSwitch({ value, onChange, note }: { value: MicSource; onChange: (
   );
 }
 
-type View3 = 'chat' | 'pad' | 'keys';
+type View4 = 'chat' | 'pad' | 'type' | 'keys';
+type ToggleIcon = 'cursorarrow.rays' | 'keyboard' | 'command';
+const TOGGLE_FALLBACK: Record<ToggleIcon, string> = { 'cursorarrow.rays': '↖', keyboard: '⌨', command: '⌘' };
 
-/** A square toggle in the mic row: trackpad or keyboard. */
-function Toggle({ on, label, icon, onPress }: { on: boolean; label: string; icon: 'cursorarrow.rays' | 'keyboard'; onPress: () => void }) {
+/** A square toggle in the mic row: trackpad, phone keyboard, or PC keys. */
+function Toggle({ on, label, icon, onPress }: { on: boolean; label: string; icon: ToggleIcon; onPress: () => void }) {
   const p = useScale(0.92);
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected: on }}
       onPressIn={() => p.set(p.to)} onPressOut={() => p.set(1)} onPress={() => { lightTap(); onPress(); }}>
       <Animated.View style={[s.toggle, on && s.toggleOn, p.style]}>
-        <Sym name={icon} size={20} color={on ? '#0B0C10' : C.text} fallback={<Text style={s.toggleTxt}>{icon === 'keyboard' ? '⌨' : '↖'}</Text>} />
+        <Sym name={icon} size={20} color={on ? '#0B0C10' : C.text} fallback={<Text style={s.toggleTxt}>{TOGGLE_FALLBACK[icon]}</Text>} />
       </Animated.View>
     </Pressable>
   );
@@ -130,20 +134,21 @@ function Toggle({ on, label, icon, onPress }: { on: boolean; label: string; icon
 // and the mic row at the bottom (Wispr's orb, its state, the trackpad and keyboard toggles, PC mic | Phone mic).
 export function PcMicSheet({
   open, origin, phase, since, error, source, sourceNote, onSource, onClose, onTalkIn, onTalkOut, onHandsFree, onSayIn, onSayOut,
-  agent, onStop,
+  onSayLock, onSayToggle, sayLocked, agent, onStop,
 }: {
   open: boolean; origin: { x: number; y: number }; phase: Phase; since: number; error: string | null;
   source: MicSource; sourceNote: string | null; onSource: (v: MicSource) => void;
   onClose: () => void; onTalkIn: () => void; onTalkOut: () => void; onHandsFree: () => void;
-  onSayIn: () => void; onSayOut: () => void;
+  onSayIn: () => void; onSayOut: () => void; onSayLock: () => void; onSayToggle: () => void; sayLocked: boolean;
   agent: ReturnType<typeof useAgent>; onStop: () => void;
 }) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const p = useSharedValue(0);
   const [mounted, setMounted] = useState(open);
-  const [view, setView] = useState<View3>('chat');
+  const [view, setView] = useState<View4>('chat');
   const pc = usePointer(open); // one PC connection for the trackpad and the keyboard, ready as soon as this opens
+  const kb = usePcKeys(pc); // held and latched modifiers, shared by both keyboard views
   if (open && !mounted) setMounted(true); // mount at once on open; unmount after the close animation
   useEffect(() => {
     if (open) { p.set(withSpring(1, OPEN)); return; }
@@ -165,10 +170,9 @@ export function PcMicSheet({
   }));
   if (!mounted) return null;
 
-  const live = phase === 'listening' || phase === 'handsfree' || phase === 'command';
   const tone = TONE[phase];
   const agentListening = phase === 'command' || agent.heard === 'listening';
-  const flip = (v: View3) => setView((cur) => (cur === v ? 'chat' : v));
+  const flip = (v: View4) => setView((cur) => (cur === v ? 'chat' : v));
   return (
     <Animated.View style={[s.shell, shell]} pointerEvents={open ? 'auto' : 'none'}>
       <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
@@ -188,22 +192,24 @@ export function PcMicSheet({
           {view === 'pad' ? (
             <Animated.View key="pad" entering={FadeIn.duration(200)} style={{ flex: 1 }}><Trackpad pc={pc} /></Animated.View>
           ) : view === 'keys' ? (
-            <PcKeyboard key="keys" connected={pc.connected} onType={pc.type} onKey={pc.key} />
+            <PcKeysPad key="keys" kb={kb} />
+          ) : view === 'type' ? (
+            <PcTypePad key="type" kb={kb} />
           ) : (
-            <ChatView key="chat" items={agent.items} error={agent.error} listening={agentListening}
-              onTalkIn={onSayIn} onTalkOut={onSayOut} onType={(t) => agent.say(t)} />
+            <ChatView key="chat" items={agent.items} error={agent.error} listening={agentListening} locked={sayLocked}
+              onTalkIn={onSayIn} onTalkOut={onSayOut} onLock={onSayLock} onToggle={onSayToggle} onType={(t) => agent.say(t)} />
           )}
         </View>
 
         <View style={s.micRow}>
-          <Orb phase={phase} onTalkIn={onTalkIn} onTalkOut={onTalkOut} onHandsFree={onHandsFree} />
+          <Orb phase={phase} since={since} onTalkIn={onTalkIn} onTalkOut={onTalkOut} onHandsFree={onHandsFree} />
           <View style={s.side}>
             <View style={s.titleRow}>
               <Text style={[s.title, { color: phase === 'idle' ? C.text : tone }]} numberOfLines={1}>{TITLE[phase]}</Text>
-              <Elapsed since={since} live={live} />
               <View style={{ flex: 1 }} />
               <Toggle on={view === 'pad'} label="Trackpad" icon="cursorarrow.rays" onPress={() => flip('pad')} />
-              <Toggle on={view === 'keys'} label="PC keyboard" icon="keyboard" onPress={() => flip('keys')} />
+              <Toggle on={view === 'type'} label="Type on the PC" icon="keyboard" onPress={() => flip('type')} />
+              <Toggle on={view === 'keys'} label="PC keys" icon="command" onPress={() => flip('keys')} />
             </View>
             <SourceSwitch value={source} onChange={onSource} note={sourceNote} />
           </View>
@@ -250,11 +256,11 @@ const s = StyleSheet.create({
   segOpt: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
   segText: { fontFamily: F.medium, fontSize: 13, lineHeight: 18, color: C.faint },
   segNote: { fontFamily: F.medium, fontSize: 12, lineHeight: 16, color: C.faint },
-  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  title: { fontFamily: F.semibold, fontSize: 20, lineHeight: 26, letterSpacing: -0.4, flexShrink: 1 },
-  elapsed: { fontFamily: F.medium, fontSize: 14, lineHeight: 20, color: C.muted, fontVariant: ['tabular-nums'] },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  title: { fontFamily: F.semibold, fontSize: 19, lineHeight: 24, letterSpacing: -0.4, flexShrink: 1 },
+  elapsed: { fontFamily: F.medium, fontSize: 11, lineHeight: 14, color: C.muted, fontVariant: ['tabular-nums'], marginTop: 1 },
   toggle: {
-    width: 42, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
+    width: 40, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.14)',
   },
   toggleOn: { backgroundColor: LIVE },

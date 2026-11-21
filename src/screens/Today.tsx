@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Polygon, Stop } from 'react-native-svg';
@@ -48,6 +48,8 @@ export default function Today() {
   const agent = useAgent(!!t.view);
   // A command is being taken or worked on (the Action button may have started it with the app shut): show it.
   const agentLive = agent.heard === 'listening' || agent.busy;
+  const { settle } = mic;
+  useEffect(() => { if (agent.busy || agent.heard === 'nothing') settle(); }, [agent.busy, agent.heard, settle]); // the PC took a locked command
   const [closedLive, setClosedLive] = useState(false); // he shut it while a command ran: stay shut until the next one
   if (!agentLive && closedLive) setClosedLive(false);
   const notBuilt = useCallback((what: string) => setLocal(`${what}: not built yet`), []);
@@ -127,8 +129,8 @@ export default function Today() {
         since={mic.since} error={mic.error} source={mic.source} sourceNote={mic.sourceNote} onSource={mic.setSource}
         onClose={() => { setMicOpen(false); if (agentLive) setClosedLive(true); if (mic.phase === 'handsfree') mic.toggleHandsFree(); }}
         onTalkIn={mic.startTalk} onTalkOut={mic.endTalk} onHandsFree={mic.toggleHandsFree}
-        onSayIn={mic.sayIn} onSayOut={mic.sayOut} agent={agent}
-        onStop={() => { agent.stop(); api('/pc/keys', { method: 'POST', body: { action: 'stop' } }).catch(() => {}); }} />
+        onSayIn={mic.sayIn} onSayOut={mic.sayOut} onSayLock={mic.sayLock} onSayToggle={mic.sayToggle} sayLocked={mic.locked} agent={agent}
+        onStop={() => { agent.stop(); mic.settle(); api('/pc/keys', { method: 'POST', body: { action: 'stop' } }).catch(() => {}); }} />
     </View>
   );
 }

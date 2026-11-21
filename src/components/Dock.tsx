@@ -7,7 +7,7 @@ import Animated, {
   Easing, ReduceMotion, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withSpring, withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
-import Svg, { Circle, Defs, G, Path, RadialGradient, Rect, Stop, Text as SvgText } from 'react-native-svg';
+import Svg, { Circle, Defs, G, Path, RadialGradient, Stop, Text as SvgText } from 'react-native-svg';
 import { Keyboard, Plus } from '@/components/Icons';
 import type { AspectProgress } from '@/lib/today';
 import { ASPECT_COLOR, C, F, type AspectKey } from '@/theme';
@@ -64,7 +64,7 @@ const RING_HALF = 66;
 const RING_SPAN = (RING_HALF * 2) / WHEEL.length;
 const RING_START = 360 - RING_HALF;
 const RING = WHEEL.map((k, i) => {
-  const s0 = RING_START + i * RING_SPAN, a0 = s0 + 4, a1 = s0 + RING_SPAN - 4; // trimmed so round caps leave a gap
+  const s0 = RING_START + i * RING_SPAN, a0 = s0 + 4.5, a1 = s0 + RING_SPAN - 4.5; // trimmed so round caps leave a gap
   return { k, a0, a1, color: ASPECT_COLOR[k], track: arcAt(ORB / 2, ARC_R, a0, a1) };
 });
 /** A ring segment between radii ri..ro and angles a0..a1, with its four corners rounded by rc. */
@@ -102,7 +102,7 @@ function sectionAt(vx: number, vy: number) {
 function Ring({ aspects }: { aspects: AspectProgress }) {
   return (
     <>
-      {RING.map((s) => <Path key={s.k} d={s.track} stroke={s.color} strokeOpacity={0.35} strokeWidth={3.5} strokeLinecap="round" fill="none" />)}
+      {RING.map((s) => <Path key={s.k} d={s.track} stroke={s.color} strokeOpacity={0.6} strokeWidth={4.5} strokeLinecap="round" fill="none" />)}
       {RING.map((s) => {
         const p = aspects[s.k];
         if (!p || !p.done || !p.total) return null;
@@ -110,7 +110,7 @@ function Ring({ aspects }: { aspects: AspectProgress }) {
         return (
           <G key={`f${s.k}`}>
             <Path d={d} stroke={s.color} strokeOpacity={0.3} strokeWidth={8} strokeLinecap="round" fill="none" />
-            <Path d={d} stroke={s.color} strokeWidth={3.5} strokeLinecap="round" fill="none" />
+            <Path d={d} stroke={s.color} strokeWidth={4.5} strokeLinecap="round" fill="none" />
           </G>
         );
       })}
@@ -203,12 +203,6 @@ function surface(lat: number, phase: number, t: number) {
   ];
 }
 
-/** Uneven flicker, 0..1, built from two rhythms that repeat once per turn. */
-function flicker(t: number, shift: number) {
-  'worklet';
-  return 0.5 + 0.3 * Math.sin(Math.PI * 2 * (3 * t + shift)) + 0.2 * Math.sin(Math.PI * 2 * (5 * t + shift * 1.7));
-}
-
 // Colour on the sphere's surface: warm near the pole, rose and plum further round.
 const PATCHES = [
   { lat: 0.7, phase: 0, size: 30, color: '#FFE2AE', o: 0.55 },
@@ -264,60 +258,6 @@ function Ball({ t }: { t: SharedValue<number> }) {
   );
 }
 
-// ---- light given off by the orb: kept low, it should read as warmth, not a halo ----
-type Drive = { t: SharedValue<number>; boost: SharedValue<number> };
-
-// Two faint glows, each riding one surface patch: as the sphere turns, its light leans that way.
-const GLOWS = [
-  { id: 'glowWarm', size: 108, color: '#FF9A52', o: 0.22, follow: 0, shift: 0 },
-  { id: 'glowRose', size: 104, color: '#F0457A', o: 0.16, follow: 1, shift: 0.37 },
-];
-
-function Glow({ t, boost, g }: Drive & { g: (typeof GLOWS)[number] }) {
-  const p = PATCHES[g.follow];
-  const style = useAnimatedStyle(() => {
-    const [x, y] = surface(p.lat, p.phase, t.value);
-    const k = flicker(t.value, g.shift);
-    return {
-      opacity: Math.min(1, 0.6 + 0.3 * k + 0.5 * boost.value),
-      transform: [{ translateX: x * ORB_R * 0.18 }, { translateY: y * ORB_R * 0.18 }, { scale: 0.96 + 0.06 * k + 0.12 * boost.value }],
-    };
-  });
-  return (
-    <Animated.View pointerEvents="none" style={[s.light, { width: g.size, height: g.size, top: ORB_TOP + ORB / 2 - g.size / 2 }, style]}>
-      <Svg width={g.size} height={g.size}>
-        <Defs>
-          {/* starts at the ball's edge, so the light reads as coming off the orb */}
-          <RadialGradient id={g.id} cx="0.5" cy="0.5" r="0.5">
-            <Stop offset="0.62" stopColor={g.color} stopOpacity={g.o} />
-            <Stop offset="1" stopColor={g.color} stopOpacity={0} />
-          </RadialGradient>
-        </Defs>
-        <Circle cx={g.size / 2} cy={g.size / 2} r={g.size / 2} fill={`url(#${g.id})`} />
-      </Svg>
-    </Animated.View>
-  );
-}
-
-/** The orb's light landing on the black glass, brightest at the top edge under the orb. */
-function Spill({ w, t, boost }: Drive & { w: number }) {
-  const style = useAnimatedStyle(() => ({ opacity: Math.min(1, 0.55 + 0.3 * flicker(t.value, 0) + 0.4 * boost.value) }));
-  return (
-    <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, s.radius, { overflow: 'hidden' }, style]}>
-      <Svg width={w} height={BAR_H}>
-        <Defs>
-          <RadialGradient id="spill" cx="0.5" cy="0.1" r="0.5">
-            <Stop offset="0" stopColor="#FF8A4C" stopOpacity={0.16} />
-            <Stop offset="0.55" stopColor="#F0457A" stopOpacity={0.05} />
-            <Stop offset="1" stopColor="#F0457A" stopOpacity={0} />
-          </RadialGradient>
-        </Defs>
-        <Rect width={w} height={BAR_H} fill="url(#spill)" />
-      </Svg>
-    </Animated.View>
-  );
-}
-
 // ---- controls ----
 function useScale(to: number) {
   const scale = useSharedValue(1);
@@ -370,7 +310,6 @@ export function Dock({ bottom, width, aspects, onNotBuilt }: {
   const cx = width / 2, cy = height - lift - BAR_H + 16; // the orb's centre on screen
   const orb = useScale(0.93);
   const t = useTurn();
-  const boost = useSharedValue(0); // the light swells while the orb is held
   const open = useSharedValue(0); // the dial
   const ringFade = useAnimatedStyle(() => ({ opacity: 1 - open.value }));
   const [pick, setPick] = useState(-1);
@@ -386,7 +325,6 @@ export function Dock({ bottom, width, aspects, onNotBuilt }: {
     setPick(-1);
     open.set(withSpring(0, CLOSE));
     orb.set(1);
-    boost.set(withTiming(0, { duration: 420, easing: Easing.out(Easing.quad) }));
   };
 
   const onGrant = (e: GestureResponderEvent) => {
@@ -395,7 +333,6 @@ export function Dock({ bottom, width, aspects, onNotBuilt }: {
     st.oy = n.pageY - n.locationY + ORB / 2;
     st.x0 = n.pageX; st.y0 = n.pageY; st.moved = false; st.open = false; st.pick = -1;
     orb.set(orb.to);
-    boost.set(withTiming(1, { duration: 140, easing: Easing.out(Easing.quad) }));
     tap(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light));
     st.timer = setTimeout(openDial, HOLD); // holding still also opens it
   };
@@ -443,11 +380,9 @@ export function Dock({ bottom, width, aspects, onNotBuilt }: {
       <View pointerEvents="box-none" style={[s.wrap, { width: w, bottom: lift }]}>
         <View style={[s.bar, { width: w }]}>
           <Material />
-          <Spill w={w} t={t} boost={boost} />
           <Round label="Quick add" onPress={() => onNotBuilt('Quick add')}><Plus /></Round>
           <Round label="Type to Nora" onPress={() => onNotBuilt('Typing to Nora')}><Keyboard /></Round>
         </View>
-        {GLOWS.map((gl) => <Glow key={gl.id} t={t} boost={boost} g={gl} />)}
         <View accessible accessibilityRole="button" accessibilityLabel="Nora"
           accessibilityHint="Tap to talk. Hold and slide to open an aspect."
           onAccessibilityTap={() => onNotBuilt('Talking to Nora')}
@@ -473,7 +408,6 @@ const s = StyleSheet.create({
   abs: { position: 'absolute' },
   radius: { borderRadius: BAR_H / 2 },
   black: { backgroundColor: 'rgba(8,8,10,0.82)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
-  light: { position: 'absolute', alignSelf: 'center' },
   bar: {
     position: 'absolute', top: 0, height: BAR_H, borderRadius: BAR_H / 2,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8,
@@ -483,7 +417,7 @@ const s = StyleSheet.create({
   orbWrap: { position: 'absolute', top: ORB_TOP, width: ORB, height: ORB, alignItems: 'center', justifyContent: 'center' },
   ball: {
     width: ORB_R * 2, height: ORB_R * 2, borderRadius: ORB_R, backgroundColor: '#F0457A',
-    boxShadow: '0 0 14px rgba(240,69,122,0.22)',
+    boxShadow: '0 6px 14px rgba(0,0,0,0.45)', // depth only, no coloured glow
   },
   clip: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: ORB_R, overflow: 'hidden' },
   wedge: { position: 'absolute', left: 0, top: 0, width: CAN * 2, height: CAN * 2 },

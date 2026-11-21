@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Polygon, Stop } from 'react-native-svg';
-import { Backdrop, EdgeGlow } from '@/components/Backdrop';
+import { Backdrop, EdgeBlur, EdgeGlow } from '@/components/Backdrop';
 import { Crystals } from '@/components/Crystals';
 import { Dock } from '@/components/Dock';
 import { Lock, Mood, PcMic, Remote, ToPc, Voices } from '@/components/Icons';
@@ -138,6 +138,7 @@ export default function Today() {
         </View>
       </ScrollView>
 
+      <EdgeBlur height={insets.bottom + 150} />
       <EdgeGlow height={insets.bottom + 260} />
       <Notice text={local ?? t.notice} bottom={insets.bottom + 112} onClear={clear} />
       <Dock bottom={insets.bottom} width={width} aspects={v.aspects} onNotBuilt={notBuilt} />

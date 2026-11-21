@@ -4,7 +4,7 @@ import * as Haptics from 'expo-haptics';
 import { useEffect, useRef, useState } from 'react';
 import { type GestureResponderEvent, Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Animated, {
-  Easing, ReduceMotion, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withSpring, withTiming,
+  Easing, ReduceMotion, useAnimatedProps, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withSpring, withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
 import Svg, { Circle, Defs, G, Path, RadialGradient, Stop, Text as SvgText } from 'react-native-svg';
@@ -24,7 +24,7 @@ const ORB_R = 36; // the ball
 const ARC_R = 46;
 const ORB_TOP = BAR_H / 2 - 16 - ORB / 2; // orb centre 16 above the pill's centre
 const TURN = 12000; // one turn of the sphere, ms
-const HOLD = 280; // ms before a press held still becomes a hold
+const TAP = 280; // let go sooner than this, without sliding or choosing, and it was a tap: talk to Nora
 const SWIPE = 8; // pt of travel that turns a press into a swipe
 
 /** The orb's centre, measured up from the screen's bottom edge; the backdrop glow rises from here. */
@@ -32,11 +32,11 @@ export function orbFromBottom(bottom: number) {
   return Math.max(bottom, 12) + 12 + BAR_H / 2 + 16;
 }
 
-// The dial the ring opens into (board: wedges at r140, 36 thick, labels at r172)
+// The dial the ring opens into: each ring section grows out along its own angle into a wedge at r140, 36 thick
 const DIAL_R = 140;
 const DIAL_W = 36;
 const PICK_W = 44;
-const LABEL_R = 172;
+const LABEL_R = 178;
 const CAN = 200; // half-size of each wedge's canvas, centred on the orb
 const PICK_MIN = 60; // finger must be this far from the orb's centre to choose
 
@@ -54,10 +54,10 @@ const LABEL: Record<AspectKey, string> = {
   body: 'Body', mind: 'Mind', soul: 'Soul', mission: 'Mission', money: 'Money', growth: 'Growth',
   family: 'Family', romance: 'Romance', friends: 'Friends',
 };
-const SPAN = 180 / WHEEL.length;
 
 /** Point on a circle around (c, c); 0 deg = 12 o'clock, clockwise. */
 function at(c: number, r: number, deg: number) {
+  'worklet';
   const a = ((deg - 90) * Math.PI) / 180;
   return [c + r * Math.cos(a), c + r * Math.sin(a)];
 }
@@ -74,35 +74,46 @@ const RING = WHEEL.map((k, i) => {
   const s0 = RING_START + i * RING_SPAN, a0 = s0 + 4.5, a1 = s0 + RING_SPAN - 4.5; // trimmed so round caps leave a gap
   return { k, a0, a1, color: ASPECT_COLOR[k], track: arcAt(ORB / 2, ARC_R, a0, a1) };
 });
-/** A ring segment between radii ri..ro and angles a0..a1, with its four corners rounded by rc. */
+/** A ring segment between radii ri..ro and angles a0..a1, corners rounded by up to rc (half its width = round caps). */
 function sector(c: number, ri: number, ro: number, a0: number, a1: number, rc: number) {
-  const deg = (r: number) => (rc / r) * (180 / Math.PI);
-  const P = (r: number, a: number) => at(c, r, a).map((v) => v.toFixed(2)).join(' ');
+  'worklet';
+  const r = Math.max(0.01, Math.min(rc, (ro - ri) / 2, ((((a1 - a0) * Math.PI) / 180) * ri) / 2));
+  const deg = (rr: number) => (r / rr) * (180 / Math.PI);
+  const P = (rr: number, a: number) => { const q = at(c, rr, a); return `${q[0].toFixed(2)} ${q[1].toFixed(2)}`; };
   const o = deg(ro), n = deg(ri);
-  return [
-    `M ${P(ro, a0 + o)}`, `A ${ro} ${ro} 0 0 1 ${P(ro, a1 - o)}`, `Q ${P(ro, a1)} ${P(ro - rc, a1)}`,
-    `L ${P(ri + rc, a1)}`, `Q ${P(ri, a1)} ${P(ri, a1 - n)}`, `A ${ri} ${ri} 0 0 0 ${P(ri, a0 + n)}`,
-    `Q ${P(ri, a0)} ${P(ri + rc, a0)}`, `L ${P(ro - rc, a0)}`, `Q ${P(ro, a0)} ${P(ro, a0 + o)}`, 'Z',
-  ].join(' ');
+  return `M ${P(ro, a0 + o)} A ${ro} ${ro} 0 0 1 ${P(ro, a1 - o)} Q ${P(ro, a1)} ${P(ro - r, a1)} `
+    + `L ${P(ri + r, a1)} Q ${P(ri, a1)} ${P(ri, a1 - n)} A ${ri} ${ri} 0 0 0 ${P(ri, a0 + n)} `
+    + `Q ${P(ri, a0)} ${P(ri + r, a0)} L ${P(ro - r, a0)} Q ${P(ro, a0)} ${P(ro, a0 + o)} Z`;
 }
+
+// A wedge keeps its ring section's angle and only grows outward: radius 46 -> 140, width 4.5 -> 36.
+// Closed, it is drawn exactly like its ring section, so the ring can hand over to it the moment it opens.
+const LINE = 4.5;
+const GAP = 4.5 - (LINE / 2 / ARC_R) * (180 / Math.PI); // where a round-capped ring stroke visually ends
 const DIAL = WHEEL.map((k, i) => {
-  const a0 = 270 + i * SPAN + 1.5, a1 = 270 + (i + 1) * SPAN - 1.5, mid = (a0 + a1) / 2;
-  const [lx, ly] = at(CAN, LABEL_R, mid);
-  // chosen, a wedge spreads into its hidden neighbours' room: twice the span and thicker
-  const d = sector(CAN, DIAL_R - DIAL_W / 2, DIAL_R + DIAL_W / 2, a0, a1, 6);
-  const dp = sector(CAN, DIAL_R - PICK_W / 2, DIAL_R + PICK_W / 2, mid - SPAN * 0.85, mid + SPAN * 0.85, 12);
-  // the ring is narrower than the dial, so each wedge starts turned to its ring section and fans out
-  const turn = RING_START + (i + 0.5) * RING_SPAN - mid;
-  return { k, color: ASPECT_COLOR[k], d, dp, lx, ly: ly + 4, turn };
+  const mid = RING_START + (i + 0.5) * RING_SPAN;
+  const [lx, ly] = at(CAN, LABEL_R + (i % 2 ? 18 : 0), mid); // every other label sits further out, so neighbours never touch
+  return { k, color: ASPECT_COLOR[k], mid, lx, ly: ly + 4 };
 });
 
-/** Which section a finger at (vx, vy) from the orb's centre is over, or -1. */
+/** The wedge at dial openness o and state ev (-1 hidden, 0 idle, 1 chosen). */
+function wedgeShape(mid: number, o: number, ev: number) {
+  'worklet';
+  const pick = Math.max(ev, 0), hide = Math.max(-ev, 0);
+  const r = ARC_R + (DIAL_R - ARC_R) * o - 12 * hide;
+  const wd = LINE + (DIAL_W - LINE) * o + (PICK_W - DIAL_W) * pick;
+  const rest = RING_SPAN / 2 - GAP;
+  const half = rest + (RING_SPAN * 0.85 - rest) * pick; // chosen, it spreads into its hidden neighbours' room
+  const rc = LINE / 2 + (6 - LINE / 2) * o + 6 * pick;
+  return { ri: r - wd / 2, ro: r + wd / 2, a0: mid - half, a1: mid + half, rc };
+}
+
+/** Which section a finger at (vx, vy) from the orb's centre is over, or -1. Past either end counts as the end. */
 function sectionAt(vx: number, vy: number) {
   if (Math.hypot(vx, vy) < PICK_MIN) return -1;
-  const deg = ((Math.atan2(vy, vx) * 180) / Math.PI + 90 + 360) % 360;
-  let u = (deg - 270 + 360) % 360; // 0 at 9 o'clock, 180 at 3 o'clock, over the top
-  if (u > 180) u = vx < 0 ? 0 : 179.9;
-  return Math.min(WHEEL.length - 1, Math.floor(u / SPAN));
+  const deg = (Math.atan2(vx, -vy) * 180) / Math.PI; // 0 at 12 o'clock, clockwise, -180..180
+  if (Math.abs(deg) > 90) return vx < 0 ? 0 : WHEEL.length - 1;
+  return Math.min(WHEEL.length - 1, Math.max(0, Math.floor((deg + RING_HALF) / RING_SPAN)));
 }
 
 /** Each section sits dim in its aspect's colour and fills, glowing, as that aspect's lines are ticked. */
@@ -126,41 +137,50 @@ function Ring({ aspects }: { aspects: AspectProgress }) {
 }
 
 // ---- the dial ----
-const OPEN = { duration: 380, dampingRatio: 0.86, reduceMotion: ReduceMotion.System } as const;
+const OPEN = { duration: 320, dampingRatio: 0.88, reduceMotion: ReduceMotion.System } as const;
 const CLOSE = { duration: 300, dampingRatio: 1, reduceMotion: ReduceMotion.System } as const;
 const SWAP = { duration: 260, dampingRatio: 0.9, reduceMotion: ReduceMotion.System } as const;
 
-/** One wedge. It grows out of its ring section as the dial opens; chosen, it swells and the rest fall away. */
+const APath = Animated.createAnimatedComponent(Path);
+const clamp01 = (v: number) => { 'worklet'; return Math.min(Math.max(v, 0), 1); };
+
+/**
+ * One wedge: its ring section, grown outward along the same angle as the dial opens. The lit part (how much of
+ * that aspect is done) grows with it. Chosen, it swells into its neighbours' room and the rest fall away.
+ */
 function Wedge({ i, open, state, progress }: {
   i: number; open: SharedValue<number>; state: 'idle' | 'picked' | 'hidden'; progress?: { done: number; total: number };
 }) {
   const w = DIAL[i];
   const e = useSharedValue(0); // -1 hidden, 0 idle, 1 chosen
   useEffect(() => { e.set(withSpring(state === 'picked' ? 1 : state === 'hidden' ? -1 : 0, SWAP)); }, [state, e]);
-  const outer = useAnimatedStyle(() => {
-    const o = open.value, pick = Math.max(e.value, 0), hide = Math.max(-e.value, 0);
-    const grow = ARC_R / DIAL_R + (1 - ARC_R / DIAL_R) * o; // from the ring's radius out to the dial's
-    return {
-      opacity: o * (1 - hide),
-      transform: [{ rotate: `${w.turn * (1 - o)}deg` }, { scale: grow * (1 + 0.08 * pick - 0.1 * hide) }],
-    };
+  const frac = progress?.total ? Math.min(progress.done / progress.total, 1) : 0;
+  const has = !!progress?.total;
+  const track = useAnimatedProps(() => {
+    const o = open.value, pick = Math.max(e.value, 0), g = wedgeShape(w.mid, o, e.value);
+    const dim = 0.6 + (0.32 - 0.6) * o; // the ring's track, dimmer once it is a wedge
+    return { d: sector(CAN, g.ri, g.ro, g.a0, g.a1, g.rc), fillOpacity: dim + (1 - dim) * pick, strokeOpacity: 0.22 * pick };
   });
-  const idle = useAnimatedStyle(() => ({ opacity: 1 - Math.max(e.value, 0) }));
-  const chosen = useAnimatedStyle(() => ({ opacity: Math.max(e.value, 0) }));
-  const has = !!progress?.total, got = !!progress?.done;
+  const lit = useAnimatedProps(() => {
+    const o = open.value, g = wedgeShape(w.mid, o, e.value);
+    // the ring draws its lit part from just inside the section's start; match it closed, plain fraction open
+    const fRest = (2 * (4.5 - GAP) + (RING_SPAN - 9) * frac) / (RING_SPAN - 2 * GAP);
+    const f = fRest + (frac - fRest) * o;
+    return { d: sector(CAN, g.ri, g.ro, g.a0, g.a0 + (g.a1 - g.a0) * f, g.rc), strokeOpacity: 0.3 * (1 - o) };
+  });
+  // visible only while the dial is open at all; closed, the ring in the dock draws the same shape
+  const wrap = useAnimatedStyle(() => ({ opacity: open.value > 0.001 ? 1 - Math.max(-e.value, 0) : 0 }));
+  const label = useAnimatedStyle(() => ({ opacity: clamp01((open.value - 0.55) / 0.45) * (1 - Math.abs(e.value)) }));
   return (
-    <Animated.View pointerEvents="none" style={[s.wedge, outer]}>
-      <Animated.View style={[StyleSheet.absoluteFill, idle]}>
+    <Animated.View pointerEvents="none" style={[s.wedge, wrap]}>
+      <Svg width={CAN * 2} height={CAN * 2}>
+        <APath animatedProps={track} fill={w.color} stroke={w.color} strokeWidth={16} strokeLinejoin="round" />
+        {frac > 0 ? <APath animatedProps={lit} fill={w.color} stroke={w.color} strokeWidth={3.5} strokeLinejoin="round" /> : null}
+      </Svg>
+      <Animated.View style={[StyleSheet.absoluteFill, label]}>
         <Svg width={CAN * 2} height={CAN * 2}>
-          <Path d={w.d} fill={w.color} fillOpacity={got ? 0.85 : 0.3} />
           <SvgText x={w.lx} y={w.ly} textAnchor="middle" fontFamily={F.semibold} fontSize={12}
-            fill={got ? w.color : has ? C.muted : C.faint}>{LABEL[w.k]}</SvgText>
-        </Svg>
-      </Animated.View>
-      <Animated.View style={[StyleSheet.absoluteFill, chosen]}>
-        <Svg width={CAN * 2} height={CAN * 2}>
-          {/* soft light around the chosen wedge; the title above names it */}
-          <Path d={w.dp} fill={w.color} stroke={w.color} strokeOpacity={0.22} strokeWidth={16} strokeLinejoin="round" />
+            fill={frac > 0 ? w.color : has ? C.muted : C.faint}>{LABEL[w.k]}</SvgText>
         </Svg>
       </Animated.View>
     </Animated.View>
@@ -170,7 +190,8 @@ function Wedge({ i, open, state, progress }: {
 function DialLayer({ cx, cy, open, pick, aspects }: {
   cx: number; cy: number; open: SharedValue<number>; pick: number; aspects: AspectProgress;
 }) {
-  const fade = useAnimatedStyle(() => ({ opacity: open.value }));
+  // the scrim and title come in over the second half, so a quick tap only nudges the ring
+  const fade = useAnimatedStyle(() => ({ opacity: clamp01((open.value - 0.5) / 0.5) }));
   const k = pick >= 0 ? WHEEL[pick] : null;
   const p = k ? aspects[k] : undefined;
   return (
@@ -342,37 +363,25 @@ export function Dock({ bottom, width, aspects, onNotBuilt }: {
   const orb = useScale(0.93);
   const t = useTurn();
   const open = useSharedValue(0); // the dial
-  const ringFade = useAnimatedStyle(() => ({ opacity: 1 - open.value }));
+  const ringFade = useAnimatedStyle(() => ({ opacity: open.value > 0.001 ? 0 : 1 })); // the wedges take over
   const [pick, setPick] = useState(-1);
   // gesture bookkeeping, read and written only inside the touch handlers
-  const g = useRef({ ox: 0, oy: 0, x0: 0, y0: 0, moved: false, open: false, pick: -1, timer: null as ReturnType<typeof setTimeout> | null });
+  const g = useRef({ ox: 0, oy: 0, x0: 0, y0: 0, t0: 0, moved: false, pick: -1 });
 
   const release = () => {
     const st = g.current;
-    if (st.timer) clearTimeout(st.timer);
-    st.timer = null;
-    st.open = false;
     st.pick = -1;
     setPick(-1);
     open.set(withSpring(0, CLOSE));
     orb.set(1);
   };
 
+  // The dial starts opening the moment the orb is touched; the ring sections grow straight out.
   const onGrant = (e: GestureResponderEvent) => {
     const n = e.nativeEvent, st = g.current;
     st.ox = n.pageX - n.locationX + ORB / 2; // orb centre in page coordinates
     st.oy = n.pageY - n.locationY + ORB / 2;
-    st.x0 = n.pageX; st.y0 = n.pageY; st.moved = false; st.open = false; st.pick = -1;
-    orb.set(orb.to);
-    tap(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light));
-    st.timer = setTimeout(openDial, HOLD); // holding still also opens it
-  };
-
-  const openDial = () => {
-    const st = g.current;
-    if (st.timer) { clearTimeout(st.timer); st.timer = null; }
-    if (st.open) return;
-    st.open = true;
+    st.x0 = n.pageX; st.y0 = n.pageY; st.t0 = Date.now(); st.moved = false; st.pick = -1;
     open.set(withSpring(1, OPEN));
     orb.set(1.04);
     tap(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
@@ -380,12 +389,7 @@ export function Dock({ bottom, width, aspects, onNotBuilt }: {
 
   const onMove = (e: GestureResponderEvent) => {
     const n = e.nativeEvent, st = g.current;
-    if (!st.open) {
-      // a swipe off the orb opens the dial straight away; a small wobble still counts as a tap
-      if (Math.hypot(n.pageX - st.x0, n.pageY - st.y0) < SWIPE) return;
-      st.moved = true;
-      openDial();
-    }
+    if (!st.moved && Math.hypot(n.pageX - st.x0, n.pageY - st.y0) >= SWIPE) st.moved = true;
     const i = sectionAt(n.pageX - st.ox, n.pageY - st.oy);
     if (i !== st.pick) {
       st.pick = i;
@@ -395,14 +399,12 @@ export function Dock({ bottom, width, aspects, onNotBuilt }: {
   };
 
   const onRelease = () => {
-    const st = g.current, wasOpen = st.open, chosen = st.pick, moved = st.moved;
+    const st = g.current, chosen = st.pick, quick = !st.moved && Date.now() - st.t0 < TAP;
     release();
-    if (wasOpen) {
-      if (chosen >= 0) {
-        tap(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light));
-        onNotBuilt(`${LABEL[WHEEL[chosen]]} page`);
-      }
-    } else if (!moved) onNotBuilt('Talking to Nora');
+    if (chosen >= 0) {
+      tap(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light));
+      onNotBuilt(`${LABEL[WHEEL[chosen]]} page`);
+    } else if (quick) onNotBuilt('Talking to Nora');
   };
 
   return (
@@ -421,7 +423,7 @@ export function Dock({ bottom, width, aspects, onNotBuilt }: {
           onAccessibilityTap={() => onNotBuilt('Talking to Nora')}
           style={s.orbWrap}
           onStartShouldSetResponder={() => true}
-          onResponderTerminationRequest={() => !g.current.open}
+          onResponderTerminationRequest={() => false}
           onResponderGrant={onGrant}
           onResponderMove={onMove}
           onResponderRelease={onRelease}

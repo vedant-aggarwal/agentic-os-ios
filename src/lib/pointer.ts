@@ -95,5 +95,9 @@ export function usePointer(active: boolean) {
     raw(`${op} ${which}`);
   }, [flush, raw]);
 
-  return { connected: route !== null, route, move, scroll, button };
+  // keyboard: "t <text>" types it on the PC, "k <combo>" presses keys ("ctrl+c", "backspace", "f5")
+  const type = useCallback((text: string) => { if (text) raw(`t ${text}`); }, [raw]);
+  const key = useCallback((combo: string) => { if (combo) raw(`k ${combo}`); }, [raw]);
+
+  return { connected: route !== null, route, move, scroll, button, type, key };
 }

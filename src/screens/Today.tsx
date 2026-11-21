@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Polygon, Stop } from 'react-native-svg';
@@ -46,9 +46,10 @@ export default function Today() {
   // volume buttons drive Wispr on the PC while Today is up
   const mic = useWispr(!!t.view);
   const agent = useAgent(!!t.view);
-  // The Action button started a command on the PC: show it here.
-  const { openCommand } = mic;
-  useEffect(() => { if (agent.heard === 'listening') openCommand(); }, [agent.heard, openCommand]);
+  // A command is being taken or worked on (the Action button may have started it with the app shut): show it.
+  const agentLive = agent.heard === 'listening' || agent.busy;
+  const [closedLive, setClosedLive] = useState(false); // he shut it while a command ran: stay shut until the next one
+  if (!agentLive && closedLive) setClosedLive(false);
   const notBuilt = useCallback((what: string) => setLocal(`${what}: not built yet`), []);
   const { clearNotice } = t;
   const clear = useCallback(() => { setLocal(null); clearNotice(); }, [clearNotice]);
@@ -122,11 +123,11 @@ export default function Today() {
       <Notice text={local ?? t.notice} bottom={insets.bottom + 112} onClear={clear} />
       <Dock bottom={insets.bottom} width={width} aspects={v.aspects} onNotBuilt={notBuilt} />
       {/* opens by itself while a volume press has Wispr going, and closes once it has sent */}
-      <PcMicSheet open={micOpen || mic.phase !== 'idle' || mic.command} origin={micCenter(insets.top, width)} phase={mic.phase}
-        since={mic.since} error={mic.error} command={mic.command} source={mic.source} sourceNote={mic.sourceNote} onSource={mic.setSource}
-        onClose={() => { setMicOpen(false); mic.closeCommand(); if (mic.phase === 'handsfree') mic.toggleHandsFree(); }}
+      <PcMicSheet open={micOpen || mic.phase !== 'idle' || (agentLive && !closedLive)} origin={micCenter(insets.top, width)} phase={mic.phase}
+        since={mic.since} error={mic.error} source={mic.source} sourceNote={mic.sourceNote} onSource={mic.setSource}
+        onClose={() => { setMicOpen(false); if (agentLive) setClosedLive(true); if (mic.phase === 'handsfree') mic.toggleHandsFree(); }}
         onTalkIn={mic.startTalk} onTalkOut={mic.endTalk} onHandsFree={mic.toggleHandsFree}
-        onSayIn={mic.sayIn} onSayOut={mic.sayOut} onCloseCommand={mic.closeCommand} agent={agent}
+        onSayIn={mic.sayIn} onSayOut={mic.sayOut} agent={agent}
         onStop={() => { agent.stop(); api('/pc/keys', { method: 'POST', body: { action: 'stop' } }).catch(() => {}); }} />
     </View>
   );

@@ -11,12 +11,10 @@ import { Sym } from '@/components/Sym';
 import type { AgentItem, AgentState } from '@/lib/agent';
 import { ASPECT_COLOR, C, F } from '@/theme';
 
-// Command mode, in place of the trackpad: the trackpad's top edge detaches into a bar that slides in from the
-// right ("Command mode", what the agent is doing, Stop), the agent's live transcript fills the pad, and the two
-// click buttons become Talk (hold to say more, through Wispr) and Keyboard (type a reply).
+// Command mode: the bar across the top ("Command mode", what the agent is doing, Stop or start over) and the
+// agent's live transcript with Talk (hold to say more, through Wispr) and Type (a written reply).
 const SLIDE = SlideInRight.springify().damping(22).stiffness(180).reduceMotion(ReduceMotion.System);
-const LIVE = ASPECT_COLOR.mission;
-const BACK_AFTER = 6000; // ms after the agent finishes before the trackpad comes back
+export const LIVE = ASPECT_COLOR.mission;
 
 const STATUS: Record<AgentState | 'listening' | 'nothing', string> = {
   idle: 'Ready', listening: 'Listening', nothing: "Didn't catch that", starting: 'Starting', thinking: 'Thinking',
@@ -31,6 +29,34 @@ function Pulse({ on, color }: { on: boolean; color: string }) {
   }, [on, t]);
   const st = useAnimatedStyle(() => ({ opacity: 0.45 + 0.55 * (1 - t.value), transform: [{ scale: 1 + 0.35 * t.value }] }));
   return <Animated.View style={[s.dot, { backgroundColor: color }, st]} />;
+}
+
+export function CommandBar({ state, heard, connected, listening, hasItems, onStop, onFresh }: {
+  state: AgentState; heard: 'listening' | 'nothing' | null; connected: boolean; listening: boolean; hasItems: boolean;
+  onStop: () => void; onFresh: () => void;
+}) {
+  const busy = state === 'starting' || state === 'thinking' || state === 'working';
+  const key = listening ? 'listening' : heard === 'nothing' && !busy ? 'nothing' : state;
+  const tone = key === 'error' || key === 'nothing' ? C.danger : busy || listening ? LIVE : C.muted;
+  return (
+    <Animated.View entering={SLIDE} style={s.bar}>
+      <Pulse on={busy || listening} color={tone} />
+      <Text style={s.barTitle}>Command mode</Text>
+      <Text style={[s.barState, { color: tone }]} numberOfLines={1}>{connected ? STATUS[key] : 'Connecting'}</Text>
+      <View style={{ flex: 1 }} />
+      {busy || listening ? (
+        <Pressable accessibilityRole="button" accessibilityLabel="Stop" hitSlop={6} style={s.stop}
+          onPress={() => { if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {}); onStop(); }}>
+          <Sym name="stop.fill" size={14} color="#fff" fallback={<View style={s.stopSq} />} />
+          <Text style={s.stopText}>Stop</Text>
+        </Pressable>
+      ) : hasItems ? (
+        <Pressable accessibilityRole="button" accessibilityLabel="Start over" hitSlop={8} style={s.iconBtn} onPress={() => { lightTap(); onFresh(); }}>
+          <Sym name="square.and.pencil" size={15} fallback={<Text style={s.iconTxt}>+</Text>} />
+        </Pressable>
+      ) : null}
+    </Animated.View>
+  );
 }
 
 function Row({ it }: { it: AgentItem }) {
@@ -66,56 +92,25 @@ function PadButton({ label, icon, onIn, onOut, onPress, active }: {
   );
 }
 
-export function CommandPanel({ state, error, items, heard, connected, listening, onStop, onClose, onTalkIn, onTalkOut, onType }: {
-  state: AgentState; error: string | null; items: AgentItem[]; heard: 'listening' | 'nothing' | null; connected: boolean;
-  listening: boolean; onStop: () => void; onClose: () => void; onTalkIn: () => void; onTalkOut: () => void; onType: (t: string) => void;
+/** The transcript, with Talk and Type under it. */
+export function ChatView({ items, error, listening, onTalkIn, onTalkOut, onType }: {
+  items: AgentItem[]; error: string | null; listening: boolean; onTalkIn: () => void; onTalkOut: () => void; onType: (t: string) => void;
 }) {
-  const busy = state === 'starting' || state === 'thinking' || state === 'working';
   const [typing, setTyping] = useState(false);
   const [draft, setDraft] = useState('');
   const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
-  const key = listening ? 'listening' : heard === 'nothing' && !busy ? 'nothing' : state;
-  const tone = key === 'error' || key === 'nothing' ? C.danger : busy || listening ? LIVE : C.muted;
-
-  // Finished and left alone: back to normal (the trackpad).
-  const finished = !busy && !listening && !typing && (state === 'done' || state === 'stopped' || state === 'error' || heard === 'nothing');
-  useEffect(() => {
-    if (!finished) return;
-    const id = setTimeout(onClose, BACK_AFTER);
-    return () => clearTimeout(id);
-  }, [finished, onClose, items.length]);
-
   const submit = () => {
     const t = draft.trim();
     if (!t) return;
     onType(t); setDraft(''); setTyping(false); lightTap();
   };
-
   return (
     <View style={s.wrap}>
-      <Animated.View entering={SLIDE} style={s.bar}>
-        <Pulse on={busy || listening} color={tone} />
-        <Text style={s.barTitle}>Command mode</Text>
-        <Text style={[s.barState, { color: tone }]} numberOfLines={1}>{connected ? STATUS[key] : 'Connecting'}</Text>
-        <View style={{ flex: 1 }} />
-        {busy || listening ? (
-          <Pressable accessibilityRole="button" accessibilityLabel="Stop" hitSlop={6} style={s.stop}
-            onPress={() => { if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {}); onStop(); }}>
-            <Sym name="stop.fill" size={14} color="#fff" fallback={<View style={s.stopSq} />} />
-            <Text style={s.stopText}>Stop</Text>
-          </Pressable>
-        ) : (
-          <Pressable accessibilityRole="button" accessibilityLabel="Back to trackpad" hitSlop={8} style={s.closeBtn} onPress={() => { lightTap(); onClose(); }}>
-            <Sym name="xmark" size={13} fallback={<Text style={s.closeX}>×</Text>} />
-          </Pressable>
-        )}
-      </Animated.View>
-
-      <Animated.View entering={FadeIn.duration(260).delay(120)} style={s.pad}>
+      <Animated.View entering={FadeIn.duration(220)} style={s.pad}>
         {typing ? (
           <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(120)} style={s.inputRow}>
             <TextInput autoFocus value={draft} onChangeText={setDraft} placeholder="Tell the PC…" placeholderTextColor={C.faint}
-              style={s.input} returnKeyType="send" onSubmitEditing={submit} blurOnSubmit={false} />
+              style={s.input} returnKeyType="send" onSubmitEditing={submit} submitBehavior="submit" />
             <Pressable accessibilityRole="button" accessibilityLabel="Send" onPress={submit} style={[s.send, !draft.trim() && { opacity: 0.4 }]}>
               <Sym name="arrow.up" size={15} color="#0B0C10" fallback={<Text style={s.sendTxt}>↑</Text>} />
             </Pressable>
@@ -124,7 +119,9 @@ export function CommandPanel({ state, error, items, heard, connected, listening,
         <ScrollView ref={scroll} style={{ flex: 1 }} contentContainerStyle={s.list} keyboardShouldPersistTaps="handled"
           onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: true })}>
           {items.length === 0 ? (
-            <Text style={s.empty}>{listening ? 'Say what the PC should do, then let go.' : 'Nothing yet.'}</Text>
+            <Text style={s.empty}>
+              {listening ? 'Say what the PC should do.' : 'Press the Action button, or hold Talk, and say what the PC should do.'}
+            </Text>
           ) : (
             <Animated.View layout={LinearTransition.duration(180)} style={{ gap: 10 }}>
               {items.map((it) => <Row key={`${it.kind}:${it.id}`} it={it} />)}
@@ -133,12 +130,11 @@ export function CommandPanel({ state, error, items, heard, connected, listening,
           {error ? <Text style={s.err}>{error}</Text> : null}
         </ScrollView>
       </Animated.View>
-
       <View style={s.buttons}>
-        <PadButton label="Talk" active={listening} onIn={onTalkIn} onOut={onTalkOut}
+        <PadButton label="Talk to the PC agent" active={listening} onIn={onTalkIn} onOut={onTalkOut}
           icon={<Sym name="mic.fill" size={22} color={listening ? LIVE : C.text} fallback={<PcMic size={22} color={C.text} />} />} />
-        <PadButton label="Keyboard" active={typing} onPress={() => setTyping((v) => !v)}
-          icon={<Sym name="keyboard" size={22} color={typing ? LIVE : C.text} fallback={<Text style={s.kb}>⌨</Text>} />} />
+        <PadButton label="Type to the PC agent" active={typing} onPress={() => setTyping((v) => !v)}
+          icon={<Sym name="text.bubble" size={22} color={typing ? LIVE : C.text} fallback={<Text style={s.kb}>Aa</Text>} />} />
       </View>
     </View>
   );
@@ -153,13 +149,11 @@ const s = StyleSheet.create({
   dot: { width: 8, height: 8, borderRadius: 4 },
   barTitle: { fontFamily: F.semibold, fontSize: 15, lineHeight: 20, color: C.text },
   barState: { fontFamily: F.medium, fontSize: 13, lineHeight: 18, flexShrink: 1 },
-  stop: {
-    height: 36, paddingHorizontal: 14, borderRadius: 12, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#E5484D',
-  },
+  stop: { height: 36, paddingHorizontal: 14, borderRadius: 12, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#E5484D' },
   stopSq: { width: 11, height: 11, borderRadius: 2, backgroundColor: '#fff' },
   stopText: { fontFamily: F.semibold, fontSize: 14, lineHeight: 18, color: '#fff' },
-  closeBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.08)' },
-  closeX: { fontFamily: F.medium, fontSize: 20, lineHeight: 22, color: C.text },
+  iconBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.08)' },
+  iconTxt: { fontFamily: F.medium, fontSize: 20, lineHeight: 22, color: C.text },
   pad: {
     flex: 1, borderRadius: 24, borderCurve: 'continuous', backgroundColor: 'rgba(255,255,255,0.05)', overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.14)',
@@ -186,5 +180,5 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.07)', borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.14)',
   },
   btnOn: { backgroundColor: 'rgba(255,255,255,0.16)' },
-  kb: { fontSize: 20, color: C.text },
+  kb: { fontFamily: F.semibold, fontSize: 18, color: C.text },
 });

@@ -2,15 +2,17 @@ import { BlurView } from 'expo-blur';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Animated, {
-  cancelAnimation, Easing, FadeIn, FadeOut, ReduceMotion, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSpring, withTiming,
+  cancelAnimation, Easing, FadeIn, ReduceMotion, useAnimatedKeyboard, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSpring, withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CommandPanel } from '@/components/CommandPanel';
+import { ChatView, CommandBar, LIVE } from '@/components/CommandPanel';
 import { lightTap, useScale } from '@/components/Glass';
 import { PcMic } from '@/components/Icons';
 import { Sym } from '@/components/Sym';
+import { PcKeyboard } from '@/components/PcKeyboard';
 import { Trackpad } from '@/components/Trackpad';
 import type { useAgent } from '@/lib/agent';
+import { usePointer } from '@/lib/pointer';
 import type { MicSource, Phase } from '@/lib/wispr';
 import { ASPECT_COLOR, C, F } from '@/theme';
 
@@ -77,7 +79,7 @@ function Orb({ phase, onTalkIn, onTalkOut, onHandsFree }: { phase: Phase; onTalk
         <Ring live={live} delay={600} color={tone} />
         <Ring live={live} delay={1200} color={tone} />
         <View style={[s.orb, { borderColor: tone, backgroundColor: live ? `${tone}26` : 'rgba(255,255,255,0.05)' }]}>
-          <Sym name="mic.fill" size={30} color={live ? tone : C.text} fallback={<PcMic size={30} color={live ? tone : C.text} />} />
+          <Sym name="mic.fill" size={26} color={live ? tone : C.text} fallback={<PcMic size={26} color={live ? tone : C.text} />} />
         </View>
       </Animated.View>
     </Pressable>
@@ -109,25 +111,44 @@ function SourceSwitch({ value, onChange, note }: { value: MicSource; onChange: (
   );
 }
 
+type View3 = 'chat' | 'pad' | 'keys';
+
+/** A square toggle in the mic row: trackpad or keyboard. */
+function Toggle({ on, label, icon, onPress }: { on: boolean; label: string; icon: 'cursorarrow.rays' | 'keyboard'; onPress: () => void }) {
+  const p = useScale(0.92);
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected: on }}
+      onPressIn={() => p.set(p.to)} onPressOut={() => p.set(1)} onPress={() => { lightTap(); onPress(); }}>
+      <Animated.View style={[s.toggle, on && s.toggleOn, p.style]}>
+        <Sym name={icon} size={20} color={on ? '#0B0C10' : C.text} fallback={<Text style={s.toggleTxt}>{icon === 'keyboard' ? '⌨' : '↖'}</Text>} />
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+// The PC screen: command mode by default (the agent's bar and transcript), the trackpad or the PC keyboard on a tap,
+// and the mic row at the bottom (Wispr's orb, its state, the trackpad and keyboard toggles, PC mic | Phone mic).
 export function PcMicSheet({
-  open, origin, phase, since, error, command, source, sourceNote, onSource, onClose, onTalkIn, onTalkOut, onHandsFree, onSayIn, onSayOut,
-  onCloseCommand, agent, onStop,
+  open, origin, phase, since, error, source, sourceNote, onSource, onClose, onTalkIn, onTalkOut, onHandsFree, onSayIn, onSayOut,
+  agent, onStop,
 }: {
   open: boolean; origin: { x: number; y: number }; phase: Phase; since: number; error: string | null;
-  command: boolean; source: MicSource; sourceNote: string | null; onSource: (v: MicSource) => void;
+  source: MicSource; sourceNote: string | null; onSource: (v: MicSource) => void;
   onClose: () => void; onTalkIn: () => void; onTalkOut: () => void; onHandsFree: () => void;
-  onSayIn: () => void; onSayOut: () => void; onCloseCommand: () => void;
+  onSayIn: () => void; onSayOut: () => void;
   agent: ReturnType<typeof useAgent>; onStop: () => void;
 }) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const p = useSharedValue(0);
   const [mounted, setMounted] = useState(open);
+  const [view, setView] = useState<View3>('chat');
+  const pc = usePointer(open); // one PC connection for the trackpad and the keyboard, ready as soon as this opens
   if (open && !mounted) setMounted(true); // mount at once on open; unmount after the close animation
   useEffect(() => {
     if (open) { p.set(withSpring(1, OPEN)); return; }
     p.set(withSpring(0, CLOSE));
-    const id = setTimeout(() => setMounted(false), 460);
+    const id = setTimeout(() => { setMounted(false); setView('chat'); }, 460);
     return () => clearTimeout(id);
   }, [open, p]);
 
@@ -146,50 +167,62 @@ export function PcMicSheet({
 
   const live = phase === 'listening' || phase === 'handsfree' || phase === 'command';
   const tone = TONE[phase];
+  const agentListening = phase === 'command' || agent.heard === 'listening';
+  const flip = (v: View3) => setView((cur) => (cur === v ? 'chat' : v));
   return (
     <Animated.View style={[s.shell, shell]} pointerEvents={open ? 'auto' : 'none'}>
       <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
       <View style={[StyleSheet.absoluteFill, s.tint]} />
       <Content style={content} insets={insets} width={width} height={height}>
         <View style={s.header}>
-          <Text style={s.kicker}>PC mic · Wispr Flow</Text>
+          <Text style={s.kicker}>Your PC</Text>
           <Pressable accessibilityRole="button" accessibilityLabel="Close" hitSlop={8} onPress={() => { lightTap(); onClose(); }} style={s.close}>
             <Sym name="xmark" size={16} fallback={<Text style={s.closeX}>×</Text>} />
           </Pressable>
         </View>
 
-        <View style={s.top}>
+        <CommandBar state={agent.state} heard={agent.heard} connected={agent.connected} listening={agentListening}
+          hasItems={agent.items.length > 0} onStop={onStop} onFresh={agent.fresh} />
+
+        <View style={s.main}>
+          {view === 'pad' ? (
+            <Animated.View key="pad" entering={FadeIn.duration(200)} style={{ flex: 1 }}><Trackpad pc={pc} /></Animated.View>
+          ) : view === 'keys' ? (
+            <PcKeyboard key="keys" connected={pc.connected} onType={pc.type} onKey={pc.key} />
+          ) : (
+            <ChatView key="chat" items={agent.items} error={agent.error} listening={agentListening}
+              onTalkIn={onSayIn} onTalkOut={onSayOut} onType={(t) => agent.say(t)} />
+          )}
+        </View>
+
+        <View style={s.micRow}>
           <Orb phase={phase} onTalkIn={onTalkIn} onTalkOut={onTalkOut} onHandsFree={onHandsFree} />
           <View style={s.side}>
             <View style={s.titleRow}>
-              <Text style={[s.title, { color: phase === 'idle' ? C.text : tone }]}>{TITLE[phase]}</Text>
+              <Text style={[s.title, { color: phase === 'idle' ? C.text : tone }]} numberOfLines={1}>{TITLE[phase]}</Text>
               <Elapsed since={since} live={live} />
+              <View style={{ flex: 1 }} />
+              <Toggle on={view === 'pad'} label="Trackpad" icon="cursorarrow.rays" onPress={() => flip('pad')} />
+              <Toggle on={view === 'keys'} label="PC keyboard" icon="keyboard" onPress={() => flip('keys')} />
             </View>
             <SourceSwitch value={source} onChange={onSource} note={sourceNote} />
           </View>
         </View>
         {error ? <Text style={s.error}>{error}</Text> : null}
-
-        {command ? (
-          <CommandPanel state={agent.state} error={agent.error} items={agent.items} heard={agent.heard} connected={agent.connected}
-            listening={phase === 'command' || agent.heard === 'listening'} onStop={onStop} onClose={onCloseCommand} onTalkIn={onSayIn} onTalkOut={onSayOut}
-            onType={(t) => agent.say(t)} />
-        ) : (
-          <Animated.View key="pad" entering={FadeIn.duration(220)} exiting={FadeOut.duration(140)} style={{ flex: 1 }}>
-            <Trackpad active={open} />
-          </Animated.View>
-        )}
       </Content>
     </Animated.View>
   );
 }
 
-/** The screen's content, laid out at full size from the start so it never reflows while the shell grows. */
+/** The screen's content, laid out at full size from the start so it never reflows while the shell grows. It makes
+ *  room for the phone's keyboard, so the mic row and what is being typed stay above it. */
 function Content({ style, insets, width, height, children }: {
   style: object; insets: { top: number; bottom: number }; width: number; height: number; children: React.ReactNode;
 }) {
+  const kb = useAnimatedKeyboard();
+  const room = useAnimatedStyle(() => ({ paddingBottom: Math.max(insets.bottom + 16, kb.height.value + 8) }));
   return (
-    <Animated.View style={[s.content, { width, height, paddingTop: insets.top + 12, paddingBottom: insets.bottom + 24 }, style]}>
+    <Animated.View style={[s.content, { width, height, paddingTop: insets.top + 12 }, room, style]}>
       {children}
     </Animated.View>
   );
@@ -198,26 +231,33 @@ function Content({ style, insets, width, height, children }: {
 const s = StyleSheet.create({
   shell: { position: 'absolute', overflow: 'hidden', borderCurve: 'circular' },
   tint: { backgroundColor: 'rgba(9,10,14,0.94)' },
-  content: { position: 'absolute', left: 0, top: 0, paddingHorizontal: 20 },
-  header: { height: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  content: { position: 'absolute', left: 0, top: 0, paddingHorizontal: 20, gap: 10 },
+  header: { height: 40, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   kicker: { fontFamily: F.medium, fontSize: 14, lineHeight: 20, color: C.muted },
   close: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.08)' },
   closeX: { fontFamily: F.medium, fontSize: 22, lineHeight: 24, color: C.text },
-  top: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingBottom: 14 },
-  side: { flex: 1, gap: 12 },
-  orbBox: { width: 140, height: 140, alignItems: 'center', justifyContent: 'center', marginLeft: -12 },
-  ring: { position: 'absolute', width: 96, height: 96, borderRadius: 48, borderWidth: 2 },
-  orb: { width: 96, height: 96, borderRadius: 48, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
+  main: { flex: 1 },
+  micRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  side: { flex: 1, gap: 10 },
+  orbBox: { width: 104, height: 104, alignItems: 'center', justifyContent: 'center', marginLeft: -12 },
+  ring: { position: 'absolute', width: 76, height: 76, borderRadius: 38, borderWidth: 2 },
+  orb: { width: 76, height: 76, borderRadius: 38, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
   seg: {
-    height: 40, borderRadius: 14, borderCurve: 'continuous', flexDirection: 'row', padding: 2,
+    height: 38, borderRadius: 13, borderCurve: 'continuous', flexDirection: 'row', padding: 2,
     backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.12)',
   },
-  segThumb: { position: 'absolute', top: 2, bottom: 2, left: 2, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.14)' },
+  segThumb: { position: 'absolute', top: 2, bottom: 2, left: 2, borderRadius: 11, backgroundColor: 'rgba(255,255,255,0.14)' },
   segOpt: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
   segText: { fontFamily: F.medium, fontSize: 13, lineHeight: 18, color: C.faint },
   segNote: { fontFamily: F.medium, fontSize: 12, lineHeight: 16, color: C.faint },
-  titleRow: { flexDirection: 'row', alignItems: 'baseline', gap: 10 },
-  title: { fontFamily: F.semibold, fontSize: 28, lineHeight: 34, letterSpacing: -0.6 },
-  elapsed: { fontFamily: F.medium, fontSize: 16, lineHeight: 22, color: C.muted, fontVariant: ['tabular-nums'] },
-  error: { fontFamily: F.medium, fontSize: 14, lineHeight: 20, color: C.danger, marginTop: -6, marginBottom: 10 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  title: { fontFamily: F.semibold, fontSize: 20, lineHeight: 26, letterSpacing: -0.4, flexShrink: 1 },
+  elapsed: { fontFamily: F.medium, fontSize: 14, lineHeight: 20, color: C.muted, fontVariant: ['tabular-nums'] },
+  toggle: {
+    width: 42, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.14)',
+  },
+  toggleOn: { backgroundColor: LIVE },
+  toggleTxt: { fontFamily: F.semibold, fontSize: 16, color: C.text },
+  error: { fontFamily: F.medium, fontSize: 13, lineHeight: 18, color: C.danger },
 });

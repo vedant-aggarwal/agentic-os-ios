@@ -30,7 +30,7 @@ export function useAgent(active: boolean) {
         if (!alive) return;
         let m: any; try { m = JSON.parse(String(e.data)); } catch { return; }
         switch (m.type) {
-          case 'snapshot': setState(m.state); setError(m.error ?? null); setItems(m.items ?? []); break;
+          case 'snapshot': setState(m.state); setError(m.error ?? null); setItems(m.items ?? []); setHeard(m.listening ? 'listening' : null); break;
           case 'reset': setItems([]); setError(null); break;
           case 'state': setState(m.state); setError(m.error ?? null); if (m.state !== 'idle') setHeard(null); break;
           case 'listening': setHeard('listening'); break;
@@ -67,7 +67,9 @@ export function useAgent(active: boolean) {
   }, []);
   const say = useCallback((text: string) => raw({ type: 'say', text }), [raw]);
   const stop = useCallback(() => raw({ type: 'stop' }), [raw]);
+  /** End the session and clear the transcript (the PC keeps a history log for the next one). */
+  const fresh = useCallback(() => { raw({ type: 'new' }); }, [raw]);
 
   const busy = state === 'starting' || state === 'thinking' || state === 'working';
-  return { connected, state, error, items, heard, busy, say, stop };
+  return { connected, state, error, items, heard, busy, say, stop, fresh };
 }

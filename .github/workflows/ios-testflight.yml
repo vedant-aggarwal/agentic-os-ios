@@ -1,0 +1,137 @@
+# Builds the BizBrain OS Expo development build (expo-dev-client) on a macOS runner and uploads it to TestFlight.
+# Install it once from TestFlight; after that JS comes live from Metro on the PC (npm start / npm run tunnel),
+# so only native changes (packages, app config, assets, scripts, this file) need a new build.
+#
+# expo-dev-launcher and expo-dev-menu are linked only in the Debug configuration (debugOnly), so this archives
+# Debug and signs it for App Store distribution, the same route as the Agentic OS dev client.
+#
+# Signing doesn't use Apple's cloud signing (App Manager key): scripts/ios_signing.py makes a short-lived
+# distribution certificate and App Store profile for this run and removes them afterwards.
+# Repo secrets: APPLE_TEAM_ID, ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8. They reach scripts through env only:
+# this repo is public, so its logs are public.
+name: BizBrain OS dev client
+on:
+  push:
+    branches: [bizbrain-os]
+    paths:
+      - package.json
+      - package-lock.json
+      - app.json
+      - app.config.ts
+      - assets/**
+      - scripts/**
+      - .github/workflows/ios-testflight.yml
+  workflow_dispatch:
+concurrency:
+  group: bizbrain-os-testflight
+  cancel-in-progress: false
+env:
+  BUNDLE_ID: com.norrita.bizbrainos
+jobs:
+  ios:
+    runs-on: macos-26
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build number
+        run: echo "BUILD_NUMBER=$((100 + ${{ github.run_number }}))" >> $GITHUB_ENV
+      - name: App Store Connect key
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+        run: |
+          mkdir -p ~/.appstoreconnect/private_keys
+          printf '%s\n' "$ASC_KEY_P8" > ~/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8
+          echo "ASC_KEY_PATH=$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8" >> $GITHUB_ENV
+          python3 -m pip install --quiet --break-system-packages pyjwt cryptography
+      - name: App Store Connect app exists
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: python3 scripts/ios_signing.py check_app
+      - name: Xcode 26 or newer
+        run: |
+          major() { xcodebuild -version | head -1 | awk '{print $2}' | cut -d. -f1; }
+          if [ "$(major)" -lt 26 ]; then
+            pick=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+            [ -n "$pick" ] || { echo "No Xcode 26 on this runner"; exit 1; }
+            sudo xcode-select -s "$pick/Contents/Developer"
+          fi
+          xcodebuild -version
+      - uses: actions/setup-node@v4
+        with: {node-version: 24, cache: npm}
+      - run: npm ci --no-audit --no-fund
+      - name: Expo prebuild (iOS)
+        run: |
+          IOS_BUILD_NUMBER=$BUILD_NUMBER npx expo prebuild --platform ios --no-install
+          PROJ=$(ls -d ios/*.xcodeproj | grep -v Pods | head -1)
+          NAME=$(basename "$PROJ" .xcodeproj)
+          echo "APP_NAME=$NAME" >> $GITHUB_ENV
+          echo "Project $NAME"
+      - name: CocoaPods
+        working-directory: ios
+        run: pod install
+      - name: Signing certificate and profile
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: python3 scripts/ios_signing.py setup
+      - name: Manual signing on the app target
+        env:
+          TEAM: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          ruby scripts/ios_manual_signing.rb
+          python3 scripts/ios_signing.py entitlements
+      - name: Archive (Debug, with the dev launcher)
+        run: |
+          set -o pipefail
+          xcodebuild -workspace "ios/$APP_NAME.xcworkspace" -scheme "$APP_NAME" -configuration Debug             -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/BizBrainOS.xcarchive"             CURRENT_PROJECT_VERSION=$BUILD_NUMBER ENABLE_DEBUG_DYLIB=NO COMPILER_INDEX_STORE_ENABLE=NO             archive > "$RUNNER_TEMP/archive.log" 2>&1 && ok=0 || ok=$?
+          grep -E "error:|\*\* ARCHIVE (SUCCEEDED|FAILED)" "$RUNNER_TEMP/archive.log" | sort -u | head -100 || true
+          [ $ok -eq 0 ] || { tail -80 "$RUNNER_TEMP/archive.log"; exit $ok; }
+      - name: Check the archive holds the dev launcher
+        run: |
+          APP=$(ls -d "$RUNNER_TEMP"/BizBrainOS.xcarchive/Products/Applications/*.app | head -1)
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP/Info.plist"
+          BIN="$APP/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP/Info.plist")"
+          found=$( { find "$APP" -iname '*DevLauncher*'; strings "$BIN" | grep 'EXDevLauncher' | head -3; } 2>/dev/null | head -5 || true )
+          echo "$found"
+          [ -n "$found" ] || { echo "Dev launcher missing from the archive"; exit 1; }
+      - name: Export and upload to App Store Connect
+        env:
+          TEAM: ${{ secrets.APPLE_TEAM_ID }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          cat > "$RUNNER_TEMP/export.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>$TEAM</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>signingCertificate</key><string>Apple Distribution</string>
+            <key>provisioningProfiles</key><dict>
+              <key>$BUNDLE_ID</key><string>$PROFILE_APP</string>
+            </dict>
+            <key>uploadSymbols</key><false/>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict></plist>
+          PLIST
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/BizBrainOS.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/export.plist" -exportPath "$RUNNER_TEMP/out" \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+      - name: Wait for App Store Connect to list the build
+        continue-on-error: true
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: python3 scripts/ios_signing.py wait_build
+      - name: Remove the run's certificate and profile
+        if: ${{ always() }}
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: python3 scripts/ios_signing.py cleanup || true

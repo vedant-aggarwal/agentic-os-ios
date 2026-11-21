@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "BizBrain OS",
+    "slug": "bizbrain-os",
+    "version": "3.0.0",
+    "orientation": "portrait",
+    "scheme": "bizbrain",
+    "icon": "./assets/images/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#12100E",
+    "ios": {
+      "bundleIdentifier": "com.norrita.bizbrainos",
+      "supportsTablet": true,
+      "buildNumber": "100",
+      "config": { "usesNonExemptEncryption": false }
+    },
+    "android": { "package": "com.norrita.bizbrainos", "edgeToEdgeEnabled": true },
+    "web": { "output": "single", "bundler": "metro" },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      "expo-dev-client",
+      [
+        "expo-splash-screen",
+        { "backgroundColor": "#12100E", "image": "./assets/images/splash-icon.png", "imageWidth": 200 }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "BizBrain uses the camera to scan product tags and bills.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ]
+    ],
+    "experiments": { "typedRoutes": false }
+  }
+}

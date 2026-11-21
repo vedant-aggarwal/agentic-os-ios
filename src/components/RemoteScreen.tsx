@@ -1,12 +1,11 @@
 import * as Haptics from 'expo-haptics';
 import { type ComponentRef, useRef, useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, TurboModuleRegistry, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { lightTap } from '@/components/Glass';
 import { ScrollWheel } from '@/components/ScrollWheel';
 import { SCREEN_PAGE } from '@/components/screenPage';
 import { Sym } from '@/components/Sym';
-import { WebView } from 'react-native-webview';
 import { API, currentToken } from '@/lib/api';
 import type { usePointer } from '@/lib/pointer';
 import { C, F } from '@/theme';
@@ -14,7 +13,11 @@ import { C, F } from '@/theme';
 // The remote screen: the PC's display, live (screenPage.ts plays it), steered by touch. The scroll wheel sits on the
 // left, as on the trackpad. The badge says which route the video took: Direct, Relay (through the VPS), or Slow
 // (still frames through the tunnel, when video can't connect).
-// (Builds from before react-native-webview show an empty box here instead of the screen.)
+// react-native-webview insists on its native part the moment it loads, so it is loaded only when the installed app
+// build has it; older builds show a note here instead of crashing at launch.
+type WebViewT = typeof import('react-native-webview').WebView;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const WebView: WebViewT | null = TurboModuleRegistry?.get?.('RNCWebViewModule') ? require('react-native-webview').WebView : null;
 
 type Route = 'connecting' | 'direct' | 'relay' | 'frames';
 const BADGE: Record<Route, { label: string; color: string }> = {
@@ -24,7 +27,7 @@ const BADGE: Record<Route, { label: string; color: string }> = {
 
 export function RemoteScreen({ pc }: { pc: ReturnType<typeof usePointer> }) {
   const [route, setRoute] = useState<Route>('connecting');
-  const web = useRef<ComponentRef<typeof WebView>>(null);
+  const web = useRef<ComponentRef<WebViewT>>(null);
   const [inject] = useState(() => `window.AOS = ${JSON.stringify({ api: API, token: currentToken() ?? '' })}; true;`);
 
   const onMessage = (e: { nativeEvent: { data: string } }) => {
@@ -42,10 +45,14 @@ export function RemoteScreen({ pc }: { pc: ReturnType<typeof usePointer> }) {
     <Animated.View entering={FadeIn.duration(200)} style={s.wrap}>
       <ScrollWheel onScroll={(dy) => pc.scroll(0, dy)} />
       <View style={s.card}>
-        <WebView ref={web} source={{ html: SCREEN_PAGE, baseUrl: 'https://agentic.norrita.com' }} originWhitelist={['*']}
-          injectedJavaScriptBeforeContentLoaded={inject} onMessage={onMessage}
-          allowsInlineMediaPlayback mediaPlaybackRequiresUserAction={false} scrollEnabled={false} bounces={false}
-          style={s.web} containerStyle={s.web} />
+        {WebView ? (
+          <WebView ref={web} source={{ html: SCREEN_PAGE, baseUrl: 'https://agentic.norrita.com' }} originWhitelist={['*']}
+            injectedJavaScriptBeforeContentLoaded={inject} onMessage={onMessage}
+            allowsInlineMediaPlayback mediaPlaybackRequiresUserAction={false} scrollEnabled={false} bounces={false}
+            style={s.web} containerStyle={s.web} />
+        ) : (
+          <Text style={s.missing}>Update the app from TestFlight to see your PC screen here.</Text>
+        )}
         <View pointerEvents="box-none" style={s.overlay}>
           <View pointerEvents="none" style={s.badge}>
             <View style={[s.dot, { backgroundColor: b.color }]} />
@@ -73,6 +80,7 @@ const s = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.14)', justifyContent: 'center',
   },
   web: { flex: 1, backgroundColor: '#000' },
+  missing: { fontFamily: F.medium, fontSize: 14, lineHeight: 20, color: C.faint, textAlign: 'center', padding: 24 },
   overlay: { position: 'absolute', top: 10, left: 10, right: 10, flexDirection: 'row', alignItems: 'center', gap: 8 },
   badge: {
     flexDirection: 'row', alignItems: 'center', gap: 6, height: 26, paddingHorizontal: 10, borderRadius: 13,

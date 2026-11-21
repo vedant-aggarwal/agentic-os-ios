@@ -7,10 +7,10 @@ import Animated, {
   Easing, ReduceMotion, useAnimatedProps, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withSpring, withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
-import Svg, { Circle, Defs, G, Path, RadialGradient, Stop, Text as SvgText } from 'react-native-svg';
+import Svg, { Circle, Defs, G, LinearGradient, Path, RadialGradient, Stop, Text as SvgText } from 'react-native-svg';
 import { Home, Nora, Scan, Work } from '@/components/Icons';
 import type { AspectProgress } from '@/lib/today';
-import { ASPECT_COLOR, C, F, type AspectKey } from '@/theme';
+import { ASPECT_COLOR, C, F, FAMILY_LABEL, type AspectKey, type FamilyKey } from '@/theme';
 
 // The Nora bar, from the canvas boards (UI1-Nora, UI2-Today): a black 64 pt pill between two floating
 // 64 pt orbs (Home, Work). Scan and Nora's chat sit in the pill as clear 48 pt buttons, the 72 pt orb raised
@@ -49,7 +49,10 @@ const LIQUID = (() => {
 const tap = (fn: () => Promise<void>) => { if (Platform.OS !== 'web') fn().catch(() => {}); };
 
 // ---- the ring: nine sections over the top of the orb, 9 o'clock to 3 o'clock, as on UI2-Today ----
-const WHEEL: AspectKey[] = ['body', 'mind', 'soul', 'mission', 'money', 'growth', 'family', 'romance', 'friends'];
+// Grouped Self, Work, People. Inside each group the aspects are ordered so the colours sweep one way round
+// the arc: orange, amber, gold | lime, mint, teal | violet, magenta, pink.
+const WHEEL: AspectKey[] = ['body', 'mind', 'soul', 'growth', 'mission', 'money', 'friends', 'romance', 'family'];
+const GROUPS: { key: FamilyKey; from: number }[] = [{ key: 'self', from: 0 }, { key: 'work', from: 3 }, { key: 'people', from: 6 }];
 const LABEL: Record<AspectKey, string> = {
   body: 'Body', mind: 'Mind', soul: 'Soul', mission: 'Mission', money: 'Money', growth: 'Growth',
   family: 'Family', romance: 'Romance', friends: 'Friends',
@@ -158,7 +161,7 @@ function Wedge({ i, open, state, progress }: {
   const has = !!progress?.total;
   const track = useAnimatedProps(() => {
     const o = open.value, pick = Math.max(e.value, 0), g = wedgeShape(w.mid, o, e.value);
-    const dim = 0.6 + (0.32 - 0.6) * o; // the ring's track, dimmer once it is a wedge
+    const dim = 0.6 + (0.5 - 0.6) * o; // the ring's track; as a wedge, bright enough to read its colour
     return { d: sector(CAN, g.ri, g.ro, g.a0, g.a1, g.rc), fillOpacity: dim + (1 - dim) * pick, strokeOpacity: 0.28 * pick };
   });
   const lit = useAnimatedProps(() => {
@@ -187,6 +190,50 @@ function Wedge({ i, open, state, progress }: {
   );
 }
 
+// The three groups, as bands inside the wedges: each spans its three aspects, coloured across their hues.
+const GROUP_R = 90;
+const GROUP_W = 24;
+
+/** One group band. It grows out of the ring with the dial; while one of its aspects is chosen it stays lit. */
+function GroupBand({ g, open, state, progress }: {
+  g: { key: FamilyKey; from: number }; open: SharedValue<number>; state: 'idle' | 'active' | 'dim';
+  progress: { done: number; total: number };
+}) {
+  const e = useSharedValue(0); // 0 idle or active, 1 dimmed
+  useEffect(() => { e.set(withSpring(state === 'dim' ? 1 : 0, SWAP)); }, [state, e]);
+  const a0 = RING_START + g.from * RING_SPAN + GAP, a1 = RING_START + (g.from + 3) * RING_SPAN - GAP, mid = (a0 + a1) / 2;
+  const band = useAnimatedProps(() => {
+    const o = open.value, r = ARC_R + (GROUP_R - ARC_R) * o, wd = LINE + (GROUP_W - LINE) * o;
+    return { d: sector(CAN, r - wd / 2, r + wd / 2, a0, a1, 10) };
+  });
+  const wrap = useAnimatedStyle(() => ({ opacity: open.value > 0.001 ? clamp01(open.value * 1.5) * (1 - 0.7 * e.value) : 0 }));
+  const label = useAnimatedStyle(() => ({ opacity: clamp01((open.value - 0.55) / 0.45) }));
+  const [x0, y0] = at(CAN, GROUP_R, a0), [x1, y1] = at(CAN, GROUP_R, a1), [lx, ly] = at(CAN, GROUP_R, mid);
+  const colors = WHEEL.slice(g.from, g.from + 3).map((k) => ASPECT_COLOR[k]);
+  const id = `group-${g.key}`;
+  return (
+    <Animated.View pointerEvents="none" style={[s.wedge, wrap]}>
+      <Svg width={CAN * 2} height={CAN * 2}>
+        <Defs>
+          <LinearGradient id={id} gradientUnits="userSpaceOnUse" x1={x0} y1={y0} x2={x1} y2={y1}>
+            {colors.map((c, j) => <Stop key={c} offset={j / 2} stopColor={c} />)}
+          </LinearGradient>
+        </Defs>
+        <APath animatedProps={band} fill={`url(#${id})`} fillOpacity={progress.done ? 0.75 : 0.45} />
+      </Svg>
+      <Animated.View style={[StyleSheet.absoluteFill, label]}>
+        <Svg width={CAN * 2} height={CAN * 2}>
+          {/* set along the band, so it reads as part of it */}
+          <SvgText x={lx} y={ly + 4} textAnchor="middle" fontFamily={F.semibold} fontSize={11} fill={C.text}
+            transform={`rotate(${mid > 180 ? mid - 360 : mid} ${lx} ${ly})`}>
+            {progress.total ? `${FAMILY_LABEL[g.key]}  ${progress.done}/${progress.total}` : FAMILY_LABEL[g.key]}
+          </SvgText>
+        </Svg>
+      </Animated.View>
+    </Animated.View>
+  );
+}
+
 function DialLayer({ cx, cy, open, pick, aspects }: {
   cx: number; cy: number; open: SharedValue<number>; pick: number; aspects: AspectProgress;
 }) {
@@ -201,6 +248,13 @@ function DialLayer({ cx, cy, open, pick, aspects }: {
         <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(8,8,10,0.72)' }]} />
       </Animated.View>
       <View style={{ position: 'absolute', left: cx - CAN, top: cy - CAN, width: CAN * 2, height: CAN * 2 }}>
+        {GROUPS.map((g) => {
+          const sum = WHEEL.slice(g.from, g.from + 3).reduce((t, k) => ({
+            done: t.done + (aspects[k]?.done ?? 0), total: t.total + (aspects[k]?.total ?? 0),
+          }), { done: 0, total: 0 });
+          const mine = pick >= g.from && pick < g.from + 3;
+          return <GroupBand key={g.key} g={g} open={open} progress={sum} state={pick < 0 ? 'idle' : mine ? 'active' : 'dim'} />;
+        })}
         {WHEEL.map((key, i) => (
           <Wedge key={key} i={i} open={open} progress={aspects[key]} state={pick < 0 ? 'idle' : pick === i ? 'picked' : 'hidden'} />
         ))}

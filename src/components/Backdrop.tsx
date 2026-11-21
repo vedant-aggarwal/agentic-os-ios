@@ -11,7 +11,7 @@ const GLOW: [number, number][] = [[0, 0.3], [0.12, 0.22], [0.3, 0.11], [0.55, 0.
 /** Ease-in ramp, so a fade starts with no visible edge and does its work near the bottom. */
 const ramp = (max: number, power: number, n = 10) =>
   Array.from({ length: n + 1 }, (_, i) => [i / n, max * (i / n) ** power] as const);
-const DARKEN = ramp(0.94, 1.8);
+const DARKEN = ramp(0.55, 2);
 
 /** `cy` is the orb's centre in this svg's coordinates. */
 function Glow({ id, W, cy }: { id: string; W: number; cy: number }) {

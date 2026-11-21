@@ -141,7 +141,7 @@ export default function Today() {
       </ScrollView>
 
       <EdgeBlur height={insets.bottom + 130} />
-      <EdgeGlow height={insets.bottom + 240} orb={orb} />
+      <EdgeGlow height={insets.bottom + 200} orb={orb} />
       <Notice text={local ?? t.notice} bottom={insets.bottom + 112} onClear={clear} />
       <Dock bottom={insets.bottom} width={width} aspects={v.aspects} onNotBuilt={notBuilt} />
     </View>

@@ -38,7 +38,7 @@ const DIAL_W = 36;
 const PICK_W = 42; // chosen: a little thicker than an idle wedge, not a new shape
 const LABEL_R = 178;
 const CAN = 200; // half-size of each wedge's canvas, centred on the orb
-const PICK_MIN = 40; // choosing starts as soon as the finger is off the ball (radius 36)
+const PICK_MOVE = 12; // pt of travel from where the finger landed before it starts choosing
 
 // Liquid Glass is iOS 26+. Older iOS, web and Android get blur under a black tint.
 const LIQUID = (() => {
@@ -111,10 +111,10 @@ function wedgeShape(mid: number, o: number, ev: number) {
   return { ri: r - wd / 2, ro: r + wd / 2, a0: mid - half, a1: mid + half, rc };
 }
 
-/** Which section a finger at (vx, vy) from the orb's centre is over, or -1. Past either end counts as the end. */
+/** Which section the direction (vx, vy) points at, or -1. Just past either end counts as the end; down is none. */
 function sectionAt(vx: number, vy: number) {
-  if (Math.hypot(vx, vy) < PICK_MIN) return -1;
   const deg = (Math.atan2(vx, -vy) * 180) / Math.PI; // 0 at 12 o'clock, clockwise, -180..180
+  if (Math.abs(deg) > 100) return -1;
   if (Math.abs(deg) > 90) return vx < 0 ? 0 : WHEEL.length - 1;
   return Math.min(WHEEL.length - 1, Math.max(0, Math.floor((deg + RING_HALF) / RING_SPAN)));
 }
@@ -470,7 +470,14 @@ export function Dock({ bottom, width, aspects, onNotBuilt }: {
   const onMove = (e: GestureResponderEvent) => {
     const n = e.nativeEvent, st = g.current;
     if (!st.moved && Math.hypot(n.pageX - st.x0, n.pageY - st.y0) >= SWIPE) st.moved = true;
-    const i = sectionAt(n.pageX - st.ox, n.pageY - st.oy);
+    // A nudge of PICK_MOVE from where the finger landed starts choosing, by its direction. The longer the slide,
+    // the more the angle is taken from the orb's centre, so far out it is the wedge under the finger.
+    const travel = Math.hypot(n.pageX - st.x0, n.pageY - st.y0);
+    let i = -1;
+    if (travel >= PICK_MOVE) {
+      const t = clamp01((travel - PICK_MOVE) / 100);
+      i = sectionAt(n.pageX - (st.x0 + (st.ox - st.x0) * t), n.pageY - (st.y0 + (st.oy - st.y0) * t));
+    }
     if (i !== st.pick) {
       st.pick = i;
       setPick(i);

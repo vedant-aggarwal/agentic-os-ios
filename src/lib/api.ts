@@ -1,3 +1,4 @@
+import { requireOptionalNativeModule } from 'expo';
 import { Platform } from 'react-native';
 
 // The phone server on Vedant's PC, public through the Home tunnel.
@@ -29,9 +30,13 @@ const store: Store = (() => {
   }
 })();
 
+// The Action button control (targets/controls) runs without the app, so it reads the sign-in from a shared keychain.
+const shared = Platform.OS === 'ios' ? requireOptionalNativeModule<{ set(token: string | null, api: string): boolean }>('SharedAuth') : null;
+const share = (v: string | null) => { try { shared?.set(v, API); } catch {} };
+
 let token: string | null = null;
-export async function loadToken() { token = await store.get(); return token; }
-export async function setToken(v: string | null) { token = v; await store.set(v); }
+export async function loadToken() { token = await store.get(); share(token); return token; }
+export async function setToken(v: string | null) { token = v; await store.set(v); share(v); }
 export const currentToken = () => token;
 
 export class ApiError extends Error {

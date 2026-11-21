@@ -14,6 +14,12 @@
       "icon": "./assets/expo.icon",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
+      },
+      "entitlements": {
+        "keychain-access-groups": [
+          "$(AppIdentifierPrefix)com.norrita.agenticos",
+          "$(AppIdentifierPrefix)com.norrita.agenticos.shared"
+        ]
       }
     },
     "android": {
@@ -45,7 +51,8 @@
         }
       ],
       "expo-font",
-      "expo-secure-store"
+      "expo-secure-store",
+      "@bacons/apple-targets"
     ],
     "experiments": {
       "typedRoutes": true,

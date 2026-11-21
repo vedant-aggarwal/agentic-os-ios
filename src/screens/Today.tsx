@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Polygon, Stop } from 'react-native-svg';
@@ -11,8 +11,9 @@ import { NowCard } from '@/components/NowCard';
 import { SignIn } from '@/components/SignIn';
 import { TaskGroup } from '@/components/TaskRow';
 import { PcMicSheet } from '@/components/PcMicSheet';
+import { useAgent } from '@/lib/agent';
 import { micCenter, TOP_GAP, TOP_H, TopBar } from '@/components/TopBar';
-import { signOut } from '@/lib/api';
+import { api, signOut } from '@/lib/api';
 import { gazeTouch } from '@/lib/gaze';
 import { useToday } from '@/lib/useToday';
 import { useWispr } from '@/lib/wispr';
@@ -44,6 +45,10 @@ export default function Today() {
   const [micOpen, setMicOpen] = useState(false); // opened by tapping the PC mic button
   // volume buttons drive Wispr on the PC while Today is up
   const mic = useWispr(!!t.view);
+  const agent = useAgent(!!t.view);
+  // The Action button started a command on the PC: show it here.
+  const { openCommand } = mic;
+  useEffect(() => { if (agent.heard === 'listening') openCommand(); }, [agent.heard, openCommand]);
   const notBuilt = useCallback((what: string) => setLocal(`${what}: not built yet`), []);
   const { clearNotice } = t;
   const clear = useCallback(() => { setLocal(null); clearNotice(); }, [clearNotice]);
@@ -121,7 +126,8 @@ export default function Today() {
         since={mic.since} error={mic.error} command={mic.command} source={mic.source} sourceNote={mic.sourceNote} onSource={mic.setSource}
         onClose={() => { setMicOpen(false); mic.closeCommand(); if (mic.phase === 'handsfree') mic.toggleHandsFree(); }}
         onTalkIn={mic.startTalk} onTalkOut={mic.endTalk} onHandsFree={mic.toggleHandsFree}
-        onSayIn={mic.sayIn} onSayOut={mic.sayOut} onCloseCommand={mic.closeCommand} />
+        onSayIn={mic.sayIn} onSayOut={mic.sayOut} onCloseCommand={mic.closeCommand} agent={agent}
+        onStop={() => { agent.stop(); api('/pc/keys', { method: 'POST', body: { action: 'stop' } }).catch(() => {}); }} />
     </View>
   );
 }

@@ -9,17 +9,13 @@ import { api, ApiError } from './api';
 //   Press volume down              hands-free: it keeps listening after you let go
 //   Hold up, then tap down         turns the hold into hands-free
 //   Any volume press in hands-free stops it
-//   Double-press volume up, hold the second  command mode: what you say goes to the PC agent (pc-agent.ts)
+// Command mode (the PC agent) starts from the Action button control instead; see targets/controls.
 // iOS reports a held button as a step now and then auto-repeat steps, never a release, so a release is the
 // steps stopping: QUIET_FIRST after a lone step, QUIET_REPEAT once repeats have started.
 const QUIET_FIRST = 650;
 const QUIET_REPEAT = 320;
 const BEAT = 2000; // keep-alive while holding; the PC lets go by itself after 6 s without one
 const SENT_FOR = 1600; // how long "Sent" stays up
-// A second step this soon after the first is a second press, not auto-repeat (iOS repeats a held button only
-// after about half a second). Step timings go to the PC with each release (/pc/keys ticks) to tune this.
-const DOUBLE_MS = 420;
-const DOUBLE_MIN = 120; // closer than this is not a human second press (older builds sent fake steps ~40-90 ms apart)
 
 export type Phase = 'idle' | 'listening' | 'handsfree' | 'sent' | 'command';
 export type MicSource = 'pc' | 'phone';
@@ -153,12 +149,6 @@ export function useWispr(enabled: boolean) {
         break;
       case 'ptt':
         if (button === 'down') { handsFree(true); quietAfter(QUIET_FIRST, () => { st.mode = 'handsfree'; }); }
-        else if (st.steps === 2 && now - st.t0 >= DOUBLE_MIN && now - st.t0 < DOUBLE_MS) {
-          // the second press of a double press: the hold becomes a command
-          startCommand(false);
-          st.steps = 1;
-          quietAfter(QUIET_FIRST, () => endCommand(false));
-        }
         else quietAfter(st.steps > 1 ? QUIET_REPEAT : QUIET_FIRST, endTalk);
         break;
       case 'cmd':
@@ -175,7 +165,7 @@ export function useWispr(enabled: boolean) {
         quietAfter(QUIET_REPEAT, () => { st.mode = 'idle'; st.steps = 0; });
         break;
     }
-  }, [startTalk, endTalk, handsFree, stopHandsFree, startCommand, endCommand]);
+  }, [startTalk, endTalk, handsFree, stopHandsFree, endCommand]);
 
   // Listen only while asked to and the app is in front.
   useEffect(() => {
@@ -209,11 +199,12 @@ export function useWispr(enabled: boolean) {
   const sayIn = useCallback(() => { g.current.ticks = []; startCommand(true); }, [startCommand]);
   const sayOut = useCallback(() => endCommand(true), [endCommand]);
   const closeCommand = useCallback(() => setCommand(false), []);
+  const openCommand = useCallback(() => setCommand(true), []);
   // Phone mic streams this phone's microphone to the PC for Wispr; it needs native audio capture (next build).
   const setSource = useCallback((v: MicSource) => {
     if (v === 'phone') { setSourceNote('Phone mic arrives with the next app build.'); return; }
     setSourceState(v); setSourceNote(null);
   }, []);
 
-  return { phase, since, error, command, source, sourceNote, setSource, startTalk, endTalk, toggleHandsFree, sayIn, sayOut, closeCommand };
+  return { phase, since, error, command, source, sourceNote, setSource, startTalk, endTalk, toggleHandsFree, sayIn, sayOut, closeCommand, openCommand };
 }

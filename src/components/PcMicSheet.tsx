@@ -10,7 +10,7 @@ import { lightTap, useScale } from '@/components/Glass';
 import { PcMic } from '@/components/Icons';
 import { Sym } from '@/components/Sym';
 import { Trackpad } from '@/components/Trackpad';
-import { useAgent } from '@/lib/agent';
+import type { useAgent } from '@/lib/agent';
 import type { MicSource, Phase } from '@/lib/wispr';
 import { ASPECT_COLOR, C, F } from '@/theme';
 
@@ -111,14 +111,14 @@ function SourceSwitch({ value, onChange, note }: { value: MicSource; onChange: (
 
 export function PcMicSheet({
   open, origin, phase, since, error, command, source, sourceNote, onSource, onClose, onTalkIn, onTalkOut, onHandsFree, onSayIn, onSayOut,
-  onCloseCommand,
+  onCloseCommand, agent, onStop,
 }: {
   open: boolean; origin: { x: number; y: number }; phase: Phase; since: number; error: string | null;
   command: boolean; source: MicSource; sourceNote: string | null; onSource: (v: MicSource) => void;
   onClose: () => void; onTalkIn: () => void; onTalkOut: () => void; onHandsFree: () => void;
   onSayIn: () => void; onSayOut: () => void; onCloseCommand: () => void;
+  agent: ReturnType<typeof useAgent>; onStop: () => void;
 }) {
-  const agent = useAgent(open);
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const p = useSharedValue(0);
@@ -172,7 +172,7 @@ export function PcMicSheet({
 
         {command ? (
           <CommandPanel state={agent.state} error={agent.error} items={agent.items} heard={agent.heard} connected={agent.connected}
-            listening={phase === 'command'} onStop={agent.stop} onClose={onCloseCommand} onTalkIn={onSayIn} onTalkOut={onSayOut}
+            listening={phase === 'command' || agent.heard === 'listening'} onStop={onStop} onClose={onCloseCommand} onTalkIn={onSayIn} onTalkOut={onSayOut}
             onType={(t) => agent.say(t)} />
         ) : (
           <Animated.View key="pad" entering={FadeIn.duration(220)} exiting={FadeOut.duration(140)} style={{ flex: 1 }}>

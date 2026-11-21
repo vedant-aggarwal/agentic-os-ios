@@ -21,6 +21,7 @@ on:
       - assets/**
       - scripts/**
       - modules/**
+      - targets/**
       - .github/workflows/ios-dev-client.yml
   workflow_dispatch:
 concurrency:
@@ -118,6 +119,7 @@ jobs:
             <key>signingCertificate</key><string>Apple Distribution</string>
             <key>provisioningProfiles</key><dict>
               <key>$BUNDLE_ID</key><string>$PROFILE_APP</string>
+              <key>$BUNDLE_ID.controls</key><string>$PROFILE_EXT</string>
             </dict>
             <key>uploadSymbols</key><false/>
             <key>manageAppVersionAndBuildNumber</key><false/>

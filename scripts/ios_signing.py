@@ -1,7 +1,7 @@
 """App Store signing on a CI Mac without Apple's cloud signing (that needs an Admin API key).
 
-Adapted from the Capacitor app's scripts/ios_signing.py. This app has no extensions yet, so only the app's
-bundle ID gets a profile.
+Adapted from the Capacitor app's scripts/ios_signing.py. The app and its Controls extension (targets/controls,
+bundle ID <app>.controls, the Action button control) each get a profile.
 
 setup:        make a key + CSR, create an Apple Distribution certificate, make an App Store profile for the app
               through the App Store Connect API, install both in a temporary keychain, and write PROFILE_APP /
@@ -90,25 +90,30 @@ def setup():
 
     d = os.path.expanduser("~/Library/MobileDevice/Provisioning Profiles")
     os.makedirs(d, exist_ok=True)
-    name = f"Agentic OS CI {int(time.time())}"
-    pk = ensure_bundle(bundle, "Agentic OS")
-    prof = call("POST", "/profiles", {"data": {"type": "profiles",
-        "attributes": {"name": name, "profileType": "IOS_APP_STORE"},
-        "relationships": {"bundleId": {"data": {"type": "bundleIds", "id": pk}},
-                          "certificates": {"data": [{"type": "certificates", "id": cert["id"]}]}}}})["data"]
-    state["profiles"].append(prof["id"])
-    json.dump(state, open(STATE, "w"))
-    uid = prof["attributes"]["uuid"]
-    path = os.path.join(d, f"{uid}.mobileprovision")
-    open(path, "wb").write(base64.b64decode(prof["attributes"]["profileContent"]))
-    state["granted"]["APP"] = granted(path)
-    json.dump(state, open(STATE, "w"))
-    print(f"  APP grants: {', '.join(state['granted']['APP'])}")
-    print(f"Profile '{name}' ({uid}) for {bundle}")
+    stamp = int(time.time())
+    made = {}
+    for role, ident, label in (("APP", bundle, "Agentic OS"), ("EXT", f"{bundle}.controls", "Agentic OS Controls")):
+        name = f"{label} CI {stamp}"
+        pk = ensure_bundle(ident, label)
+        prof = call("POST", "/profiles", {"data": {"type": "profiles",
+            "attributes": {"name": name, "profileType": "IOS_APP_STORE"},
+            "relationships": {"bundleId": {"data": {"type": "bundleIds", "id": pk}},
+                              "certificates": {"data": [{"type": "certificates", "id": cert["id"]}]}}}})["data"]
+        state["profiles"].append(prof["id"])
+        json.dump(state, open(STATE, "w"))
+        uid = prof["attributes"]["uuid"]
+        path = os.path.join(d, f"{uid}.mobileprovision")
+        open(path, "wb").write(base64.b64decode(prof["attributes"]["profileContent"]))
+        state["granted"][role] = granted(path)
+        json.dump(state, open(STATE, "w"))
+        print(f"  {role} grants: {', '.join(state['granted'][role])}")
+        print(f"Profile '{name}' ({uid}) for {ident}")
+        made[role] = (name, uid)
 
     with open(os.environ["GITHUB_ENV"], "a") as env:
-        env.write(f"PROFILE_APP={name}\nPROFILE_NAME={name}\nPROFILE_UUID={uid}\n")
-    print(f"Signing ready: certificate {cert['id']}, 1 profile")
+        env.write(f"PROFILE_APP={made['APP'][0]}\nPROFILE_NAME={made['APP'][0]}\nPROFILE_UUID={made['APP'][1]}\n")
+        env.write(f"PROFILE_EXT={made['EXT'][0]}\n")
+    print(f"Signing ready: certificate {cert['id']}, {len(made)} profiles")
 
 
 def granted(profile_path):

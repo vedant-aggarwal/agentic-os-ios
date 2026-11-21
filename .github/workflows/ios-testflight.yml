@@ -1,18 +1,30 @@
-# Builds the Content OS iPhone app (Expo, Release) on a macOS runner and uploads it to TestFlight.
-# Runs on every push to the content-os branch: a Release build bundles the JS, so any change needs a build.
+# Builds the Content OS Expo development build (expo-dev-client) on a macOS runner and uploads it to TestFlight.
+# Install it once from TestFlight; after that JS comes live from Metro on the PC (npm start / npm run tunnel),
+# so only native changes (packages, app config, assets, scripts, this file) need a new build.
+#
+# expo-dev-launcher and expo-dev-menu are linked only in the Debug configuration (debugOnly), so this archives
+# Debug and signs it for App Store distribution, the same route as the Agentic OS dev client.
 #
 # Signing doesn't use Apple's cloud signing (App Manager key): scripts/ios_signing.py makes a short-lived
 # distribution certificate and App Store profile for this run and removes them afterwards.
-# Repo secrets: APPLE_TEAM_ID, ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8, CONTENT_OS_API_URL, CONTENT_OS_API_TOKEN.
-# They reach scripts through env only: this repo is public, so its logs are public.
-name: Content OS TestFlight
+# Repo secrets: APPLE_TEAM_ID, ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8. They reach scripts through env only:
+# this repo is public, so its logs are public.
+name: Content OS dev client
 on:
   push:
     branches: [content-os]
+    paths:
+      - package.json
+      - package-lock.json
+      - app.json
+      - app.config.ts
+      - assets/**
+      - scripts/**
+      - .github/workflows/ios-testflight.yml
   workflow_dispatch:
 concurrency:
   group: content-os-testflight
-  cancel-in-progress: true
+  cancel-in-progress: false
 env:
   BUNDLE_ID: com.norrita.contentos
 jobs:
@@ -22,7 +34,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build number
-        run: echo "BUILD_NUMBER=${{ github.run_number }}" >> $GITHUB_ENV
+        run: echo "BUILD_NUMBER=$((100 + ${{ github.run_number }}))" >> $GITHUB_ENV
       - name: App Store Connect key
         env:
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
@@ -70,19 +82,21 @@ jobs:
         run: |
           ruby scripts/ios_manual_signing.rb
           python3 scripts/ios_signing.py entitlements
-      - name: Archive (Release)
-        env:
-          EXPO_PUBLIC_API_URL: ${{ secrets.CONTENT_OS_API_URL }}
-          EXPO_PUBLIC_API_TOKEN: ${{ secrets.CONTENT_OS_API_TOKEN }}
+      - name: Archive (Debug, with the dev launcher)
         run: |
           set -o pipefail
-          [ -n "$EXPO_PUBLIC_API_URL" ] && [ -n "$EXPO_PUBLIC_API_TOKEN" ] || { echo "API secrets missing"; exit 1; }
-          xcodebuild -workspace "ios/$APP_NAME.xcworkspace" -scheme "$APP_NAME" -configuration Release \
-            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/ContentOS.xcarchive" \
-            CURRENT_PROJECT_VERSION=$BUILD_NUMBER COMPILER_INDEX_STORE_ENABLE=NO \
-            archive > "$RUNNER_TEMP/archive.log" 2>&1 && ok=0 || ok=$?
+          xcodebuild -workspace "ios/$APP_NAME.xcworkspace" -scheme "$APP_NAME" -configuration Debug             -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/ContentOS.xcarchive"             CURRENT_PROJECT_VERSION=$BUILD_NUMBER ENABLE_DEBUG_DYLIB=NO COMPILER_INDEX_STORE_ENABLE=NO             archive > "$RUNNER_TEMP/archive.log" 2>&1 && ok=0 || ok=$?
           grep -E "error:|\*\* ARCHIVE (SUCCEEDED|FAILED)" "$RUNNER_TEMP/archive.log" | sort -u | head -100 || true
-          [ $ok -eq 0 ] || { tail -80 "$RUNNER_TEMP/archive.log" | grep -v "EXPO_PUBLIC"; exit $ok; }
+          [ $ok -eq 0 ] || { tail -80 "$RUNNER_TEMP/archive.log"; exit $ok; }
+      - name: Check the archive holds the dev launcher
+        run: |
+          APP=$(ls -d "$RUNNER_TEMP"/ContentOS.xcarchive/Products/Applications/*.app | head -1)
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP/Info.plist"
+          BIN="$APP/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP/Info.plist")"
+          found=$( { find "$APP" -iname '*DevLauncher*'; strings "$BIN" | grep 'EXDevLauncher' | head -3; } 2>/dev/null | head -5 || true )
+          echo "$found"
+          [ -n "$found" ] || { echo "Dev launcher missing from the archive"; exit 1; }
       - name: Export and upload to App Store Connect
         env:
           TEAM: ${{ secrets.APPLE_TEAM_ID }}

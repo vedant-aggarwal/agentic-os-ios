@@ -1,40 +1,55 @@
-import Svg, { Circle, Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
+import Svg, { Circle, Defs, LinearGradient, Path, Polygon, RadialGradient, Rect, Stop } from 'react-native-svg';
 
 type P = { size?: number; color?: string };
 
+/** YouTube's play-button mark (official proportions, 10:7). */
 export const YouTubeMark = ({ size = 22 }: P) => (
-  <Svg width={size} height={(size * 17) / 24} viewBox="0 0 24 17">
-    <Rect width={24} height={17} rx={5} fill="#FF0033" />
-    <Path d="M9.6 4.8v7.4l6.2-3.7z" fill="#fff" />
+  <Svg width={size} height={(size * 20) / 28.57} viewBox="0 0 28.57 20">
+    <Path
+      d="M27.97 3.12A3.58 3.58 0 0 0 25.45.6C23.22 0 14.29 0 14.29 0S5.35 0 3.12.6A3.58 3.58 0 0 0 .6 3.12C0 5.35 0 10 0 10s0 4.65.6 6.88a3.58 3.58 0 0 0 2.52 2.52C5.35 20 14.29 20 14.29 20s8.93 0 11.16-.6a3.58 3.58 0 0 0 2.52-2.52c.6-2.23.6-6.88.6-6.88s0-4.65-.6-6.88Z"
+      fill="#FF0033"
+    />
+    <Path d="M11.43 14.29 18.85 10l-7.42-4.29v8.58Z" fill="#fff" />
   </Svg>
 );
 
+/** Instagram's app glyph: the radial gradient tile with the white camera outline. */
 export const InstagramMark = ({ size = 18 }: P) => (
   <Svg width={size} height={size} viewBox="0 0 24 24">
     <Defs>
-      <LinearGradient id="ig" x1="0" y1="1" x2="1" y2="0">
-        <Stop offset="0" stopColor="#FEDA75" />
-        <Stop offset="0.3" stopColor="#FA7E1E" />
-        <Stop offset="0.6" stopColor="#D62976" />
-        <Stop offset="1" stopColor="#4F5BD5" />
-      </LinearGradient>
+      <RadialGradient id="igRad" cx="6.4" cy="25.8" r="25.6" gradientUnits="userSpaceOnUse">
+        <Stop offset="0" stopColor="#FFDD55" />
+        <Stop offset="0.1" stopColor="#FFDD55" />
+        <Stop offset="0.5" stopColor="#FF543E" />
+        <Stop offset="1" stopColor="#C837AB" />
+      </RadialGradient>
+      <RadialGradient id="igBlue" cx="-4" cy="1.7" r="11.5" gradientUnits="userSpaceOnUse">
+        <Stop offset="0" stopColor="#3771C8" />
+        <Stop offset="0.13" stopColor="#3771C8" />
+        <Stop offset="1" stopColor="#6600FF" stopOpacity={0} />
+      </RadialGradient>
     </Defs>
-    <Rect x={1.5} y={1.5} width={21} height={21} rx={6} fill="url(#ig)" />
-    <Circle cx={12} cy={12} r={4.6} fill="none" stroke="#fff" strokeWidth={2} />
-    <Circle cx={17.5} cy={6.5} r={1.3} fill="#fff" />
+    <Rect width={24} height={24} rx={6.6} fill="url(#igRad)" />
+    <Rect width={24} height={24} rx={6.6} fill="url(#igBlue)" />
+    <Rect x={5} y={5} width={14} height={14} rx={4.2} fill="none" stroke="#fff" strokeWidth={1.8} />
+    <Circle cx={12} cy={12} r={3.3} fill="none" stroke="#fff" strokeWidth={1.8} />
+    <Circle cx={16.1} cy={7.9} r={1.05} fill="#fff" />
   </Svg>
 );
 
-/** The app mark: the 2 x 4 channel grid. */
+/** The app mark: a "C" ring around a play button (same as design/logo/logo.svg). */
 export const AppMark = ({ size = 28 }: P) => (
-  <Svg width={size} height={size} viewBox="0 0 28 28">
-    <Rect width={28} height={28} rx={7} fill="#141414" />
-    {[0, 1, 2, 3].map((r) => (
-      <Rect key={'l' + r} x={6.5} y={5 + r * 4.8} width={6.5} height={3.6} rx={1.4} fill="#FF0033" opacity={r ? 0.45 : 1} />
-    ))}
-    {[0, 1, 2, 3].map((r) => (
-      <Rect key={'r' + r} x={15} y={5 + r * 4.8} width={6.5} height={3.6} rx={1.4} fill="#D62976" opacity={r ? 0.45 : 1} />
-    ))}
+  <Svg width={size} height={size} viewBox="0 0 1024 1024">
+    <Defs>
+      <LinearGradient id="appG" x1="250" y1="250" x2="800" y2="800" gradientUnits="userSpaceOnUse">
+        <Stop offset="0" stopColor="#FF0033" />
+        <Stop offset="0.55" stopColor="#D62976" />
+        <Stop offset="1" stopColor="#962FBF" />
+      </LinearGradient>
+    </Defs>
+    <Rect width={1024} height={1024} rx={230} fill="#141414" />
+    <Path d="M757.7 339.9 A300 300 0 1 0 757.7 684.1" fill="none" stroke="url(#appG)" strokeWidth={112} strokeLinecap="round" />
+    <Polygon points="462,418 462,606 622,512" fill="#fff" stroke="#fff" strokeWidth={44} strokeLinejoin="round" />
   </Svg>
 );
 
@@ -58,8 +73,8 @@ export const Heart = ({ size = 13, color = '#3A3D44' }: P) => (
   </Svg>
 );
 
-export const Plus = ({ size = 20, color = '#141414' }: P) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round">
+export const Plus = ({ size = 20, color = '#141414', weight = 2 }: P & { weight?: number }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={weight} strokeLinecap="round">
     <Path d="M12 5v14M5 12h14" />
   </Svg>
 );

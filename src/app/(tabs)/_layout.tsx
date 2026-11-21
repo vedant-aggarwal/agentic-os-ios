@@ -3,7 +3,8 @@ import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { router, Tabs } from 'expo-router';
 import { Fragment, useMemo, useRef, useState, type ComponentRef } from 'react';
-import { ActivityIndicator, PanResponder, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { FadeIn, FadeOut, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AccountIcon, CalIcon, GridIcon, KaiIcon, LockIcon, MicIcon, Plus, SendArrow, XIcon } from '@/components/Icons';
@@ -65,7 +66,7 @@ function Dock({ state, navigateToTab }: BottomTabBarProps) {
   });
 
   // The gesture handlers are made once; they read the latest values through this ref.
-  const live = useRef({ talk: 'idle' as Talk, zone: 'none' as Zone, timer: null as ReturnType<typeof setTimeout> | null, dict, screen, state, navigateToTab });
+  const live = useRef({ talk: 'idle' as Talk, zone: 'none' as Zone, armed: false, timer: null as ReturnType<typeof setTimeout> | null, dict, screen, state, navigateToTab });
   live.current.dict = dict;
   live.current.screen = screen;
   live.current.state = state;
@@ -93,58 +94,62 @@ function Dock({ state, navigateToTab }: BottomTabBarProps) {
       L.current.zone = 'none';
       setZone('none');
     };
-    return PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderTerminationRequest: () => false,
-      onPanResponderGrant: () => {
-        if (L.current.talk !== 'idle') return; // locked: this touch is a tap on the send arrow
-        said.current = '';
-        L.current.timer = setTimeout(() => {
-          L.current.timer = null;
-          buzz('start');
-          go('holding');
-          L.current.dict.start();
-        }, HOLD_MS);
-      },
-      onPanResponderMove: (_, g) => {
-        if (L.current.talk !== 'holding') return;
-        const dx = Math.max(-MAX_SLIDE, Math.min(MAX_SLIDE, g.dx));
-        drag.value = dx;
-        toZone(dx < -ZONE ? 'lock' : dx > ZONE ? 'cancel' : 'none');
-      },
-      onPanResponderRelease: () => {
+    const release = () => {
+      const c = L.current;
+      if (c.timer) {
+        // A tap: open the Concept Generator over the Channels grid so the finished sheet can fly into its tile.
+        clearTimeout(c.timer);
+        c.timer = null;
+        if (c.screen !== 'index') c.navigateToTab(c.state.routes[0].key);
+        router.push('/new');
+        return;
+      }
+      if (c.talk === 'locked') {
+        if (c.armed) send(); // the tap that started while locked
+        c.armed = false;
+        return;
+      }
+      if (c.talk !== 'holding') return;
+      const z = c.zone;
+      settle();
+      if (z === 'lock') {
+        buzz('lock');
+        go('locked');
+      } else if (z === 'cancel') {
+        buzz('cancel');
+        c.dict.cancel();
+        go('idle');
+        setHeard('');
+      } else send();
+    };
+    // Gesture handler, not PanResponder: the native list behind the dock can't steal the touch mid-slide,
+    // so sliding to Lock or Cancel always reaches release instead of being cut off (which used to send).
+    return Gesture.Pan()
+      .runOnJS(true)
+      .minDistance(0)
+      .shouldCancelWhenOutside(false)
+      .onBegin(() => {
         const c = L.current;
-        if (c.timer) {
-          // A tap: open the Concept Generator over the Channels grid so the finished sheet can fly into its tile.
-          clearTimeout(c.timer);
-          c.timer = null;
-          if (c.screen !== 'index') c.navigateToTab(c.state.routes[0].key);
-          router.push('/new');
+        if (c.talk === 'locked') {
+          c.armed = true; // locked: this touch is a tap on the send arrow
           return;
         }
-        if (c.talk === 'locked') return send();
-        if (c.talk !== 'holding') return;
-        const z = c.zone;
-        settle();
-        if (z === 'lock') {
-          buzz('lock');
-          go('locked');
-        } else if (z === 'cancel') {
-          buzz('cancel');
-          c.dict.cancel();
-          go('idle');
-          setHeard('');
-        } else send();
-      },
-      onPanResponderTerminate: () => {
-        const c = L.current;
-        if (c.timer) clearTimeout(c.timer);
-        c.timer = null;
-        settle();
-        if (c.talk === 'holding') send();
-      },
-    });
+        if (c.talk !== 'idle') return;
+        said.current = '';
+        c.timer = setTimeout(() => {
+          c.timer = null;
+          buzz('start');
+          go('holding');
+          c.dict.start();
+        }, HOLD_MS);
+      })
+      .onUpdate((e) => {
+        if (L.current.talk !== 'holding') return;
+        const dx = Math.max(-MAX_SLIDE, Math.min(MAX_SLIDE, e.translationX));
+        drag.value = dx;
+        toZone(dx < -ZONE ? 'lock' : dx > ZONE ? 'cancel' : 'none');
+      })
+      .onFinalize(release);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const cancelLocked = () => {
@@ -232,8 +237,8 @@ function Dock({ state, navigateToTab }: BottomTabBarProps) {
 
       {/* Sits outside the blurred pill so it can rise above it; the pill keeps an empty slot under it. */}
       <View pointerEvents="box-none" style={styles.captureWrap}>
+        <GestureDetector gesture={pan}>
         <Animated.View
-          {...pan.panHandlers}
           style={[styles.capture, recording && { backgroundColor: zone === 'cancel' ? C.yt : C.ink }, follow]}
           accessible
           accessibilityRole="button"
@@ -247,6 +252,7 @@ function Dock({ state, navigateToTab }: BottomTabBarProps) {
             <Plus size={34} weight={2.6} color="#FFFFFF" />
           )}
         </Animated.View>
+        </GestureDetector>
       </View>
     </View>
   );

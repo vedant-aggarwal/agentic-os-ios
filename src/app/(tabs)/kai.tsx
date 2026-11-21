@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Chevron, Plus, SparkIcon } from '@/components/Icons';
 import { Press } from '@/components/Press';
 import { VoiceField } from '@/components/VoiceField';
-import { currentKaiChat, detachFromKai, listKaiChats, newKaiChat, openKaiChat, sendToKai, setKaiDraft, useKai, type KaiChatSummary } from '@/lib/kai';
+import { currentKaiChat, detachFromKai, listKaiChats, newKaiChat, openKaiChat, sendToKai, setKaiDraft, stopKai, useKai, type KaiChatSummary } from '@/lib/kai';
 import { C, F } from '@/theme';
 
 const STARTERS = [
@@ -127,9 +127,15 @@ export default function KaiScreen() {
           placeholder="Ask Kai anything"
           minHeight={52}
           right={
-            <Press style={[styles.send, (!draft.trim() || busy) && { opacity: 0.35 }]} disabled={!draft.trim() || busy} onPress={send} scale={0.9} accessibilityLabel="Send">
-              <Chevron size={18} color="#fff" dir="right" />
-            </Press>
+            busy ? (
+              <Press style={styles.send} onPress={stopKai} scale={0.9} accessibilityLabel="Stop Kai">
+                <View style={styles.stopSq} />
+              </Press>
+            ) : (
+              <Press style={[styles.send, !draft.trim() && { opacity: 0.35 }]} disabled={!draft.trim()} onPress={send} scale={0.9} accessibilityLabel="Send">
+                <Chevron size={18} color="#fff" dir="right" />
+              </Press>
+            )
           }
         />
       </View>
@@ -231,5 +237,6 @@ const styles = StyleSheet.create({
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 },
   chip: { height: 30, paddingHorizontal: 12, borderRadius: 15, backgroundColor: C.card, flexDirection: 'row', alignItems: 'center', gap: 6 },
   chipText: { fontFamily: F.s, fontSize: 13, color: C.ink },
+  stopSq: { width: 13, height: 13, borderRadius: 3, backgroundColor: '#fff' },
   send: { width: 40, height: 40, borderRadius: 20, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' },
 });

@@ -3,6 +3,7 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { warmLive } from '@/lib/live';
 import { C } from '@/theme';
@@ -20,6 +21,7 @@ export default function Root() {
   if (!loaded) return null;
 
   return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
     <SafeAreaProvider>
       <StatusBar style="dark" />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: C.bg } }}>
@@ -29,5 +31,6 @@ export default function Root() {
         <Stack.Screen name="wrapped/[id]" options={{ presentation: 'fullScreenModal', animation: 'fade', contentStyle: { backgroundColor: '#141414' } }} />
       </Stack>
     </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }

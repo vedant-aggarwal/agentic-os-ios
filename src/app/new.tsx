@@ -16,7 +16,8 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Path } from 'react-native-svg';
+import * as Haptics from 'expo-haptics';
+import Svg, { Defs, Path, RadialGradient, Stop } from 'react-native-svg';
 import { Avatar } from '@/components/Avatar';
 import { ChannelContext } from '@/components/concepts/ChannelContext';
 import { ConceptEditor } from '@/components/concepts/ConceptEditor';
@@ -178,24 +179,32 @@ export default function ConceptGenerator() {
     const cy = rect ? rect.y + rect.height / 2 : H - Math.max(insets.bottom, 16) - 20;
     setTarget({ dx: cx - W / 2, dy: cy - (TOP + SHEET / 2), size: 34 });
     setFlying(true);
+    Keyboard.dismiss();
+    if (native) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     Animated.sequence([
-      Animated.timing(crumple, { toValue: 1, duration: 420, easing: Easing.inOut(Easing.cubic), useNativeDriver: native }),
-      Animated.timing(fly, { toValue: 1, duration: 520, easing: Easing.bezier(0.5, 0, 0.3, 1), useNativeDriver: native }),
+      // Scrunch in three squeezes, the way a hand crushes paper; the page hands over to a paper ball.
+      Animated.timing(crumple, { toValue: 1, duration: 560, easing: Easing.bezier(0.6, 0, 0.4, 1), useNativeDriver: native }),
+      // Toss: the ball arcs up and drops into the channel's tile, spinning and shrinking.
+      Animated.timing(fly, { toValue: 1, duration: 620, easing: Easing.bezier(0.33, 0, 0.45, 1), useNativeDriver: native }),
     ]).start(() => {
       land(id);
+      if (native) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       router.canGoBack() ? router.back() : router.replace('/');
+      // Let the tile catch it, then open that channel so the new reels are right there.
+      setTimeout(() => router.push(`/channel/${id}` as never), 420);
     });
   };
 
-  const ball = Math.min(W, SHEET) * 0.42;
-  const sx = Animated.multiply(
-    crumple.interpolate({ inputRange: [0, 0.45, 1], outputRange: [1, 0.78, ball / W] }),
-    fly.interpolate({ inputRange: [0, 1], outputRange: [1, target.size / ball] }),
+  const ball = Math.round(Math.min(W, SHEET) * 0.34);
+  // The page squeezes unevenly (wider than tall, then the other way) down to the ball's size.
+  const sx = crumple.interpolate({ inputRange: [0, 0.3, 0.6, 1], outputRange: [1, 0.82, 0.55, ball / W] });
+  const sy = crumple.interpolate({ inputRange: [0, 0.3, 0.6, 1], outputRange: [1, 0.64, 0.42, ball / SHEET] });
+  const pageOpacity = crumple.interpolate({ inputRange: [0, 0.6, 0.85, 1], outputRange: [1, 1, 0, 0] });
+  const ballOpacity = Animated.multiply(
+    crumple.interpolate({ inputRange: [0, 0.6, 0.82, 1], outputRange: [0, 0, 1, 1] }),
+    fly.interpolate({ inputRange: [0, 0.92, 1], outputRange: [1, 1, 0] }),
   );
-  const sy = Animated.multiply(
-    crumple.interpolate({ inputRange: [0, 0.45, 1], outputRange: [1, 0.55, ball / SHEET] }),
-    fly.interpolate({ inputRange: [0, 1], outputRange: [1, target.size / ball] }),
-  );
+  const lift = Math.min(220, Math.max(90, Math.abs(target.dy) * 0.45));
   const shade = Animated.multiply(
     y.interpolate({ inputRange: [0, SHEET], outputRange: [1, 0], extrapolate: 'clamp' }),
     fly.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
@@ -272,6 +281,20 @@ export default function ConceptGenerator() {
     });
   };
 
+  /** Stop the draft or Kai reply running on this channel; whatever already arrived stays. */
+  const stopWork = () => {
+    if (!channelId) return;
+    const ch = channelId;
+    cancels.current[ch]?.();
+    delete cancels.current[ch];
+    upd(ch, (b) => ({
+      busy: null,
+      // An empty draft version that never got a concept goes away.
+      ...(b.busy === 'draft' && !b.versions[b.versions.length - 1]?.length ? { versions: b.versions.slice(0, -1), vi: Math.max(0, b.versions.length - 2) } : {}),
+      chat: b.chat.map((m, j) => (j === b.chat.length - 1 && m.role === 'kai' && b.busy === 'refine' ? { ...m, text: m.text.trim() || 'Stopped.' } : m)),
+    }));
+  };
+
   const setVi = (n: number) => set({ vi: n });
   const toggle = (i: number) => set({ picked: picked.includes(key(vi, i)) ? picked.filter((x) => x !== key(vi, i)) : [...picked, key(vi, i)] });
   const chosen = picked.map((k) => { const [v, i] = k.split(':').map(Number); return versions[v]?.[i]; }).filter(Boolean) as Concept[];
@@ -304,15 +327,14 @@ export default function ConceptGenerator() {
       <Animated.View
         style={[
           styles.sheet,
-          flying && { borderRadius: Math.min(W, SHEET) / 2, overflow: 'hidden' },
+          flying && { overflow: 'hidden' },
           {
             top: TOP,
             height: SHEET,
+            opacity: pageOpacity,
             transform: [
-              { translateX: fly.interpolate({ inputRange: [0, 1], outputRange: [0, target.dx] }) },
-              { translateY: Animated.add(y, fly.interpolate({ inputRange: [0, 1], outputRange: [0, target.dy] })) },
-              { rotate: crumple.interpolate({ inputRange: [0, 0.45, 1], outputRange: ['0deg', '-5deg', '9deg'] }) },
-              { rotate: fly.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '200deg'] }) },
+              { translateY: y },
+              { rotate: crumple.interpolate({ inputRange: [0, 0.3, 0.6, 1], outputRange: ['0deg', '-6deg', '7deg', '-3deg'] }) },
               { scaleX: sx },
               { scaleY: sy },
             ],
@@ -382,9 +404,14 @@ export default function ConceptGenerator() {
                 </View>
                 <StrengthSlider value={strength} onChange={(n) => set({ strength: n })} disabled={!raw.trim()} />
 
-                <Press style={[styles.draft, !!busy && { opacity: 0.6 }]} disabled={!!busy} onPress={draft} accessibilityLabel="Draft concepts with AI">
+                <Press
+                  style={[styles.draft, busy === 'refine' && { opacity: 0.6 }]}
+                  disabled={busy === 'refine'}
+                  onPress={busy === 'draft' ? stopWork : draft}
+                  accessibilityLabel={busy === 'draft' ? 'Stop drafting' : 'Draft concepts with AI'}
+                >
                   {busy === 'draft' ? <ActivityIndicator color={C.ink} /> : <SparkIcon size={18} />}
-                  <Text style={styles.draftText}>{busy === 'draft' ? 'Drafting…' : versions.length ? 'Draft a new version' : 'Draft concepts'}</Text>
+                  <Text style={styles.draftText}>{busy === 'draft' ? 'Drafting… tap to stop' : versions.length ? 'Draft a new version' : 'Draft concepts'}</Text>
                 </Press>
 
                 <View onLayout={at('concepts')}>
@@ -455,9 +482,15 @@ export default function ConceptGenerator() {
                           minHeight={56}
                           onFocus={() => scrollToY(pad('chat') + 200, 300)}
                           right={
-                            <Press style={[styles.send, (!say.trim() || !!busy) && { opacity: 0.35 }]} disabled={!say.trim() || !!busy} onPress={refine} scale={0.9} accessibilityLabel="Send to Kai">
-                              <Chevron size={18} color="#fff" dir="right" />
-                            </Press>
+                            busy === 'refine' ? (
+                              <Press style={styles.send} onPress={stopWork} scale={0.9} accessibilityLabel="Stop Kai">
+                                <View style={styles.stopSq} />
+                              </Press>
+                            ) : (
+                              <Press style={[styles.send, (!say.trim() || !!busy) && { opacity: 0.35 }]} disabled={!say.trim() || !!busy} onPress={refine} scale={0.9} accessibilityLabel="Send to Kai">
+                                <Chevron size={18} color="#fff" dir="right" />
+                              </Press>
+                            )
                           }
                         />
                       </View>
@@ -485,6 +518,31 @@ export default function ConceptGenerator() {
           </Svg>
         </Animated.View>
       </Animated.View>
+
+      {/* The crumpled page as a paper ball: appears as the page shrinks, then arcs into the channel tile. */}
+      {flying ? (
+        <Animated.View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            left: W / 2 - ball / 2,
+            top: TOP + SHEET / 2 - ball / 2,
+            width: ball,
+            height: ball,
+            opacity: ballOpacity,
+            transform: [
+              { translateX: fly.interpolate({ inputRange: [0, 1], outputRange: [0, target.dx] }) },
+              { translateY: fly.interpolate({ inputRange: [0, 1], outputRange: [0, target.dy] }) },
+              // A parabola on top of the straight path: up first, then down into the tile.
+              { translateY: fly.interpolate({ inputRange: [0, 0.2, 0.4, 0.6, 0.8, 1], outputRange: [0, -0.64 * lift, -0.96 * lift, -0.96 * lift, -0.64 * lift, 0] }) },
+              { scale: Animated.multiply(crumple.interpolate({ inputRange: [0, 0.6, 0.85, 1], outputRange: [1.3, 1.3, 0.94, 1] }), fly.interpolate({ inputRange: [0, 1], outputRange: [1, target.size / ball] })) },
+              { rotate: Animated.add(crumple.interpolate({ inputRange: [0, 1], outputRange: [-40, 0] }), fly.interpolate({ inputRange: [0, 1], outputRange: [0, 420] })).interpolate({ inputRange: [-360, 720], outputRange: ['-360deg', '720deg'] }) },
+            ],
+          }}
+        >
+          <PaperBall size={ball} />
+        </Animated.View>
+      ) : null}
 
       {confirm ? (
         <View style={styles.confirmWrap}>
@@ -516,6 +574,25 @@ export default function ConceptGenerator() {
         />
       ) : null}
     </View>
+  );
+}
+
+/** A crumpled sheet of paper: light faces, soft shadow side and crease lines. */
+function PaperBall({ size }: { size: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 100 100">
+      <Defs>
+        <RadialGradient id="pb" cx="38%" cy="32%" r="75%">
+          <Stop offset="0" stopColor="#FFFFFF" />
+          <Stop offset="0.6" stopColor="#EEEFF2" />
+          <Stop offset="1" stopColor="#C9CBD0" />
+        </RadialGradient>
+      </Defs>
+      <Path d="M50 4 L70 9 L86 22 L95 42 L93 63 L83 81 L64 94 L42 96 L22 88 L9 71 L5 50 L10 29 L25 13 Z" fill="url(#pb)" />
+      <Path d="M25 13 L40 36 L70 9 M40 36 L62 47 L86 22 M62 47 L95 42 M62 47 L72 70 L93 63 M72 70 L64 94 M72 70 L46 68 L42 96 M46 68 L22 88 M46 68 L30 50 L9 71 M30 50 L5 50 M30 50 L40 36 M30 50 L10 29" stroke="#B9BCC3" strokeWidth={1.4} fill="none" strokeLinejoin="round" />
+      <Path d="M62 47 L72 70 L46 68 L30 50 L40 36 Z" fill="#000" opacity={0.04} />
+      <Path d="M72 70 L93 63 L83 81 L64 94 Z M46 68 L42 96 L22 88 Z" fill="#000" opacity={0.08} />
+    </Svg>
   );
 }
 
@@ -662,6 +739,7 @@ const styles = StyleSheet.create({
   cWhy: { marginTop: 8, fontFamily: F.m, fontSize: 13, lineHeight: 18, color: C.growInk },
   tick: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: C.empty, alignItems: 'center', justifyContent: 'center' },
   tickOn: { backgroundColor: C.ink, borderColor: C.ink },
+  stopSq: { width: 13, height: 13, borderRadius: 3, backgroundColor: '#fff' },
   toolLine: { marginLeft: 4, fontFamily: F.m, fontSize: 12, lineHeight: 16, color: C.growInk },
   confirmWrap: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(20,20,20,0.45)', alignItems: 'center', justifyContent: 'center', padding: 24 },
   confirmCard: { width: '100%', maxWidth: 360, padding: 20, borderRadius: 26, backgroundColor: C.bg },

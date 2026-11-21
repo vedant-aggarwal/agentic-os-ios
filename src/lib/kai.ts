@@ -6,13 +6,14 @@ import { live, type KaiAction } from './live';
 // Kai's chat lives here, outside any screen, so it survives tab switches and the hold-to-talk button
 // can start a conversation from anywhere.
 
-export type KaiMessage = { id: string; role: 'user' | 'kai'; text: string; tools: string[]; voice?: boolean; error?: string; done?: boolean };
+export type KaiMessage = { id: string; role: 'user' | 'kai'; text: string; tools: string[]; voice?: boolean; error?: string; done?: boolean; stopped?: boolean };
 export type Attachment = { kind: 'direction' | 'reel' | 'channel'; id: string; label: string };
 export type KaiContext = { screen?: string; channelId?: string; reelId?: string; directionId?: string };
 
 type State = { messages: KaiMessage[]; busy: boolean; attachments: Attachment[]; draft: string };
 let state: State = { messages: [], busy: false, attachments: [], draft: '' };
 let sessionId = newSession();
+let running: { stop: () => void; msg: string } | null = null; // the Kai turn in progress, so Stop can end it
 const listeners = new Set<(s: State) => void>();
 
 function newSession() {
@@ -34,12 +35,16 @@ function runAction(a: KaiAction) {
 /** Say something to Kai. `voice` marks a transcript so Kai reads it loosely. */
 export function sendToKai(text: string, opts: { voice?: boolean; context?: KaiContext } = {}) {
   const message = text.trim();
-  if (!message || state.busy) return;
+  if (!message) return;
+  if (state.busy) stopKai(); // a new message interrupts the old turn
   const attachments = state.attachments;
   const u: KaiMessage = { id: 'u' + Date.now(), role: 'user', text: message, tools: [], voice: opts.voice };
   const k: KaiMessage = { id: 'k' + Date.now(), role: 'kai', text: '', tools: [] };
   set({ messages: [...state.messages, u, k], busy: true, attachments: [], draft: '' });
-  live('kai', {
+  const finish = () => {
+    if (running?.msg === k.id) running = null;
+  };
+  const stop = live('kai', {
     sessionId,
     message,
     voice: !!opts.voice,
@@ -48,13 +53,24 @@ export function sendToKai(text: string, opts: { voice?: boolean; context?: KaiCo
     onText: (t) => patchMsg(k.id, (m) => ({ ...m, text: m.text + t })),
     onTool: (label) => patchMsg(k.id, (m) => ({ ...m, tools: [...m.tools, label] })),
     onAction: runAction,
-    onDone: () => { patchMsg(k.id, (m) => ({ ...m, text: m.text.trim(), done: true })); set({ busy: false }); },
-    onError: (e) => { patchMsg(k.id, (m) => ({ ...m, error: e, done: true })); set({ busy: false }); },
+    onDone: () => { finish(); patchMsg(k.id, (m) => ({ ...m, text: m.text.trim(), done: true })); set({ busy: false }); },
+    onError: (e) => { finish(); patchMsg(k.id, (m) => ({ ...m, error: e, done: true })); set({ busy: false }); },
   });
+  running = { stop, msg: k.id };
+}
+
+/** Stop what Kai is doing right now. What it already said stays; the PC ends the turn. */
+export function stopKai() {
+  const r = running;
+  if (!r) return;
+  running = null;
+  r.stop();
+  patchMsg(r.msg, (m) => ({ ...m, text: m.text.trim(), error: m.text.trim() ? undefined : 'Stopped.', stopped: true, done: true }));
+  set({ busy: false });
 }
 
 export function newKaiChat() {
-  if (state.busy) return;
+  stopKai();
   sessionId = newSession();
   set({ messages: [], busy: false });
 }
@@ -68,8 +84,9 @@ export async function listKaiChats() {
 
 /** Reopen a past chat. Kai picks the conversation up where it left off. */
 export async function openKaiChat(id: string) {
-  if (state.busy || id === sessionId) return;
+  if (id === sessionId) return;
   const { chat } = await api<{ chat: { id: string; messages: { role: 'user' | 'kai'; text: string; tools?: string[]; voice?: boolean; error?: string }[] } }>('/api/kai/chat?id=' + encodeURIComponent(id));
+  stopKai();
   sessionId = chat.id;
   set({
     busy: false,

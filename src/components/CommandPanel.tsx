@@ -16,6 +16,7 @@ import { ASPECT_COLOR, C, F } from '@/theme';
 // click buttons become Talk (hold to say more, through Wispr) and Keyboard (type a reply).
 const SLIDE = SlideInRight.springify().damping(22).stiffness(180).reduceMotion(ReduceMotion.System);
 const LIVE = ASPECT_COLOR.mission;
+const BACK_AFTER = 6000; // ms after the agent finishes before the trackpad comes back
 
 const STATUS: Record<AgentState | 'listening' | 'nothing', string> = {
   idle: 'Ready', listening: 'Listening', nothing: "Didn't catch that", starting: 'Starting', thinking: 'Thinking',
@@ -75,6 +76,14 @@ export function CommandPanel({ state, error, items, heard, connected, listening,
   const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
   const key = listening ? 'listening' : heard === 'nothing' && !busy ? 'nothing' : state;
   const tone = key === 'error' || key === 'nothing' ? C.danger : busy || listening ? LIVE : C.muted;
+
+  // Finished and left alone: back to normal (the trackpad).
+  const finished = !busy && !listening && !typing && (state === 'done' || state === 'stopped' || state === 'error' || heard === 'nothing');
+  useEffect(() => {
+    if (!finished) return;
+    const id = setTimeout(onClose, BACK_AFTER);
+    return () => clearTimeout(id);
+  }, [finished, onClose, items.length]);
 
   const submit = () => {
     const t = draft.trim();

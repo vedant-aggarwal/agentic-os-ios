@@ -19,6 +19,7 @@ const SENT_FOR = 1600; // how long "Sent" stays up
 // A second step this soon after the first is a second press, not auto-repeat (iOS repeats a held button only
 // after about half a second). Step timings go to the PC with each release (/pc/keys ticks) to tune this.
 const DOUBLE_MS = 420;
+const DOUBLE_MIN = 120; // closer than this is not a human second press (older builds sent fake steps ~40-90 ms apart)
 
 export type Phase = 'idle' | 'listening' | 'handsfree' | 'sent' | 'command';
 export type MicSource = 'pc' | 'phone';
@@ -152,7 +153,7 @@ export function useWispr(enabled: boolean) {
         break;
       case 'ptt':
         if (button === 'down') { handsFree(true); quietAfter(QUIET_FIRST, () => { st.mode = 'handsfree'; }); }
-        else if (st.steps === 2 && now - st.t0 < DOUBLE_MS) {
+        else if (st.steps === 2 && now - st.t0 >= DOUBLE_MIN && now - st.t0 < DOUBLE_MS) {
           // the second press of a double press: the hold becomes a command
           startCommand(false);
           st.steps = 1;

@@ -1,10 +1,11 @@
 import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
 import {
   ActivityIndicator,
   Animated,
   Easing,
+  Keyboard,
   KeyboardAvoidingView,
   PanResponder,
   Platform,
@@ -28,8 +29,8 @@ import { INSTAGRAM, YOUTUBE, type Slot } from '@/lib/lineup';
 import { C, F } from '@/theme';
 
 const native = Platform.OS !== 'web';
-// Same order as the home grid: YouTube and Instagram side by side, row by row.
-const ORDER: Slot[] = YOUTUBE.flatMap((yt, i) => [yt, INSTAGRAM[i]]).filter(Boolean);
+// Two rows of four: YouTube on top, Instagram below.
+const ORDER: Slot[] = [...YOUTUBE, ...INSTAGRAM];
 
 /**
  * Concept Generator: pick a channel, see what works there, say or type a raw idea, draft concepts with AI,
@@ -54,6 +55,13 @@ export default function ConceptGenerator() {
   const [drafting, setDrafting] = useState(false);
   const [building, setBuilding] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [draftError, setDraftError] = useState<string | null>(null);
+  const scroller = useRef<ComponentRef<typeof ScrollView>>(null);
+  // Offsets of the nested views that hold the concept cards, so a new card can be scrolled into view.
+  const wrapY = useRef(0);
+  const listY = useRef(0);
+  const gridY = useRef(0);
+  const revealAt = useRef<number | null>(null);
   const [flying, setFlying] = useState(false);
 
   const dirs = useDirections();
@@ -139,23 +147,31 @@ export default function ConceptGenerator() {
     setPicked([]);
     setDirectionId(null);
     setError(null);
+    setDraftError(null);
   };
 
   const draft = async () => {
     if (!channelId || drafting) return;
     setDrafting(true);
-    setError(null);
+    setDraftError(null);
+    Keyboard.dismiss();
+    const first = concepts.length;
     try {
-      const ideas = await draftConcepts({
+      const ideas = await withTimeout(draftConcepts({
         channelId,
         direction: raw.trim(),
         directionId: dirId || '',
         directionOther: dirId === 'other' ? other.trim() : '',
         avoid: concepts.map((c) => c.title),
-      });
+      }), 120000);
+      if (!ideas.length) throw new Error('No concepts came back. Try again.');
+      // The new cards land below the fold: the first one scrolls into view once it has laid out.
+      revealAt.current = first;
       setConcepts((prev) => [...prev, ...ideas]);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn('[concepts] draft failed:', msg);
+      setDraftError(msg);
     } finally {
       setDrafting(false);
     }
@@ -227,29 +243,32 @@ export default function ConceptGenerator() {
             </View>
           </View>
 
-          <ScrollView contentContainerStyle={{ paddingBottom: 24 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.channels}>
+          <ScrollView ref={scroller} contentContainerStyle={{ paddingBottom: 24 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+            {/* Two rows of four: every channel visible at once, no sideways scrolling. */}
+            <View style={styles.channels}>
               {ORDER.map((s) => {
                 const on = s.channelId === channelId;
                 return (
                   <Press
                     key={s.channelId}
                     style={[styles.channel, on && styles.channelOn]}
-                    scale={0.95}
+                    scale={0.94}
                     onPress={() => pickChannel(s.channelId)}
                     accessibilityRole="radio"
                     accessibilityState={{ selected: on }}
                     accessibilityLabel={`${s.name}, ${s.platform}`}
                   >
-                    <Avatar slot={s} size={32} live />
+                    <View>
+                      <Avatar slot={s} size={44} live />
+                      <View style={styles.badge}>{s.platform === 'youtube' ? <YouTubeMark size={12} /> : <InstagramMark size={11} />}</View>
+                    </View>
                     <Text numberOfLines={1} style={styles.channelName}>{s.name}</Text>
-                    {s.platform === 'youtube' ? <YouTubeMark size={15} /> : <InstagramMark size={13} />}
                   </Press>
                 );
               })}
-            </ScrollView>
+            </View>
 
-            <View style={{ paddingHorizontal: 16 }}>
+            <View style={{ paddingHorizontal: 16 }} onLayout={(e) => (wrapY.current = e.nativeEvent.layout.y)}>
               {!slot ? (
                 <View style={styles.hint}>
                   <Text style={styles.hintText}>Pick a channel to see what works there and draft concepts for it.</Text>
@@ -262,7 +281,7 @@ export default function ConceptGenerator() {
                   <VoiceField
                     value={raw}
                     onChangeText={setRaw}
-                    placeholder="Say or type anything. It's read as direction, never copied."
+                    placeholder="Type or say your idea"
                     minHeight={88}
                   />
 
@@ -270,15 +289,30 @@ export default function ConceptGenerator() {
                     {drafting ? <ActivityIndicator color={C.ink} /> : <SparkIcon size={18} />}
                     <Text style={styles.draftText}>{drafting ? 'Drafting concepts…' : concepts.length ? 'Draft more' : 'Draft concepts'}</Text>
                   </Press>
+                  {draftError ? <Text style={styles.error}>{draftError}</Text> : null}
 
                   {concepts.length ? (
-                    <>
+                    <View onLayout={(e) => (listY.current = e.nativeEvent.layout.y)}>
                       <Text style={styles.h2}>
                         Concepts <Text style={styles.h2sub}>{picked.length ? `${picked.length} picked` : 'tap to pick one or more'}</Text>
                       </Text>
-                      <View style={{ gap: 8 }}>
+                      <View style={{ gap: 8 }} onLayout={(e) => (gridY.current = e.nativeEvent.layout.y)}>
                         {concepts.map((c, i) => (
-                          <ConceptCard key={i} c={c} on={picked.includes(i)} onPress={() => toggle(i)} />
+                          <View
+                            key={i}
+                            onLayout={(e) => {
+                              if (revealAt.current !== i) return;
+                              revealAt.current = null;
+                              const cy = e.nativeEvent.layout.y;
+                              // Parents report their layout after this card does: read the offsets a beat later.
+                              setTimeout(() => {
+                                const y = wrapY.current + listY.current + gridY.current + cy - 44; // keep the "Concepts" heading in view
+                                scroller.current?.scrollTo({ y: Math.max(0, y), animated: true });
+                              }, 60);
+                            }}
+                          >
+                            <ConceptCard c={c} on={picked.includes(i)} onPress={() => toggle(i)} />
+                          </View>
                         ))}
                       </View>
 
@@ -294,7 +328,7 @@ export default function ConceptGenerator() {
 
                       <Text style={styles.h2}>Additional context</Text>
                       <VoiceField value={notes} onChangeText={setNotes} placeholder="Anything the structure should know. Optional." minHeight={72} />
-                    </>
+                    </View>
                   ) : null}
                 </>
               )}
@@ -318,6 +352,10 @@ export default function ConceptGenerator() {
       </Animated.View>
     </View>
   );
+}
+
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([p, new Promise<T>((_, no) => setTimeout(() => no(new Error('The PC took too long to answer. Try again.')), ms))]);
 }
 
 /** What the channel promises and what has worked there: top posts by views, or the latest when views aren't known. */
@@ -507,10 +545,11 @@ const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 10 },
   title: { flex: 1, fontFamily: F.b, fontSize: 24, lineHeight: 30, letterSpacing: -0.4, color: C.ink },
   close: { width: 40, height: 40, borderRadius: 20, backgroundColor: C.card, alignItems: 'center', justifyContent: 'center' },
-  channels: { gap: 8, paddingHorizontal: 16, paddingVertical: 4 },
-  channel: { height: 48, flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 8, paddingRight: 12, borderRadius: 24, backgroundColor: C.card, borderWidth: 2, borderColor: 'transparent' },
+  channels: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 8, columnGap: 8, paddingHorizontal: 16, paddingTop: 2 },
+  channel: { width: '22.9%', flexGrow: 1, paddingTop: 10, paddingBottom: 8, paddingHorizontal: 4, alignItems: 'center', gap: 6, borderRadius: 18, backgroundColor: C.card, borderWidth: 2, borderColor: 'transparent' },
   channelOn: { borderColor: C.ink },
-  channelName: { maxWidth: 130, fontFamily: F.s, fontSize: 14, lineHeight: 18, color: C.ink },
+  badge: { position: 'absolute', right: -5, bottom: -2, width: 20, height: 20, borderRadius: 10, backgroundColor: C.card, alignItems: 'center', justifyContent: 'center' },
+  channelName: { maxWidth: '100%', fontFamily: F.s, fontSize: 12, lineHeight: 16, color: C.ink },
   hint: { marginTop: 16, padding: 16, borderRadius: 20, backgroundColor: C.card },
   hintText: { fontFamily: F.r, fontSize: 15, lineHeight: 22, color: C.muted },
   ctx: { marginTop: 12, padding: 14, borderRadius: 20, backgroundColor: C.card },

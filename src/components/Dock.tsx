@@ -9,6 +9,7 @@ import Animated, {
 import Svg, { Circle, Defs, G, LinearGradient, Path, RadialGradient, Stop, Text as SvgText } from 'react-native-svg';
 import { Glass, tap, useScale } from '@/components/Glass';
 import { Home, Nora, Scan, Work } from '@/components/Icons';
+import { Sym } from '@/components/Sym';
 import type { AspectProgress } from '@/lib/today';
 import { ASPECT_COLOR, C, F, FAMILY_LABEL, type AspectKey, type FamilyKey } from '@/theme';
 
@@ -470,13 +471,13 @@ export function Dock({ bottom, width, aspects, onNotBuilt }: {
     <>
       <DialLayer cx={cx} cy={cy} open={open} pick={pick} aspects={aspects} />
       <View pointerEvents="box-none" style={[s.wrap, { width: total, bottom: lift }]}>
-        <SideOrb label="Home: what Nora has ready for you" side="left" onPress={() => onNotBuilt('Home')}><Home /></SideOrb>
+        <SideOrb label="Home: what Nora has ready for you" side="left" onPress={() => onNotBuilt('Home')}><Sym name="house.fill" size={22} fallback={<Home />} /></SideOrb>
         <View style={[s.bar, { width: w, paddingHorizontal: Math.max(0, G - (48 - ICON) / 2) }]}>
           <Glass radius={BAR_H / 2} />
-          <Round label="Scan" onPress={() => onNotBuilt('Scan')}><Scan /></Round>
-          <Round label="Chat with Nora" onPress={() => onNotBuilt('Nora chat')}><Nora /></Round>
+          <Round label="Scan" onPress={() => onNotBuilt('Scan')}><Sym name="viewfinder" size={22} fallback={<Scan />} /></Round>
+          <Round label="Chat with Nora" onPress={() => onNotBuilt('Nora chat')}><Sym name="sparkle" size={22} fallback={<Nora />} /></Round>
         </View>
-        <SideOrb label="Work" side="right" onPress={() => onNotBuilt('Work')}><Work /></SideOrb>
+        <SideOrb label="Work" side="right" onPress={() => onNotBuilt('Work')}><Sym name="briefcase.fill" size={22} fallback={<Work />} /></SideOrb>
         <View accessible accessibilityRole="button" accessibilityLabel="Nora"
           accessibilityHint="Tap to talk. Hold and slide to open an aspect."
           onAccessibilityTap={() => onNotBuilt('Talking to Nora')}

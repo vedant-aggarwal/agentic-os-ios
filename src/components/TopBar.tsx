@@ -3,6 +3,7 @@ import Animated from 'react-native-reanimated';
 import { Glass, lightTap, useScale } from '@/components/Glass';
 import { Account, PcMic, Remote, ToPc, Voices } from '@/components/Icons';
 import { Smiley } from '@/components/Smiley';
+import { Sym } from '@/components/Sym';
 
 // The top bar mirrors the Nora bar: the same glass. A pill holding the four PC actions takes about
 // two-thirds of the row; two floating round buttons (mood, account) share the rest. One gap G sets the row.
@@ -48,13 +49,13 @@ export function TopBar({ top, width, onNotBuilt }: { top: number; width: number;
     <View pointerEvents="box-none" style={[s.row, { top: top + TOP_GAP }]}>
       <View style={[s.pill, { width: pill }]}>
         <Glass radius={TOP_H / 2} />
-        <PillButton label="Send to PC" onPress={() => onNotBuilt('To PC')}><ToPc size={GLYPH} /></PillButton>
-        <PillButton label="PC mic" onPress={() => onNotBuilt('PC mic')}><PcMic size={GLYPH} /></PillButton>
-        <PillButton label="Remote PC" onPress={() => onNotBuilt('Remote PC')}><Remote size={GLYPH} /></PillButton>
-        <PillButton label="Voices" onPress={() => onNotBuilt('Voices')}><Voices size={GLYPH} /></PillButton>
+        <PillButton label="Send to PC" onPress={() => onNotBuilt('To PC')}><Sym name="laptopcomputer.and.arrow.down" size={GLYPH} fallback={<ToPc size={GLYPH} />} /></PillButton>
+        <PillButton label="PC mic" onPress={() => onNotBuilt('PC mic')}><Sym name="mic.fill" size={GLYPH} fallback={<PcMic size={GLYPH} />} /></PillButton>
+        <PillButton label="Remote PC" onPress={() => onNotBuilt('Remote PC')}><Sym name="cursorarrow.rays" size={GLYPH} fallback={<Remote size={GLYPH} />} /></PillButton>
+        <PillButton label="Voices" onPress={() => onNotBuilt('Voices')}><Sym name="waveform" size={GLYPH} fallback={<Voices size={GLYPH} />} /></PillButton>
       </View>
       <RoundButton label="Log mood" onPress={() => onNotBuilt('Mood')}><Smiley size={30} /></RoundButton>
-      <RoundButton label="Your account" onPress={() => onNotBuilt('Account')}><Account size={GLYPH + 2} /></RoundButton>
+      <RoundButton label="Your account" onPress={() => onNotBuilt('Account')}><Sym name="person.fill" size={GLYPH} fallback={<Account size={GLYPH + 2} />} /></RoundButton>
     </View>
   );
 }

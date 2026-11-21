@@ -4,7 +4,7 @@ import * as Haptics from 'expo-haptics';
 import { Platform, StyleSheet, View } from 'react-native';
 import { ReduceMotion, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 
-// Liquid Glass is iOS 26+. Older iOS, web and Android get a gaussian blur under a light smoke tint.
+// Liquid Glass is iOS 26+. Older iOS, web and Android get a gaussian blur under a dark smoke tint.
 export const LIQUID = (() => {
   if (Platform.OS !== 'ios') return false;
   try { return isLiquidGlassAvailable() && isGlassEffectAPIAvailable(); } catch { return false; }
@@ -14,7 +14,8 @@ export const tap = (fn: () => Promise<void>) => { if (Platform.OS !== 'web') fn(
 export const lightTap = () => tap(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light));
 
 /**
- * The one glass every bar and floating button wears: see-through, blurred, a hairline rim, no black slab.
+ * The one glass every bar and floating button wears: dark smoked glass, blurred, a hairline rim. Content
+ * behind shows only as soft colour.
  * It is clipped by a plain view with circular corners, because Liquid Glass draws continuous (squircle)
  * corners, which made a 64 pt circle read slightly square.
  */
@@ -23,7 +24,7 @@ export function Glass({ radius }: { radius: number }) {
   return (
     <View pointerEvents="none" style={[StyleSheet.absoluteFill, r, s.clip]}>
       {LIQUID ? (
-        <GlassView glassEffectStyle="regular" colorScheme="dark" tintColor="rgba(10,12,18,0.28)" style={StyleSheet.absoluteFill} />
+        <GlassView glassEffectStyle="regular" colorScheme="dark" tintColor="rgba(6,7,10,0.58)" style={StyleSheet.absoluteFill} />
       ) : (
         <>
           <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} />
@@ -45,6 +46,6 @@ export function useScale(to: number) {
 
 const s = StyleSheet.create({
   clip: { overflow: 'hidden', borderCurve: 'circular' },
-  smoke: { backgroundColor: 'rgba(14,16,22,0.42)' },
+  smoke: { backgroundColor: 'rgba(8,9,12,0.66)' },
   rim: { borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.14)' },
 });

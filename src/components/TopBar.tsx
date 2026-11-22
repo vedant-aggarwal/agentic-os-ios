@@ -55,8 +55,8 @@ function RoundButton({ label, onPress, children }: { label: string; onPress: () 
   );
 }
 
-export function TopBar({ top, width, live, onFiles, onMic, onRemote, onRemoteHold, onVoices, onNotBuilt }: {
-  top: number; width: number; live: boolean; onFiles: () => void; onMic: () => void; onRemote: () => void; onRemoteHold?: () => void; onVoices: () => void; onNotBuilt: (what: string) => void;
+export function TopBar({ top, width, live, onFiles, onMic, onRemote, onRemoteHold, onVoices, onAccount, onNotBuilt }: {
+  top: number; width: number; live: boolean; onFiles: () => void; onMic: () => void; onRemote: () => void; onRemoteHold?: () => void; onVoices: () => void; onAccount: () => void; onNotBuilt: (what: string) => void;
 }) {
   const pill = width - 32 - 2 * (TOP_H + G);
   return (
@@ -72,7 +72,7 @@ export function TopBar({ top, width, live, onFiles, onMic, onRemote, onRemoteHol
         <PillButton label="Voices" onPress={onVoices}><Sym name="waveform" size={OPTICAL.wave} fallback={<Voices size={GLYPH} />} /></PillButton>
       </View>
       <RoundButton label="Log mood" onPress={() => onNotBuilt('Mood')}><Smiley size={30} /></RoundButton>
-      <RoundButton label="Your account" onPress={() => onNotBuilt('Account')}><Sym name="person.fill" size={OPTICAL.person} fallback={<Account size={GLYPH + 2} />} /></RoundButton>
+      <RoundButton label="Your account" onPress={onAccount}><Sym name="person.fill" size={OPTICAL.person} fallback={<Account size={GLYPH + 2} />} /></RoundButton>
     </View>
   );
 }

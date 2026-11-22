@@ -9,6 +9,7 @@ import { Dock, orbFromBottom } from '@/components/Dock';
 import { Notice } from '@/components/Notice';
 import { NowCard } from '@/components/NowCard';
 import { SignIn } from '@/components/SignIn';
+import { AccountSheet } from '@/components/AccountSheet';
 import { PcMicSheet } from '@/components/PcMicSheet';
 import { VoicesSheet } from '@/components/VoicesSheet';
 import { RemoteDesktop } from '@/components/remote/RemoteDesktop';
@@ -47,6 +48,7 @@ export default function Today() {
   const openAspect = useCallback((key: AspectKey) => { setEntry(null); setAspect(key); }, []);
   const [micOpen, setMicOpen] = useState(false); // opened by tapping the PC mic button
   const [voicesOpen, setVoicesOpen] = useState(false); // the top bar's waveform button
+  const [accountOpen, setAccountOpen] = useState(false); // the top bar's person button
   const [filesOpen, setFilesOpen] = useState(false); // the top bar's To PC button
   const [remoteOpen, setRemoteOpen] = useState(false); // the top bar's Remote PC button: the PC's screen, full screen
   const [pcTab, setPcTab] = useState<PcTab | null>(null); // hold Remote PC: media remote and power
@@ -132,7 +134,7 @@ export default function Today() {
       <EdgeBlur edge="top" height={insets.top + TOP_GAP + TOP_H + 28} strength={30} curve={2} />
       <TopBar top={insets.top} width={width} live={live} onMic={() => { setClosedLive(false); setMicOpen(true); }}
         onRemote={() => setRemoteOpen(true)} onRemoteHold={() => setPcTab('media')}
-        onVoices={() => setVoicesOpen(true)} onFiles={() => setFilesOpen(true)} onNotBuilt={notBuilt} />
+        onVoices={() => setVoicesOpen(true)} onFiles={() => setFilesOpen(true)} onAccount={() => setAccountOpen(true)} onNotBuilt={notBuilt} />
       {/* an aspect page grows out of the orb, over Today and its top bar; the dock stays above it */}
       {/* the pages read today's rows and tick them through Today, so a tick shows on both at once */}
       <LifeContext value={{ sections: v.sections, areaAspects: t.state.life.areaAspects, toggle }}>
@@ -153,6 +155,7 @@ export default function Today() {
         onStop={() => { agent.stop(); mic.cancel(); api('/pc/keys', { method: 'POST', body: { action: 'stop' } }).catch(() => {}); }} />
       <FilesSheet open={filesOpen} origin={pillCenter(0, insets.top, width)} onClose={() => setFilesOpen(false)} />
       <VoicesSheet open={voicesOpen} origin={pillCenter(3, insets.top, width)} onClose={() => setVoicesOpen(false)} />
+      <AccountSheet open={accountOpen} onClose={() => setAccountOpen(false)} onSignedOut={t.reload} />
       <RemoteDesktop open={remoteOpen} onClose={() => setRemoteOpen(false)} />
       <PcControls tab={pcTab} onTab={setPcTab} onClose={() => setPcTab(null)} />
     </View>

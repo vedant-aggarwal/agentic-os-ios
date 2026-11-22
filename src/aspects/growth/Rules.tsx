@@ -13,7 +13,7 @@ import { NAME } from './ui';
 const text = (r: Pick<Rule, 'when' | 'then'>) => {
   const w = r.when.trim().replace(/^when\s+/i, '').replace(/[.,]+$/, '');
   const th = r.then.trim().replace(/[.]+$/, '');
-  const lead = /^I/.test(th) ? th : `${th.charAt(0).toLowerCase()}${th.slice(1)}`; // "I" stays a capital
+  const lead = /^I\b/.test(th) ? th : `${th.charAt(0).toLowerCase()}${th.slice(1)}`; // a leading "I" stays a capital
   return w && th ? `When ${w}, ${lead}.` : '';
 };
 const held = (r: Rule) => {

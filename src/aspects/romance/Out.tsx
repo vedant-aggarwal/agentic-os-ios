@@ -102,7 +102,7 @@ export function PrimerScreen({ open, onClose, onStart }: { open: boolean; onClos
 function tryFrom(p: Primer | null) {
   if (!p) return 'A first step';
   if (p.try.from === 'ladder') return 'A first step. Your debriefs take over from here.';
-  return p.try.by === 'ai' ? 'From your last debrief, read by AI' : 'From your last debrief';
+  return p.try.by === 'ai' ? 'From your last debrief, read by Nora' : 'From your last debrief';
 }
 
 // ── Out: the counter ─────────────────────────────────────────────────────────────────────────────────────────────

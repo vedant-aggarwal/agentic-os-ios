@@ -15,7 +15,7 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 
 const FILTERS = ['All', 'Bookmarked', 'Photos', 'Spoken'] as const;
 const REMIND = ['21:00', '21:30', '22:00', '22:30', '23:00'];
 
-/** Journal: write or speak, things from his day, prompts, his numbers, a month calendar, search, the entries, the AI reading. */
+/** Journal: write or speak, things from his day, prompts, his numbers, a month calendar, search, the entries, Nora’s reading. */
 export function Journal({ open, onClose, day, onWrite, onOpen }: {
   open: boolean; onClose: () => void; day: Read<JournalDay>; onWrite: (seed: Seed) => void; onOpen: (e: Entry) => void;
 }) {
@@ -205,8 +205,8 @@ function JournalRead({ reading }: { reading: Reading<JournalOut> | null }) {
     } catch (e) { setErr(errText(e)); } finally { setBusy(false); }
   };
   return (
-    <Section title="Reading of the last four weeks" action={r && !busy ? 'Read again' : undefined} onAction={() => read(true)}>
-      {busy ? <Loading label="Reading your entries" /> : null}
+    <Section title="Nora’s reading of the last four weeks" action={r && !busy ? 'Read again' : undefined} onAction={() => read(true)}>
+      {busy ? <Loading label="Nora is reading your entries" /> : null}
       {!busy && r ? (
         <Card>
           <Text style={t.lead}>{r.out.headline}</Text>
@@ -228,7 +228,7 @@ function JournalRead({ reading }: { reading: Reading<JournalOut> | null }) {
         <Card>
           <Text style={t.body}>
             {need != null ? `Write ${plural(need, 'more entry', 'more entries')} in these four weeks first.`
-              : 'An AI reading of your last four weeks: what went well, what keeps coming back, and lines worth keeping. Saved here until the next one.'}
+              : 'Nora reads your last four weeks: what went well, what keeps coming back, and lines worth keeping. Saved here until the next one.'}
           </Text>
           <Button label="Read my entries" kind="soft" small onPress={() => read(false)} wrap={[s.self, s.gap8]} icon={<Gl k="sparkles" size={14} color={color} />} />
         </Card>

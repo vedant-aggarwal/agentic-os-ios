@@ -27,7 +27,7 @@ export function VoiceScreen({ open, onClose, title }: { open: boolean; onClose: 
             {data.latest ? <Dims v={data} onOpen={setDim} /> : null}
             {data.latest ? <Trend v={data} /> : null}
             <Section title="How it is measured">
-              <Text style={t.small}>{`Your PC measures each recording with ffmpeg and its own code: pace, pitch spread, loudness drift and pauses come from the sound itself. Clarity and fillers need a transcript, made on your PC's own AI subscription. A change smaller than ${data.realChange} points is not counted.`}</Text>
+              <Text style={t.small}>{`Your PC measures each recording with ffmpeg and its own code: pace, pitch spread, loudness drift and pauses come from the sound itself. Clarity and fillers need a transcript, which Nora writes on your PC. A change smaller than ${data.realChange} points is not counted.`}</Text>
             </Section>
           </>
         ) : null}

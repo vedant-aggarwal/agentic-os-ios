@@ -50,7 +50,7 @@ function Intro({ onStart }: { onStart: () => void }) {
   return (
     <Card style={u.gap12}>
       <Text style={t.title2}>Your face, measured</Text>
-      <Text style={t.body}>Six photos from your library: front, smile, both profiles, three quarter and skin up close. The PC checks each for light and focus, then an AI reads them twice against a fixed rubric. You get a score for each feature, what can change and what is structure, and a plan from a library of protocols with honest evidence.</Text>
+      <Text style={t.body}>Six photos from your library: front, smile, both profiles, three quarter and skin up close. The PC checks each for light and focus, then Nora reads them twice against a fixed rubric. You get a score for each feature, what can change and what is structure, and a plan from a library of protocols with honest evidence.</Text>
       {rubric.data ? <Text style={t.small}>{rubric.data.light}</Text> : null}
       <Button label="Start scan" kind="accent" onPress={onStart} />
     </Card>
@@ -64,7 +64,7 @@ function OpenScan({ f }: { f: Face }) {
   const o = f.open!;
   const [busy, setBusy] = useState(false);
   if (o.status === 'reading' || o.status === 'planning') {
-    return <Card tone={a.color}><Loading label={o.status === 'reading' ? 'Reading your photos twice and comparing the reads. About two minutes; you can leave.' : 'Picking your plan from the protocol library.'} /></Card>;
+    return <Card tone={a.color}><Loading label={o.status === 'reading' ? 'Nora is reading your photos twice and comparing the reads. About two minutes; you can leave.' : 'Nora is picking your plan from the protocol library.'} /></Card>;
   }
   const n = Object.keys(o.photos ?? {}).length;
   const again = async () => { setBusy(true); try { await readScan(o.id); } catch (e) { a.notice((e as Error).message); } setBusy(false); };
@@ -93,7 +93,7 @@ function Hero({ f }: { f: Face }) {
         <Score v={l.overall} margin={l.margin} />
         <Delta d={l.delta} />
       </View>
-      <Text style={t.small}>{`${shortDay(l.date)}, ${agoDays(days)}. An AI reading of your photos against a fixed rubric; a change inside the margin is not counted.`}</Text>
+      <Text style={t.small}>{`${shortDay(l.date)}, ${agoDays(days)}. Nora's reading of your photos against a fixed rubric. A change inside the margin is not counted.`}</Text>
       {due ? (
         <View style={u.between}>
           <Text style={[t.small, u.flex]}>{due.days <= 0 ? 'Rescan due. Skin turns over in about four weeks; two weeks shows the start.' : due.days === 1 ? 'Next scan tomorrow.' : `Next scan on ${shortDay(due.date)}.`}</Text>
@@ -232,7 +232,7 @@ function PlanCard({ f, onOpen }: { f: Face; onOpen: (p: Protocol, why: string) =
           <List>{plan.presentation.map((p) => <PickRow key={p.id} p={p} onOpen={onOpen} />)}</List>
         </>
       ) : null}
-      <Text style={t.caption}>{`Picked by ${plan.by === 'claude' ? 'Claude' : 'the rules'} from the protocol library, ${shortDay(plan.at.slice(0, 10))}.`}</Text>
+      <Text style={t.caption}>{`Picked by ${plan.by === 'claude' ? 'Nora' : 'the rules'} from the protocol library, ${shortDay(plan.at.slice(0, 10))}.`}</Text>
     </Section>
   );
 }

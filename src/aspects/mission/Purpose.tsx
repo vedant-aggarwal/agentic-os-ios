@@ -60,14 +60,14 @@ export function Purpose({ open, onClose }: { open: boolean; onClose: () => void 
               <Text style={t.caption}>{cur.created_at ? `Written ${shortDay(cur.created_at.slice(0, 10))}` : 'Written by you'}{cur.by === 'agent' ? ', from a draft' : ''}</Text>
               <View style={st.buttons}>
                 <Button label="Rewrite" kind="quiet" small onPress={() => setEdit(cur.text)} />
-                <Button label="Draft one with Claude" kind="soft" small onPress={() => void ask()} busy={busy === 'draft'} />
+                <Button label="Draft one with Nora" kind="soft" small onPress={() => void ask()} busy={busy === 'draft'} />
               </View>
             </Card>
           ) : (
             <Card>
               <Empty title="The line you live by" body="One sentence, in your words. It sits at the top of Mission and every goal answers to it."
                 action="Write it" onAction={() => setEdit('')} />
-              <Button label="Draft one with Claude" kind="quiet" small onPress={() => void ask()} busy={busy === 'draft'} wrap={st.centre} />
+              <Button label="Draft one with Nora" kind="quiet" small onPress={() => void ask()} busy={busy === 'draft'} wrap={st.centre} />
             </Card>
           )}
           {draft ? (

@@ -142,7 +142,7 @@ export function DebriefScreen({ target, onClose }: { target: { outing: Outing | 
           </Text>
           {micError ? <Text style={[t.small, s.centre, { color: C.danger }]}>{micError}</Text> : null}
           {phase === 'idle' ? <Button label="Tap instead" kind="quiet" small onPress={() => setMode('tap')} wrap={s.selfCentre} /> : null}
-          <Text style={[t.caption, s.centre]}>The recording stays on your PC. AI reads the words and gives back one thing to try.</Text>
+          <Text style={[t.caption, s.centre]}>The recording stays on your PC. Nora reads the words and gives back one thing to try.</Text>
         </View>
       ) : (
         <>
@@ -195,13 +195,13 @@ function Result({ d, working, onRetry }: { d: Debrief; working: boolean; onRetry
   const waiting = (d as Debrief & { waiting?: boolean }).waiting;
   if (waiting) return <Card><Text style={t.body}>Saved on this phone. It goes to your PC when it answers, and the reading comes back here.</Text></Card>;
   if (working && !d.review) {
-    return <Loading label={d.status === 'transcribing' ? 'Writing down what you said. This takes up to a minute; you can leave and come back.' : 'Reading it. Usually a few seconds; you can leave and come back.'} />;
+    return <Loading label={d.status === 'transcribing' ? 'Writing down what you said. This takes up to a minute; you can leave and come back.' : 'Nora is reading it. Usually a few seconds; you can leave and come back.'} />;
   }
   return (
     <View style={s.gap16}>
       {d.status === 'failed' ? (
         <Card style={s.gap8}>
-          <Text style={t.strong}>{d.failed_step === 'transcribe' ? "Your PC couldn't write this one down" : d.failed_step === 'short' ? 'That was too short to read' : "The AI couldn't read this one"}</Text>
+          <Text style={t.strong}>{d.failed_step === 'transcribe' ? "Your PC couldn't write this one down" : d.failed_step === 'short' ? 'That was too short to read' : "Nora couldn't read this one"}</Text>
           <Text style={t.small}>{d.review ? 'Your debrief is saved, and a plain reading is below.' : 'Your debrief is saved. Try again in a moment.'}</Text>
           {d.error ? <Text style={t.caption}>{d.error}</Text> : null}
           {d.failed_step !== 'short' ? <Button label="Try again" kind="quiet" small onPress={onRetry} wrap={s.selfStart} /> : null}
@@ -234,7 +234,7 @@ export function ReviewCard({ review, kind, compact }: { review: Review; kind?: D
           <Text style={t.body}>{review.pattern}</Text>
         </View>
       ) : null}
-      <Text style={t.caption}>{review.by === 'ai' ? `Read by AI ${whenIn(review.at.slice(0, 10))}` : kind === 'voice' ? 'A plain reading, made without AI' : 'A plain reading from what you tapped, made without AI'}</Text>
+      <Text style={t.caption}>{review.by === 'ai' ? `Read by Nora ${whenIn(review.at.slice(0, 10))}` : kind === 'voice' ? 'A plain reading, made without Nora' : 'A plain reading from what you tapped, made without Nora'}</Text>
     </Animated.View>
   );
 }

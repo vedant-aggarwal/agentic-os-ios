@@ -230,8 +230,8 @@ function PatternRead({ d, onUse }: { d: On; onUse: (p: Partial<Plan>) => void })
   };
   const taken = new Set(d.plans.map((p) => `${p.then}|${p.start}`));
   return (
-    <Section title="Reading of your pattern" action={r && !busy ? 'Read again' : undefined} onAction={() => read(true)}>
-      {busy ? <Loading label="Reading your last 90 days of logs" /> : null}
+    <Section title="Nora’s reading of your pattern" action={r && !busy ? 'Read again' : undefined} onAction={() => read(true)}>
+      {busy ? <Loading label="Nora is reading your last 90 days of logs" /> : null}
       {!busy && r ? (
         <Card>
           <Text style={t.lead}>{r.out.headline}</Text>
@@ -256,7 +256,7 @@ function PatternRead({ d, onUse }: { d: On; onUse: (p: Partial<Plan>) => void })
         <Card>
           <Text style={t.body}>
             {need != null ? `Log ${plural(need, 'more urge')} first. The reading needs at least five to say anything true.`
-              : 'An AI reading of your logs: when urges come, what tends to come before, what helped, and plans for the risky hours.'}
+              : 'Nora reads your logs: when urges come, what tends to come before, what helped, and plans for the risky hours.'}
           </Text>
           <Button label="Read my pattern" kind="soft" small onPress={() => read(false)} wrap={[s.self, s.gap8]} color={color} />
         </Card>

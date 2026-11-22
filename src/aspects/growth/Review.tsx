@@ -153,7 +153,7 @@ function Flow({ d, onSealed, redraft }: { d: ReviewDraft; onSealed: (s: Sealed) 
     } finally { setAi(false); }
   };
 
-  if (ai) return <Loading label="The model is reading your week. About twenty seconds." />;
+  if (ai) return <Loading label="Nora is reading your week. About twenty seconds." />;
 
   const head = (title: string, sub?: string) => (
     <View style={s.head}>
@@ -189,10 +189,10 @@ function Flow({ d, onSealed, redraft }: { d: ReviewDraft; onSealed: (s: Sealed) 
           onAdd={() => { setMoved([...moved, { id: `u${moved.length + 1}`, text: draft.trim(), aspect: 'growth', keep: true, mine: true }]); setDraft(''); }} />
         {d.drafted_by === 'code' ? (
           <View style={s.aiRow}>
-            <Text style={[t.caption, s.flex]}>Drafted by code from your numbers. The model can draft it from your journal and tasks too.</Text>
-            <Button label="Ask the model" kind="quiet" small onPress={askModel} />
+            <Text style={[t.caption, s.flex]}>Drafted from your numbers. Nora can draft it from your journal and tasks too.</Text>
+            <Button label="Ask Nora" kind="quiet" small onPress={askModel} />
           </View>
-        ) : <Text style={t.caption}>Drafted by a model from your week. Change anything.</Text>}
+        ) : <Text style={t.caption}>Drafted by Nora from your week. Change anything.</Text>}
       </>
     );
   } else if (step === 'missed') {

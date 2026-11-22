@@ -160,7 +160,7 @@ function Body({ init, onClose, day }: { init: AddInit; onClose: () => void; day:
         </View>
       ) : null}
       {error ? <Text style={[t.small, st.err]}>{error}</Text> : null}
-      <Button label="Draft it with Claude" kind="soft" onPress={() => void runDraft()} busy={busy === 'draft'} disabled={!text.trim() || !!busy} />
+      <Button label="Draft it with Nora" kind="soft" onPress={() => void runDraft()} busy={busy === 'draft'} disabled={!text.trim() || !!busy} />
       <Button label="Save as written" onPress={() => void save()} busy={busy === 'save'} disabled={!text.trim() || !!busy} />
     </View>
   );

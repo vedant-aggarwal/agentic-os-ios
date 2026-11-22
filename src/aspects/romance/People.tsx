@@ -174,7 +174,7 @@ export function PersonScreen({ id, onClose, onNext, onTalked }: { id: string | n
                   {lines.length > 1 ? <Button label="Another" kind="quiet" small onPress={() => setLineAt(lineAt + 1)} /> : null}
                   <Button label="New ones" kind="quiet" small busy={busy === 'line'} onPress={() => void ask('line')} />
                 </View>
-                <Text style={t.caption}>{f?.line?.by === 'ai' ? 'Written by AI from what you noted. Nothing is ever sent for you.' : 'A plain starting point. Nothing is ever sent for you.'}</Text>
+                <Text style={t.caption}>{f?.line?.by === 'ai' ? 'Written by Nora from what you noted. Nothing is ever sent for you.' : 'A plain starting point. Nothing is ever sent for you.'}</Text>
               </Card>
             ) : (
               <Button label="Suggest a message" kind="quiet" busy={busy === 'line'} onPress={() => void ask('line')} />
@@ -203,7 +203,7 @@ export function PersonScreen({ id, onClose, onNext, onTalked }: { id: string | n
                         <Button label="Plan this" kind="soft" small onPress={() => pick(i)} wrap={s.selfStart} />
                       </Card>
                     ))}
-                    <Text style={t.caption}>{f.ideas.by === 'ai' ? 'Suggested by AI from what you noted.' : 'From a short list, not from AI.'}</Text>
+                    <Text style={t.caption}>{f.ideas.by === 'ai' ? 'Suggested by Nora from what you noted.' : 'From a short list, not from Nora.'}</Text>
                   </View>
                 ) : null}
                 <Button label={f?.ideas?.budget === budget ? 'New ideas' : 'Suggest ideas'} kind="quiet" busy={busy === 'ideas'} onPress={() => void ask('ideas')} />

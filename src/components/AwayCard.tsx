@@ -8,14 +8,15 @@ import { C, F } from '@/theme';
 // Typing the passcode on the PC's keyboard unlocks it. The live signal helps check that the PC can see the phone.
 type Away = {
   settings: { enabled: boolean; near: number; awaySeconds: number };
-  state: 'unknown' | 'near' | 'away'; rssi: number | null; seenAgo: number | null; locked: boolean;
+  state: 'unknown' | 'near' | 'away'; rssi: number | null; level: number | null; goneBelow: number; seenAgo: number | null; locked: boolean;
 };
 const tap = () => { if (Platform.OS !== 'web') Haptics.selectionAsync().catch(() => {}); };
 
 function line(a: Away) {
-  const sig = a.rssi != null ? `${a.rssi} dBm` : 'not in range';
+  const v = a.level ?? a.rssi;
+  const sig = v != null ? `${v} dBm` : 'not in range';
   if (a.locked) return `PC is black · phone ${sig}`;
-  if (a.state === 'near') return `Phone is near · ${sig}`;
+  if (a.state === 'near') return `Phone is near · ${sig} · black below ${Math.round(a.goneBelow)}`;
   if (a.state === 'away') return `Phone is away · ${sig}`;
   return `Waiting to see this phone near the PC · ${sig}`;
 }

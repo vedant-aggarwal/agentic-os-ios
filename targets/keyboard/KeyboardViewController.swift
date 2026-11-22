@@ -52,6 +52,11 @@ final class KeyboardViewController: UIInputViewController {
     var fullAccess: Bool { hasFullAccess }
     var showsGlobe: Bool { needsInputModeSwitchKey }
     func nextKeyboard() { advanceToNextInputMode() }
+    /// Taller while a Rewrite or Reply chat is open, so the thread stays readable above the keys.
+    func setHeight(_ h: CGFloat) {
+        guard let c = heightConstraint, c.constant != h else { return }
+        c.constant = h
+    }
 
     /// Opens a URL from a keyboard: walk the responder chain to the UIApplication and call
     /// openURL:options:completionHandler: on it (the plain openURL: selector stopped working in iOS 18).

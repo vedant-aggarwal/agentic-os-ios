@@ -85,6 +85,19 @@ struct HomeScreen: View {
             if model.typing == .document {
                 MiniKeys(model: model)
             } else {
+                if let last = model.savedChat {
+                    Button { model.continueLast() } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "bubble.left.and.text.bubble.right").font(.system(size: 13, weight: .semibold))
+                            Text(last == "reply" ? "Continue your reply chat" : "Continue your rewrite chat").font(.footnote.weight(.semibold))
+                            Image(systemName: "chevron.right").font(.caption2.weight(.bold))
+                        }
+                        .foregroundStyle(Kb.accent)
+                        .padding(.horizontal, 12).frame(height: 30)
+                        .background(Capsule().fill(Kb.card))
+                    }
+                    .buttonStyle(.plain)
+                }
                 Spacer(minLength: 0)
                 MicPanel(model: model)
                 Spacer(minLength: 0)
@@ -277,6 +290,14 @@ struct Header: View {
             Text(title).font(.headline).foregroundStyle(Kb.ink)
             Spacer()
             if model.busy { ProgressView().scaleEffect(0.8) }
+            if !model.messages.isEmpty && model.screen != .recent {
+                Button { model.newChat() } label: {
+                    Image(systemName: "square.and.pencil").font(.system(size: 15, weight: .semibold))
+                        .frame(width: 38, height: 32).keyCap(Kb.key2)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("New chat")
+            }
             Button { model.home() } label: {
                 Image(systemName: "mic.fill").font(.system(size: 15, weight: .semibold))
                     .frame(width: 38, height: 32).keyCap(Kb.key2)
@@ -428,76 +449,6 @@ struct MiniKeys: View {
     }
 }
 
-/// The versions: one card at a time, back/forward and swipe, then Insert / Replace / Copy and the refine chat.
-struct Results: View {
-    @ObservedObject var model: KeyboardModel
-    @State private var drag: CGFloat = 0
-
-    var body: some View {
-        VStack(spacing: 8) {
-            card
-            HStack(spacing: 6) {
-                action("Insert", "text.insert", primary: true) { model.insertCurrent() }
-                action("Replace", "arrow.left.arrow.right") { model.replaceCurrent() }
-                action("Copy", "doc.on.doc") { model.copyCurrent() }
-            }
-            FieldRow(model: model, field: .refine, placeholder: "Tell it what to change…") { model.sendRefine() }
-        }
-    }
-
-    private var card: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Text(model.current?.label ?? "").font(.caption.weight(.semibold)).foregroundStyle(Kb.accent).lineLimit(1)
-                Spacer()
-                Button { model.previous() } label: { Image(systemName: "chevron.left").frame(width: 28, height: 24) }
-                    .disabled(model.index == 0)
-                Text("\(model.index + 1)/\(model.versions.count)").font(.caption.monospacedDigit()).foregroundStyle(Kb.soft)
-                Button { model.next() } label: { Image(systemName: "chevron.right").frame(width: 28, height: 24) }
-                    .disabled(model.index >= model.versions.count - 1)
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(Kb.ink)
-            ScrollView {
-                Text(model.current?.text ?? "")
-                    .font(.system(size: 16))
-                    .foregroundStyle(Kb.ink)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            if let problem = model.problem {
-                Text(problem).font(.caption).foregroundStyle(Kb.rec).lineLimit(2)
-            } else if !model.note.isEmpty {
-                Text(model.note).font(.caption).foregroundStyle(Kb.soft).lineLimit(2)
-            }
-        }
-        .padding(10)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(RoundedRectangle(cornerRadius: 12).fill(Kb.card))
-        .offset(x: drag)
-        .opacity(model.busy ? 0.55 : 1)
-        .gesture(DragGesture(minimumDistance: 20)
-            .onChanged { v in if abs(v.translation.width) > abs(v.translation.height) { drag = v.translation.width / 3 } }
-            .onEnded { v in
-                if v.translation.width < -50 { model.next() } else if v.translation.width > 50 { model.previous() }
-                withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) { drag = 0 }
-            })
-        .animation(.easeOut(duration: 0.15), value: model.index)
-    }
-
-    private func action(_ title: String, _ icon: String, primary: Bool = false, _ run: @escaping () -> Void) -> some View {
-        Button(action: run) {
-            Label(title, systemImage: icon)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(primary ? .white : Kb.ink)
-                .frame(maxWidth: .infinity).frame(height: 38)
-                .background(RoundedRectangle(cornerRadius: 9).fill(primary ? Kb.accent : Kb.key)
-                    .shadow(color: .black.opacity(0.25), radius: 0, x: 0, y: 1))
-        }
-        .buttonStyle(.plain)
-        .disabled(model.current == nil)
-    }
-}
-
 struct Typing: View {
     @ObservedObject var model: KeyboardModel
     let field: KeyboardModel.Field
@@ -520,12 +471,12 @@ struct RewriteScreen: View {
     var body: some View {
         VStack(spacing: 8) {
             Header(model: model, title: "Rewrite")
-            if let field = model.typing {
+            if !model.messages.isEmpty {
+                ChatView(model: model)
+            } else if let field = model.typing {
                 Typing(model: model, field: field)
-            } else if model.versions.isEmpty {
-                setup
             } else {
-                Results(model: model)
+                setup
             }
         }
         .padding(.horizontal, 6)
@@ -578,15 +529,15 @@ struct ReplyScreen: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            Header(model: model, title: "Draft a reply")
-            if let field = model.typing {
-                Typing(model: model, field: field)
-            } else if model.modePicker {
+            Header(model: model, title: "Reply")
+            if model.modePicker {
                 modes
-            } else if model.versions.isEmpty {
-                setup
+            } else if !model.messages.isEmpty {
+                ChatView(model: model)
+            } else if let field = model.typing {
+                Typing(model: model, field: field)
             } else {
-                Results(model: model)
+                setup
             }
         }
         .padding(.horizontal, 6)
@@ -708,5 +659,163 @@ struct RecentScreen: View {
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 6)
+    }
+}
+
+// MARK: Chat: Rewrite and Reply after the first answer. Every request and every version stays on screen; keep asking
+// for changes (type, dictate, or a quick chip) and the AI revises in the same thread.
+
+struct ChatView: View {
+    @ObservedObject var model: KeyboardModel
+
+    var body: some View {
+        VStack(spacing: 6) {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 8) {
+                        context
+                        ForEach(model.messages) { m in
+                            if m.mine { UserBubble(model: model, m: m) } else { AiBubble(model: model, m: m, latest: m.id == model.lastAiId) }
+                        }
+                        if model.busy {
+                            HStack(spacing: 8) {
+                                ProgressView().scaleEffect(0.8)
+                                Text("Writing…").font(.footnote).foregroundStyle(Kb.soft)
+                            }
+                            .padding(.leading, 4)
+                        }
+                        Color.clear.frame(height: 1).id("end")
+                    }
+                    .padding(.horizontal, 2)
+                }
+                .onAppear { proxy.scrollTo("end", anchor: .bottom) }
+                .onChange(of: model.messages.count) { _, _ in withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("end", anchor: .bottom) } }
+                .onChange(of: model.busy) { _, _ in withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("end", anchor: .bottom) } }
+                .onChange(of: model.typing) { _, _ in proxy.scrollTo("end", anchor: .bottom) }
+            }
+            if let problem = model.problem {
+                HStack(spacing: 6) {
+                    Text(problem).font(.caption).foregroundStyle(Kb.rec).lineLimit(2)
+                    Spacer(minLength: 0)
+                    Button { model.retry() } label: {
+                        Label("Retry", systemImage: "arrow.clockwise").font(.caption.weight(.semibold))
+                            .padding(.horizontal, 10).frame(height: 28).keyCap(Kb.key2)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            if model.typing == nil { chips }
+            FieldRow(model: model, field: .refine, placeholder: model.screen == .reply ? "Ask for another, or say what to change…" : "Say what to change…") { model.sendRefine() }
+            if model.typing == .refine { MiniKeys(model: model) }
+        }
+    }
+
+    /// What the chat started from, one line.
+    @ViewBuilder private var context: some View {
+        if !model.images.isEmpty || !model.source.isEmpty {
+            HStack(spacing: 6) {
+                ForEach(model.images) { img in
+                    Image(uiImage: img.thumb).resizable().scaledToFill()
+                        .frame(width: 22, height: 28).clipShape(RoundedRectangle(cornerRadius: 4))
+                }
+                if !model.source.isEmpty {
+                    Text(model.source).font(.caption).foregroundStyle(Kb.soft).lineLimit(1)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 4)
+        }
+    }
+
+    private var followUps: [Chip] {
+        model.screen == .reply
+            ? [Chip(label: "Another one", ask: "Give me different options."), Chip(label: "Shorter", ask: "Make them shorter."), Chip(label: "Funnier", ask: "Make them funnier."),
+               Chip(label: "Flirtier", ask: "Make them flirtier."), Chip(label: "Politer", ask: "Make them more polite."), Chip(label: "Savage", ask: "Make them more savage."),
+               Chip(label: "Hinglish", ask: "Write them in Hinglish."), Chip(label: "English", ask: "Write them in English."), Chip(label: "No emojis", ask: "No emojis.")]
+            : [Chip(label: "Shorter", ask: "Make it shorter."), Chip(label: "Longer", ask: "Make it a bit longer."), Chip(label: "Casual", ask: "Make it more casual."),
+               Chip(label: "Formal", ask: "Make it more formal."), Chip(label: "Funnier", ask: "Make it funnier."), Chip(label: "Warmer", ask: "Make it warmer."),
+               Chip(label: "Fix grammar", ask: "Just fix the grammar, keep my words."), Chip(label: "Emojis", ask: "Add a few fitting emojis."),
+               Chip(label: "Hinglish", ask: "Write it in Hinglish."), Chip(label: "English", ask: "Write it in English.")]
+    }
+
+    private var chips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(followUps) { chip in
+                    Button { model.send(chip.ask) } label: {
+                        Text(chip.label).font(.footnote.weight(.semibold)).padding(.horizontal, 11).frame(height: 30).keyCap()
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(model.busy)
+                }
+            }
+            .padding(.vertical, 1)
+        }
+    }
+}
+
+/// A quick follow-up: the chip's label and the message it sends.
+struct Chip: Identifiable {
+    let label: String
+    let ask: String
+    var id: String { label }
+}
+
+struct UserBubble: View {
+    @ObservedObject var model: KeyboardModel
+    let m: KbMessage
+
+    var body: some View {
+        HStack {
+            Spacer(minLength: 48)
+            VStack(alignment: .trailing, spacing: 3) {
+                Text(m.text).font(.subheadline).foregroundStyle(.white)
+                    .padding(.horizontal, 12).padding(.vertical, 7)
+                    .background(RoundedRectangle(cornerRadius: 15, style: .continuous).fill(Kb.accent.opacity(m.failed ? 0.45 : 1)))
+                if m.failed {
+                    Text("Not sent").font(.caption2).foregroundStyle(Kb.rec)
+                }
+            }
+        }
+    }
+}
+
+struct AiBubble: View {
+    @ObservedObject var model: KeyboardModel
+    let m: KbMessage
+    let latest: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            if !m.label.isEmpty {
+                Text(m.label).font(.caption.weight(.semibold)).foregroundStyle(Kb.accent).lineLimit(1)
+            }
+            Text(m.text).font(.system(size: 15)).foregroundStyle(Kb.ink)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 6) {
+                small("Insert", "text.insert", primary: true) { model.insertText(m.text) }
+                small("Replace", "arrow.left.arrow.right") { model.replaceWith(m.text) }
+                small("Copy", "doc.on.doc") { model.copyText(m.text) }
+                Spacer(minLength: 0)
+            }
+            if !m.note.isEmpty {
+                Text(m.note).font(.caption).foregroundStyle(Kb.soft)
+            }
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Kb.card))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(latest ? Kb.accent.opacity(0.7) : .clear, lineWidth: 1.2))
+    }
+
+    private func small(_ title: String, _ icon: String, primary: Bool = false, _ run: @escaping () -> Void) -> some View {
+        Button(action: run) {
+            Label(title, systemImage: icon)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(primary ? .white : Kb.ink)
+                .padding(.horizontal, 10).frame(height: 28)
+                .background(RoundedRectangle(cornerRadius: 8).fill(primary ? Kb.accent : Kb.key2))
+        }
+        .buttonStyle(.plain)
     }
 }

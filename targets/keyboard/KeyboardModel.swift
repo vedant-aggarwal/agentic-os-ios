@@ -25,6 +25,17 @@ struct KbVersion: Identifiable, Equatable {
     let turn: Int
 }
 
+/// One line of a Rewrite or Reply chat: what he asked (mine), or one version the AI wrote. Kept on the device so
+/// the chat survives the keyboard being reloaded, and can be continued from Home.
+struct KbMessage: Identifiable, Codable, Equatable {
+    var id = UUID()
+    var mine: Bool
+    var text: String
+    var label = ""
+    var note = ""
+    var failed = false
+}
+
 /// A screenshot ready to send: a small thumbnail for the UI and the JPEG (max 1600 px, quality 0.8).
 struct KbImage: Identifiable {
     let id = UUID()
@@ -39,7 +50,7 @@ final class KeyboardModel: ObservableObject {
     enum Dictation: Equatable { case idle, opening, starting, recording(since: Double), transcribing, failed(String) }
     enum Field { case document, refine, custom }
 
-    @Published var screen: Screen = .home
+    @Published var screen: Screen = .home { didSet { updateHeight() } }
     @Published var dictation: Dictation = .idle
     @Published var flash: String?
     @Published var replyModes: [KbMode] = KeyboardModel.fallbackReply
@@ -58,6 +69,7 @@ final class KeyboardModel: ObservableObject {
     @Published var busy = false
     @Published var problem: String?
     @Published var typing: Field?           // our own letter keys are up, typing into this field
+    @Published var messages: [KbMessage] = [] { didSet { saveSession(); updateHeight() } } // the chat, oldest first
     @Published var modePicker = false
     @Published var lastAction: String?
     @Published var liveText = ""          // the dictation's words so far, as the PC transcribes them
@@ -66,6 +78,8 @@ final class KeyboardModel: ObservableObject {
     private weak var host: KeyboardViewController?
     private var threadId: String?
     private var turn = 0
+    private var lastBody: [String: Any]?    // the last request, for Retry
+    private var lastWithImages = false
     private var follower: Task<Void, Never>?
     private var flashTask: Task<Void, Never>?
     private let defaults = UserDefaults.standard
@@ -169,7 +183,6 @@ final class KeyboardModel: ObservableObject {
     func back() {
         if typing != nil { typing = nil; return }
         if modePicker { modePicker = false; return }
-        if screen == .reply, !versions.isEmpty { versions = []; index = 0; note = ""; threadId = nil; return }
         home()
     }
 
@@ -188,6 +201,52 @@ final class KeyboardModel: ObservableObject {
         typing = nil
         modePicker = false
         lastAction = nil
+        messages = []
+        lastBody = nil
+    }
+
+    /// Start this screen over: a new chat (the old one stays saved until the new one has a message).
+    func newChat() {
+        if screen == .reply { openReply() } else { openRewrite() }
+    }
+
+    // MARK: The chat, kept on the device
+
+    private func saveSession() {
+        guard screen == .rewrite || screen == .reply, !messages.isEmpty, let data = try? JSONEncoder().encode(messages) else { return }
+        let s: [String: Any] = [
+            "mode": screen == .reply ? "reply" : "rewrite", "threadId": threadId ?? "", "source": source, "style": style,
+            "action": lastAction ?? "", "turn": turn, "at": Date().timeIntervalSince1970, "messages": data,
+        ]
+        defaults.set(s, forKey: "kb.session")
+    }
+
+    /// The last chat, if it is from the last 12 hours: "rewrite" or "reply".
+    var savedChat: String? {
+        guard let s = defaults.dictionary(forKey: "kb.session"), let at = s["at"] as? Double,
+              Date().timeIntervalSince1970 - at < 12 * 3600 else { return nil }
+        return s["mode"] as? String
+    }
+
+    func continueLast() {
+        guard let s = defaults.dictionary(forKey: "kb.session"), let data = s["messages"] as? Data,
+              let saved = try? JSONDecoder().decode([KbMessage].self, from: data), !saved.isEmpty else { return }
+        resetSession()
+        let t = s["threadId"] as? String ?? ""
+        threadId = t.isEmpty ? nil : t
+        source = s["source"] as? String ?? ""
+        style = s["style"] as? String ?? "smart"
+        let a = s["action"] as? String ?? ""
+        lastAction = a.isEmpty ? nil : a
+        turn = s["turn"] as? Int ?? 0
+        screen = (s["mode"] as? String) == "reply" ? .reply : .rewrite
+        messages = saved
+        versions = saved.filter { !$0.mine }.map { KbVersion(text: $0.text, label: $0.label, turn: 0) }
+        index = max(0, versions.count - 1)
+    }
+
+    private func updateHeight() {
+        host?.setHeight((screen == .rewrite || screen == .reply) && !messages.isEmpty ? 384 : 316)
     }
 
     func useClipboardText() {
@@ -210,19 +269,23 @@ final class KeyboardModel: ObservableObject {
     func next() { if index < versions.count - 1 { index += 1 } }
     func previous() { if index > 0 { index -= 1 } }
 
-    func insertCurrent() {
-        guard let v = current, let p = host?.proxy else { return }
+    func insertCurrent() { if let v = current { insertText(v.text) } }
+    func replaceCurrent() { if let v = current { replaceWith(v.text) } }
+    func copyCurrent() { if let v = current { copyText(v.text) } }
+
+    func insertText(_ text: String) {
+        guard let p = host?.proxy else { return }
         let before = p.documentContextBeforeInput ?? ""
         let needsSpace = !(before.last.map { $0.isWhitespace } ?? true)
-        p.insertText((needsSpace ? " " : "") + v.text)
+        p.insertText((needsSpace ? " " : "") + text)
         show("Inserted")
     }
 
     /// Swaps the text the rewrite started from (the selection, or the whole field) for this version.
-    func replaceCurrent() {
-        guard let v = current, let p = host?.proxy else { return }
+    func replaceWith(_ text: String) {
+        guard let p = host?.proxy else { return }
         if let sel = p.selectedText, !sel.isEmpty {
-            p.insertText(v.text)
+            p.insertText(text)
             show("Replaced")
             return
         }
@@ -231,15 +294,14 @@ final class KeyboardModel: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
             let before = p.documentContextBeforeInput ?? ""
             for _ in 0..<before.count { p.deleteBackward() }
-            p.insertText(v.text)
+            p.insertText(text)
             self.show("Replaced")
         }
     }
 
-    func copyCurrent() {
-        guard let v = current else { return }
+    func copyText(_ text: String) {
         guard fullAccess else { problem = Self.needAccess; return }
-        UIPasteboard.general.string = v.text
+        UIPasteboard.general.string = text
         show("Copied")
     }
 
@@ -269,9 +331,12 @@ final class KeyboardModel: ObservableObject {
             return
         }
         lastAction = action
+        typing = nil
         var body: [String: Any] = ["mode": "rewrite", "action": action, "text": source]
         if !custom.isEmpty { body["custom"] = custom }
-        Task { await chat(body) }
+        let label = rewriteModes.first { $0.key == action }?.label ?? action
+        let ask = action == "custom" ? custom : (custom.isEmpty ? "Rewrite: \(label)" : "Rewrite: \(label). \(custom)")
+        Task { await chat(body, ask: ask) }
     }
 
     func draftReply() {
@@ -284,25 +349,48 @@ final class KeyboardModel: ObservableObject {
         if style != "custom" { body["style"] = style }
         if !custom.isEmpty { body["custom"] = custom }
         if !source.isEmpty { body["text"] = source }
-        Task { await chat(body, withImages: true) }
+        let ask = custom.isEmpty ? "Draft a reply: \(styleLabel)" : (style == "custom" ? custom : "\(styleLabel): \(custom)")
+        Task { await chat(body, ask: ask, withImages: true) }
     }
 
+    /// Send what is in the chat field: the next message in the same thread (the AI sees the whole chat).
     func sendRefine() {
         let message = refine.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !message.isEmpty else { return }
+        guard !message.isEmpty, !busy else { return }
         typing = nil
+        refine = ""
+        send(message)
+    }
+
+    /// A follow-up in the chat: typed, dictated, or a quick chip ("Make it shorter").
+    func send(_ message: String) {
+        guard !busy else { return }
         var body: [String: Any] = ["mode": screen == .reply ? "reply" : "rewrite", "message": message]
         if screen == .reply, style != "custom" { body["style"] = style }
         if screen == .rewrite { body["text"] = source; if let a = lastAction { body["action"] = a } }
-        Task {
-            await chat(body)
-            if problem == nil { refine = "" }
-        }
+        Task { await chat(body, ask: message) }
     }
 
-    private func chat(_ body: [String: Any], withImages: Bool = false) async {
+    /// Send the last request again (after it failed).
+    func retry() {
+        guard let b = lastBody, !busy else { return }
+        if let i = messages.lastIndex(where: { $0.mine }) { messages[i].failed = false }
+        let w = lastWithImages
+        Task { await chat(b, ask: nil, withImages: w) }
+    }
+
+    var lastAiId: UUID? { messages.last { !$0.mine }?.id }
+
+    private func markFailed() {
+        if let i = messages.lastIndex(where: { $0.mine }) { messages[i].failed = true }
+    }
+
+    private func chat(_ body: [String: Any], ask: String?, withImages: Bool = false) async {
         guard fullAccess else { problem = Self.needAccess; return }
         guard Shared.token != nil else { problem = "Open Agentic OS and sign in once."; return }
+        if let ask { messages.append(KbMessage(mine: true, text: ask)) }
+        lastBody = body
+        lastWithImages = withImages
         busy = true
         problem = nil
         defer { busy = false }
@@ -315,6 +403,7 @@ final class KeyboardModel: ObservableObject {
                     let (code, data) = await Shared.request("/kb/image", method: "POST", data: images[i].jpeg, type: "image/jpeg", timeout: 40)
                     guard (200..<300).contains(code), let id = Shared.json(data)?["imageId"] as? String else {
                         problem = code == 0 ? "Couldn't reach your PC." : "The screenshot didn't upload (\(code))."
+                        markFailed()
                         return
                     }
                     images[i].serverId = id
@@ -327,6 +416,7 @@ final class KeyboardModel: ObservableObject {
         guard (200..<300).contains(code), let json = Shared.json(data) else {
             let msg = Shared.json(data)?["error"] as? String
             problem = code == 0 ? "Couldn't reach your PC." : (msg ?? "The AI didn't answer (\(code)). Try again.")
+            markFailed()
             return
         }
         threadId = json["threadId"] as? String ?? threadId
@@ -336,11 +426,14 @@ final class KeyboardModel: ObservableObject {
             guard let t = o["text"] as? String, !t.isEmpty else { return nil }
             return KbVersion(text: t, label: o["label"] as? String ?? "", turn: turn)
         }
-        guard !fresh.isEmpty else { problem = "No text came back. Try again."; return }
+        guard !fresh.isEmpty else { problem = "No text came back. Try again."; markFailed(); return }
         let first = versions.count
         versions += fresh
         index = first
         note = json["note"] as? String ?? ""
+        var replies = fresh.map { KbMessage(mine: false, text: $0.text, label: $0.label) }
+        replies[replies.count - 1].note = note
+        messages += replies
     }
 
     // MARK: Screenshots
@@ -610,6 +703,7 @@ final class KeyboardModel: ObservableObject {
             show("Inserted")
         case .refine:
             refine = refine.isEmpty ? clean : refine + " " + clean
+            sendRefine()
         case .custom:
             custom = custom.isEmpty ? clean : custom + " " + clean
         }

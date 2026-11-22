@@ -11,7 +11,7 @@ import { Surface, SURFACE_OK } from './Surface';
 import type { SceneMsg, SurfaceHandle } from './types';
 
 // Today's hero: nine crystals in a cave (hero-scene/main.js), one per aspect, on one stone. Each fills with a
-// glowing essence up to that aspect's share of today done. A sideways drag turns the stone; it settles with one
+// coloured liquid up to its share done of everything open in that aspect (today's plan plus carried tasks). A sideways drag turns the stone; it settles with one
 // crystal facing you, named under the scene.
 
 /** The hero's height below the safe area. The scene runs up behind the status bar and the top bar. */
@@ -41,13 +41,13 @@ export function Hero({ view, top, topBar, active }: { view: TodayView; top: numb
 
   const data = useMemo<SceneMsg>(() => ({
     t: 'data',
-    aspects: ORDER.map((a) => ({ key: a, color: ASPECT_COLOR[a], done: view.aspects[a]?.done ?? 0, total: view.aspects[a]?.total ?? 0 })),
+    aspects: ORDER.map((a) => ({ key: a, color: ASPECT_COLOR[a], done: view.reach[a]?.done ?? 0, total: view.reach[a]?.total ?? 0 })),
     bg: backdropAt(h, screenH),
     bgTop: C.bgTop,
     bgStop: (0.48 * screenH) / h,
     topFrac: (top + topBar) / h,
     reduce,
-  }), [view.aspects, h, screenH, top, topBar, reduce]);
+  }), [view.reach, h, screenH, top, topBar, reduce]);
 
   useEffect(() => { if (ready) surface.current?.send(data); }, [ready, data]);
   useEffect(() => { if (ready) surface.current?.send({ t: active ? 'resume' : 'pause' }); }, [ready, active]);
@@ -78,12 +78,12 @@ export function Hero({ view, top, topBar, active }: { view: TodayView; top: numb
     onDeactivate: (e) => send({ t: 'up', vx: e.canceled ? 0 : e.velocityX / width }),
   });
 
-  const p = facing ? view.aspects[facing] : undefined;
+  const p = facing ? view.reach[facing] : undefined;
   const label = facing
-    ? { text: `${aspectName(facing)} ${p?.total ? `${p.done} of ${p.total}` : 'nothing today'}`, color: p?.total ? ASPECT_COLOR[facing] : C.muted }
+    ? { text: `${aspectName(facing)} ${p?.total ? `${p.done} of ${p.total}` : 'nothing open'}`, color: p?.total ? ASPECT_COLOR[facing] : C.muted }
     : null;
-  const a11y = ORDER.filter((a) => view.aspects[a]?.total)
-    .map((a) => `${aspectName(a)} ${view.aspects[a]!.done} of ${view.aspects[a]!.total}`).join(', ');
+  const a11y = ORDER.filter((a) => view.reach[a]?.total)
+    .map((a) => `${aspectName(a)} ${view.reach[a]!.done} of ${view.reach[a]!.total}`).join(', ');
   const scene = SURFACE_OK && !failed;
 
   return (

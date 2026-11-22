@@ -31,6 +31,8 @@ export type TodayView = {
   families: Family[];
   /** Today's plan per aspect: lights the orb's life-wheel arc. */
   aspects: AspectProgress;
+  /** Everything on his plate per aspect (today's plan plus carried-over tasks): fills the hero's crystals. */
+  reach: AspectProgress;
   done: number; total: number;
   moment: Moment | null;
   groups: Group[];
@@ -72,14 +74,20 @@ export function deriveToday(t: TodayPayload, life: LifePayload, areas: Area[]): 
     const mineF = counted.filter((x) => { const a = aspectOf(x.area); return a && familyOf.get(a) === key; });
     return { key, total: mineF.length, done: mineF.filter((x) => x.status === 'done').length };
   });
-  const aspects: AspectProgress = {};
-  for (const x of counted) {
-    const a = aspectOf(x.area);
-    if (!a) continue;
-    const p = (aspects[a] ??= { done: 0, total: 0 });
-    p.total += 1;
-    if (x.status === 'done') p.done += 1;
-  }
+  const perAspect = (list: Task[]) => {
+    const out: AspectProgress = {};
+    for (const x of list) {
+      const a = aspectOf(x.area);
+      if (!a) continue;
+      const p = (out[a] ??= { done: 0, total: 0 });
+      p.total += 1;
+      if (x.status === 'done') p.done += 1;
+    }
+    return out;
+  };
+  const aspects = perAspect(counted);
+  // one finished task fills its crystal only by its share of everything open in that aspect
+  const reach = perAspect([...counted, ...carried]);
 
   const row = (x: Task, right: string, rightStrong = false): Row => ({
     id: x.id, title: x.title, sub: x.area ? areaName.get(x.area) ?? x.area : null,
@@ -130,6 +138,7 @@ export function deriveToday(t: TodayPayload, life: LifePayload, areas: Area[]): 
     dateLabel: dateLabel(t.date),
     families,
     aspects,
+    reach,
     done: counted.filter((x) => x.status === 'done').length,
     total: counted.length,
     moment,

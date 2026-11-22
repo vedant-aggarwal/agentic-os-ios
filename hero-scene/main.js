@@ -1,6 +1,6 @@
 // Today hero: nine quartz crystals, one per life aspect, growing as one cluster out of a mossy boulder in a dark
-// cave, lit by a shaft of daylight through a crack in the roof. Each crystal fills from the root with a glowing
-// essence, a dense coloured fog, up to that aspect's share of today done.
+// cave, lit by a shaft of daylight through a crack in the roof. Each crystal holds a coloured liquid, levelled by
+// gravity, up to that aspect's share done; a full one overflows and leaks down its side onto the stone.
 // A sideways drag turns the whole boulder; it settles with one crystal facing you, which the app names.
 // Runs in a WebView (phone) or an iframe (web build). Messages: see recv() and toApp().
 import * as THREE from 'three';
@@ -10,6 +10,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 
 // ── bridge ──────────────────────────────────────────────────────────────────────────────────────────────────
 const RN = window.ReactNativeWebView;
@@ -122,14 +123,15 @@ renderer.setSize(window.innerWidth, window.innerHeight, false);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = THREE.PCFShadowMap;
 if ('transmissionResolutionScale' in renderer) renderer.transmissionResolutionScale = 0.6;
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color();
 scene.fog = new THREE.FogExp2(0x000000, 0.085);
-const HAZE = hex('#4A4C55'); // the cave air: distance turns to a faint grey haze, not to black
+const HAZE = hex('#4A4C55');
+const ENV_GAIN = 0.32, ENV_TURN = Math.PI * 0.5; // the cave mouth behind and to the left of the camera // the cave air: distance turns to a faint grey haze, not to black
 const camera = new THREE.PerspectiveCamera(30, window.innerWidth / window.innerHeight, 0.1, 60);
 
 // ── light: one shaft of daylight through a crack above, a cool glow from deeper in the cave behind ──────────
@@ -296,6 +298,21 @@ function scan(id) {
   return (scans[id] = sc);
 }
 
+{
+  const ENV_URL = 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/hikers_cave_1k.hdr';
+  scanLoads.push(new Promise((res) => {
+    new HDRLoader().load(ENV_URL, (tex) => {
+      tex.mapping = THREE.EquirectangularReflectionMapping;
+      const pm = new THREE.PMREMGenerator(renderer);
+      scene.environment = pm.fromEquirectangular(tex).texture;
+      scene.environmentIntensity = ENV_GAIN;
+      scene.environmentRotation.set(0, ENV_TURN, 0);
+      tex.dispose(); pm.dispose();
+      res();
+    }, undefined, () => res());
+  }));
+}
+
 function rockMaterial({ color = '#4A4844', bump = 1.8, freq = 3.0, env = 0.2, rough = 0.9, wet = 0, id = 'dark_rock_02', scale = 0.5, tint = 1, moss = 1 } = {}) {
   const m = new THREE.MeshStandardMaterial({ color: hex(color), roughness: rough, metalness: 0, envMapIntensity: env });
   const sc = scan(id);
@@ -406,7 +423,7 @@ const boulderGeo = addGrowth(
   rockGeometry({ detail: 60, scale: [1.06, 0.62, 0.94], amp: 0.2, freq: 1.3, seed: 4.2, flatTop: 0.4, sharp: 0.4, cuts: 7 }),
   { moss: 1, algae: 0.9, seed: 2.2, lowY: -0.55, band: 0.45 },
 );
-const boulder = rockMesh(boulderGeo, rockMaterial({ color: '#3A3835', bump: 2.1, freq: 3.4, env: 0.22, id: 'mossy_rock', scale: 0.75, tint: 0.8, moss: 0.3 }), [0, ROCK_Y, 0], [0, 0.3, 0], { cast: true });
+const boulder = rockMesh(boulderGeo, rockMaterial({ color: '#3A3835', bump: 2.1, freq: 3.4, env: 0.22, id: 'mossy_rock', scale: 0.75, tint: 0.58, moss: 0.3, wet: 0.45 }), [0, ROCK_Y, 0], [0, 0.3, 0], { cast: true });
 table.add(boulder);
 
 // moss up close is a fuzz of tiny fronds: a few thousand specks over the mossiest parts
@@ -515,15 +532,18 @@ const floorH = (x, z) => -1.12 + fbm(x * 0.25, 0.5, z * 0.25, 5) * 0.7 + fbm(x *
 // rock reaching into the top corners, close to the camera, framing the view like the inside of a cave mouth
 const corners = [];
 {
-  const mat = rockMaterial({ color: '#36363A', bump: 2.3, freq: 1.8, env: 0.12, wet: 0.3, id: 'dark_rock_02', scale: 0.45, tint: 0.7, moss: 0.6 });
+  const mat = rockMaterial({ color: '#4A4946', bump: 2.3, freq: 1.8, env: 0.3, wet: 0.25, id: 'lichen_rock', scale: 0.55, tint: 1.0, moss: 0.15 });
   for (const side of [-1, 1]) {
-    const g = addGrowth(rockGeometry({ detail: 40, scale: [0.62, 0.36, 0.42], amp: 0.42, freq: 1.2, seed: side > 0 ? 31.7 : 37.2, cuts: 6, sharp: 0.6 }),
-      { moss: 0.5, algae: 0.8, seed: 9 + side, lowY: -0.55, band: 0.35, streaks: 0.6 });
-    const m = rockMesh(g, mat, [0, 0, 0], [0.35, side * 0.5, side * -0.55]);
+    const g = addGrowth(rockGeometry({ detail: 40, scale: [0.62, 0.4, 0.38], amp: 0.36, freq: 1.2, seed: side > 0 ? 31.7 : 37.2, cuts: 6, sharp: 0.6 }),
+      { moss: 0.2, algae: 0.35, seed: 9 + side, lowY: -0.6, band: 0.25, streaks: 0.7 });
+    const m = rockMesh(g, mat, [0, 0, 0], [0.2, side * 0.5, side * -0.62]);
     m.userData.side = side;
     scene.add(m); corners.push(m);
   }
 }
+// daylight from the cave mouth behind the camera: it reaches the near rocks, and dies out before the stone
+const mouth = new THREE.PointLight(hex('#C8CCD6'), 3.2, 3.9, 1.6);
+scene.add(mouth);
 
 // the shaft of light you can see in the dust
 const beamUniforms = { uTime: { value: 0 }, uColor: { value: hex('#FFD9B0') }, uStrength: { value: 0.26 } };
@@ -700,49 +720,22 @@ function striationTexture() {
   return t;
 }
 
-const glass = new THREE.MeshPhysicalMaterial({
-  color: 0xffffff, metalness: 0, roughness: 1, roughnessMap: striationTexture(),
+const STRIATION = striationTexture();
+const GLASS = {
+  color: 0xffffff, metalness: 0, roughness: 1, roughnessMap: STRIATION,
   transmission: 1, thickness: 0.3, ior: 1.544, dispersion: 0.45,
   attenuationColor: hex('#EEF1F6'), attenuationDistance: 2.2,
   specularIntensity: 1, specularColor: new THREE.Color(1.6, 1.6, 1.6), envMapIntensity: 2.6, side: THREE.DoubleSide,
-});
+};
+const glass = new THREE.MeshPhysicalMaterial(GLASS);
 
-// What quartz shows in the dark: light caught inside it where the sun reaches, a milky root, faint veils,
-// and a cool line along the edges from the cave behind. Drawn over the glass, additive.
-const quartzLight = new THREE.ShaderMaterial({
-  uniforms: { ...LIGHT_UNIFORMS },
-  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
-  polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
-  vertexShader: `varying vec3 vN; varying vec3 vW; varying vec3 vO; varying float vV;
-    void main(){
-      vec4 w = modelMatrix*vec4(position,1.0); vW = w.xyz; vN = normalize(mat3(modelMatrix)*normal);
-      vO = position; vV = uv.y;
-      gl_Position = projectionMatrix*viewMatrix*w;
-    }`,
-  fragmentShader: `${NOISE}
-    uniform vec3 uKeyPos; uniform vec3 uKeyDir; uniform vec3 uKeyCol; uniform float uCosO; uniform float uCosI;
-    uniform vec3 uRimDir; uniform vec3 uRimCol;
-    varying vec3 vN; varying vec3 vW; varying vec3 vO; varying float vV;
-    void main(){
-      vec3 N = normalize(vN); if (!gl_FrontFacing) N = -N;
-      vec3 V = normalize(cameraPosition - vW);
-      vec3 L = normalize(uKeyPos - vW);
-      float cone = smoothstep(uCosO, uCosI, dot(-L, uKeyDir));
-      float facing = abs(dot(N, V));
-      float lit = (0.3 + 0.7*max(dot(N, L), 0.0))*cone;
-      float veil = smoothstep(0.8, 1.0, snoise(vO*vec3(16.0, 1.1, 16.0))*0.5 + 0.5)*0.5;
-      float milk = smoothstep(0.34, 0.06, vV);
-      float edge = pow(1.0 - facing, 4.0)*(0.25 + 0.75*max(dot(N, uRimDir), 0.0));
-      vec3 c = uKeyCol*lit*(0.07 + 0.3*veil + 0.55*milk) + uRimCol*edge*0.3 + uRimCol*0.012;
-      gl_FragColor = vec4(c*(gl_FrontFacing ? 0.7 : 1.0), 1.0);
-    }`,
-});
-
-// The essence: a dense glowing fog filling the crystal from the root, edge to edge, up to its share. Drawn on
-// the crystal's own faces: each pixel follows the view ray through the crystal (its faces as planes) and gathers
-// fog along the part of the ray below the surface, brightest just under the surface so the level reads.
-const ESS_MIN = 0.06; // a thin layer when something is planned and nothing is done yet
-function essenceMaterial(geo) {
+// The nine are filled with a coloured liquid, levelled by gravity, up to the aspect's share. It lives in the
+// glass's own shader: each pixel follows the view ray through the crystal (its 24 faces as planes), measures how
+// far the ray runs under the liquid's surface, and absorbs the light seen through the glass along that length
+// (Beer-Lambert), so a deep column reads dark and saturated and a thin one pale. The daylight that reaches the
+// liquid scatters in it in its colour. A bright meniscus with a dark band under it marks the level on the faces.
+const N_PL = 24;
+function facePlanes(geo) {
   const p = geo.attributes.position, planes = [];
   const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
   for (let i = 0; i < p.count; i += 3) {
@@ -750,51 +743,127 @@ function essenceMaterial(geo) {
     const n = b.clone().sub(a).cross(c.clone().sub(a)).normalize();
     planes.push(new THREE.Vector4(n.x, n.y, n.z, n.dot(a)));
   }
+  if (planes.length !== N_PL) throw new Error('crystal faces: ' + planes.length);
+  return planes;
+}
+const GEM_PARS = `
+  varying vec3 vLP;
+  uniform vec4 uPl[${N_PL}]; uniform vec3 uCamL; uniform vec3 uUpL; uniform float uLvl; uniform vec3 uCol; uniform vec3 uSigma;
+  uniform vec3 uKeyPos; uniform vec3 uKeyDir; uniform vec3 uKeyCol; uniform float uCosO; uniform float uCosI;
+  uniform vec3 uRimDir; uniform vec3 uRimCol;
+  vec3 gemAbs = vec3(1.0); vec3 gemGlow = vec3(0.0); float gemLq = 0.0; float gemTop = 0.0; float gemCone = 0.0;`;
+const GEM_MAIN = `
+  if (uLvl > -8.0) {
+    vec3 d = normalize(vLP - uCamL);
+    float tIn = -4.0, tOut = 4.0;
+    for (int i = 0; i < ${N_PL}; i++) {
+      float dn = dot(uPl[i].xyz, d);
+      float off = uPl[i].w - dot(uPl[i].xyz, vLP);
+      if (dn > 1e-4) tOut = min(tOut, off/dn);
+      else if (dn < -1e-4) tIn = max(tIn, off/dn);
+    }
+    float t0 = gl_FrontFacing ? 0.0 : min(tIn, 0.0);
+    float t1 = gl_FrontFacing ? max(tOut, 0.0) : 0.0;
+    float s0 = dot(vLP, uUpL), ds = dot(d, uUpL);
+    float a = t0, b = t1;
+    if (abs(ds) < 1e-5) { if (s0 >= uLvl) b = a; }
+    else { float tl = (uLvl - s0)/ds; if (ds > 0.0) b = min(b, tl); else a = max(a, tl); }
+    float Lq = max(b - a, 0.0);
+    gemAbs = exp(-uSigma*Lq);
+    gemLq = Lq;
+    vec3 Lk = normalize(uKeyPos - vWorldPosition);
+    float cone = smoothstep(uCosO, uCosI, dot(-Lk, uKeyDir));
+    gemCone = cone;
+    gemTop = exp(-max(uLvl - s0, 0.0)*7.0); // light comes in from above: brightest just under the surface
+    // seen from above, through the glass, the surface catches a little light
+    if (ds < 0.0 && a > t0 + 1e-4 && Lq > 0.0) gemGlow += mix(uCol, vec3(1.0), 0.6)*(0.01 + 0.07*cone);
+    if (gl_FrontFacing) {
+      float dl = s0 - uLvl;
+      float w = fwidth(s0)*1.1 + 0.0012;
+      float line = 1.0 - smoothstep(0.0, w, abs(dl - w*0.6));
+      float band = 1.0 - smoothstep(0.0, w*1.8, abs(dl + w*2.0));
+      gemGlow += mix(uCol, vec3(1.0), 0.5)*line*(0.06 + 0.55*cone);
+      gemAbs *= 1.0 - 0.55*band;
+    }
+  }`;
+const GEM_LIGHT = `
+  if (gemLq > 0.0) {
+    vec3 Lv = normalize((viewMatrix*vec4(uKeyPos - vWorldPosition, 0.0)).xyz);
+    float ndl = max(dot(normal, Lv), 0.0);
+    float dens = 1.0 - exp(-gemLq*4.5);
+    gemGlow += uCol*dens*(uKeyCol*gemCone*(0.05 + 0.26*ndl)*(0.7 + 0.6*gemTop) + uRimCol*0.015 + vec3(0.01));
+  }
+  totalEmissiveRadiance += gemGlow;`;
+function gemMaterial(geo) {
+  const m = new THREE.MeshPhysicalMaterial(GLASS);
+  const u = (m.userData.u = {
+    ...LIGHT_UNIFORMS,
+    uPl: { value: facePlanes(geo) }, uCamL: { value: new THREE.Vector3() }, uUpL: { value: new THREE.Vector3(0, 1, 0) },
+    uLvl: { value: -9 }, uCol: { value: new THREE.Color() }, uSigma: { value: new THREE.Vector3() },
+  });
+  m.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, u);
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vLP;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvLP = transformed;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\n' + GEM_PARS)
+      .replace('#include <color_fragment>', '#include <color_fragment>\n' + GEM_MAIN)
+      .replace('#include <transmission_fragment>', THREE.ShaderChunk.transmission_fragment.replace(
+        'totalDiffuse = mix( totalDiffuse, transmitted.rgb, material.transmission );',
+        'transmitted.rgb *= gemAbs;\n\ttotalDiffuse = mix( totalDiffuse, transmitted.rgb, material.transmission );'))
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n' + GEM_LIGHT);
+  };
+  m.customProgramCacheKey = () => 'gem';
+  return m;
+}
+
+// What quartz shows in the dark: light caught inside it where the sun reaches, a milky root, faint veils,
+// and a cool line along the edges from the cave behind. Drawn over the glass, additive. Under a crystal's
+// liquid the light it catches takes the liquid's colour; a crystal with something open has a faintly tinted root.
+function quartzMat() {
   return new THREE.ShaderMaterial({
     uniforms: {
-      ...LIGHT_UNIFORMS, uTime: mistTime, uPl: { value: planes }, uCamL: { value: new THREE.Vector3() },
-      uLevel: { value: -1 }, uCol: { value: new THREE.Color() }, uR: { value: 0.2 },
+      ...LIGHT_UNIFORMS, uUpL: { value: new THREE.Vector3(0, 1, 0) }, uLvl: { value: -9 },
+      uCol: { value: new THREE.Color(1, 1, 1) }, uHas: { value: 0 },
     },
-    transparent: true, depthWrite: false, premultipliedAlpha: true, side: THREE.FrontSide,
-    polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
-    vertexShader: `varying vec3 vP; varying vec3 vW;
-      void main(){ vP = position; vec4 w = modelMatrix*vec4(position,1.0); vW = w.xyz; gl_Position = projectionMatrix*viewMatrix*w; }`,
-    fragmentShader: `${NOISE}
-      uniform vec4 uPl[${planes.length}]; uniform vec3 uCamL; uniform float uLevel; uniform vec3 uCol; uniform float uTime; uniform float uR;
-      uniform vec3 uKeyPos; uniform vec3 uKeyDir; uniform vec3 uKeyCol; uniform float uCosO; uniform float uCosI;
-      varying vec3 vP; varying vec3 vW;
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+    polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+    vertexShader: `varying vec3 vN; varying vec3 vW; varying vec3 vO; varying float vV;
       void main(){
-        vec3 d = normalize(vP - uCamL);
-        float tx = 4.0;
-        for (int i = 0; i < ${planes.length}; i++) {
-          float dn = dot(uPl[i].xyz, d);
-          if (dn > 1e-4) tx = min(tx, (uPl[i].w - dot(uPl[i].xyz, vP))/dn);
-        }
-        float lv = uLevel + 0.01*sin(uTime*0.8 + vP.x*14.0 + vP.z*11.0);
-        float t0 = 0.0, t1 = max(tx, 0.0);
-        if (abs(d.y) < 1e-4) { if (vP.y > lv) discard; }
-        else { float tl = (lv - vP.y)/d.y; if (d.y > 0.0) t1 = min(t1, tl); else t0 = max(t0, tl); }
-        if (t1 <= t0) discard;
+        vec4 w = modelMatrix*vec4(position,1.0); vW = w.xyz; vN = normalize(mat3(modelMatrix)*normal);
+        vO = position; vV = uv.y;
+        gl_Position = projectionMatrix*viewMatrix*w;
+      }`,
+    fragmentShader: `${NOISE}
+      uniform vec3 uKeyPos; uniform vec3 uKeyDir; uniform vec3 uKeyCol; uniform float uCosO; uniform float uCosI;
+      uniform vec3 uRimDir; uniform vec3 uRimCol; uniform vec3 uUpL; uniform float uLvl; uniform vec3 uCol; uniform float uHas;
+      varying vec3 vN; varying vec3 vW; varying vec3 vO; varying float vV;
+      void main(){
+        vec3 N = normalize(vN); if (!gl_FrontFacing) N = -N;
+        vec3 V = normalize(cameraPosition - vW);
         vec3 L = normalize(uKeyPos - vW);
         float cone = smoothstep(uCosO, uCosI, dot(-L, uKeyDir));
-        float sun = cone*dot(uKeyCol, vec3(0.333));
-        vec3 col = vec3(0.0); float T = 1.0;
-        float dt = (t1 - t0)/8.0;
-        for (int i = 0; i < 8; i++) {
-          vec3 q = vP + d*(t0 + (float(i) + 0.5)*dt);
-          float n = snoise(q*vec3(6.0, 3.5, 6.0) + vec3(0.0, -uTime*0.1, uTime*0.04))*0.5 + 0.5;
-          float w = snoise(q*vec3(15.0, 6.0, 15.0) + vec3(uTime*0.06, -uTime*0.16, 0.0))*0.5 + 0.5;
-          float under = lv - q.y;
-          float core = 1.0 - clamp(length(q.xz)/uR, 0.0, 1.0);
-          float dens = (0.25 + 7.0*n*n*n + 3.0*w*w*w)*mix(0.4, 1.0, clamp(under*5.0, 0.0, 1.0));
-          float surf = exp(-abs(under)*26.0);
-          vec3 e = uCol*(0.45 + 1.6*n*w + 0.6*sun)*(0.3 + 1.5*core) + mix(uCol, vec3(1.0), 0.6)*surf*1.6;
-          float a = 1.0 - exp(-dens*dt);
-          col += T*a*e;
-          T *= 1.0 - a;
-        }
-        gl_FragColor = vec4(col, 1.0 - T);
+        float facing = abs(dot(N, V));
+        float lit = (0.3 + 0.7*max(dot(N, L), 0.0))*cone;
+        float veil = smoothstep(0.8, 1.0, snoise(vO*vec3(16.0, 1.1, 16.0))*0.5 + 0.5)*0.5;
+        float milk = smoothstep(0.34, 0.06, vV);
+        float edge = pow(1.0 - facing, 4.0)*(0.25 + 0.75*max(dot(N, uRimDir), 0.0));
+        float inL = step(dot(vO, uUpL), uLvl);
+        vec3 tint = mix(vec3(1.0), uCol*1.5, max(inL, uHas*0.5*milk));
+        vec3 c = uKeyCol*lit*(0.07 + 0.3*veil + 0.55*milk*(1.0 - 0.7*inL))*tint + uRimCol*edge*0.3 + uRimCol*0.012;
+        gl_FragColor = vec4(c*(gl_FrontFacing ? 0.7 : 1.0), 1.0);
       }`,
+  });
+}
+const quartzLight = quartzMat();
+
+// the liquid where it has run out of a full crystal: dark and glossy, a little light scattered inside it
+function liquidMaterial() {
+  return new THREE.MeshPhysicalMaterial({
+    color: 0xffffff, roughness: 0.05, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.03, envMapIntensity: 1.8,
+    transparent: true, // kept out of what the glass refracts: a run seen through another crystal reads as a flaw in it
+    polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3,
   });
 }
 
@@ -813,6 +882,33 @@ function surfaceY(x, z) {
   return hit ? hit.point.y : 0;
 }
 
+const probeMat = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
+function stonePatch(centerT, rad) {
+  const g = boulder.geometry, pos = g.attributes.position, idx = g.index;
+  const inv = boulder.matrix.clone().invert();
+  const c = centerT.clone().applyMatrix4(inv), r2 = rad * rad;
+  const out = [], a = new THREE.Vector3();
+  const n = idx ? idx.count : pos.count;
+  for (let i = 0; i < n; i += 3) {
+    let near = false;
+    for (let j = 0; j < 3 && !near; j++) {
+      a.fromBufferAttribute(pos, idx ? idx.getX(i + j) : i + j);
+      const dx = a.x - c.x, dz = a.z - c.z;
+      near = dx * dx + dz * dz < r2;
+    }
+    if (!near) continue;
+    for (let j = 0; j < 3; j++) { a.fromBufferAttribute(pos, idx ? idx.getX(i + j) : i + j); out.push(a.x, a.y, a.z); }
+  }
+  if (!out.length) return null;
+  const pg = new THREE.BufferGeometry();
+  pg.setAttribute('position', new THREE.Float32BufferAttribute(out, 3));
+  const m = new THREE.Mesh(pg, probeMat);
+  m.matrixAutoUpdate = false;
+  m.matrixWorld.copy(boulder.matrix); // casts happen in table space
+  return m;
+}
+const _v = new THREE.Vector3(), _q = new THREE.Quaternion();
+
 class Crystal {
   constructor(i, L) {
     const [az, dist, lean, r, h, tip, seed] = L;
@@ -823,38 +919,177 @@ class Crystal {
     this.group.position.set(x, surfaceY(x, z) + 0.02, z);
     const axis = new THREE.Vector3(Math.sin(this.az) * Math.sin(lean), Math.cos(lean), Math.cos(this.az) * Math.sin(lean));
     this.group.quaternion.setFromUnitVectors(UP, axis);
-    const spin = new THREE.Group();
-    spin.rotation.y = rng(seed * 7)() * Math.PI * 2;
-    this.group.add(spin);
+    this.spin = new THREE.Group();
+    this.spin.rotation.y = rng(seed * 7)() * Math.PI * 2;
+    this.group.add(this.spin);
     const g = crystalGeometry(this.c);
-    this.glass = new THREE.Mesh(g, glass);
+    this.gem = gemMaterial(g); this.u = this.gem.userData.u;
+    this.glass = new THREE.Mesh(g, this.gem);
     this.glass.castShadow = true; this.glass.receiveShadow = true;
-    this.mat = essenceMaterial(g);
-    this.mat.uniforms.uR.value = r;
-    this.essence = new THREE.Mesh(g, this.mat);
-    this.essence.renderOrder = 3;
-    this.essence.visible = false;
-    this.shine = new THREE.Mesh(g, quartzLight);
+    this.qm = quartzMat();
+    this.shine = new THREE.Mesh(g, this.qm);
     this.shine.renderOrder = 4;
-    spin.add(this.glass, this.essence, this.shine);
+    this.spin.add(this.glass, this.shine);
     table.add(this.group);
+    table.updateMatrixWorld(true);
     this.top = h + tip; this.lean = lean;
+
+    // World up in the crystal's own frame. The table only turns about the vertical, so it never changes.
+    this.spin.getWorldQuaternion(_q);
+    const upL = UP.clone().applyQuaternion(_q.invert());
+    this.u.uUpL.value.copy(upL); this.qm.uniforms.uUpL.value.copy(upL);
+    // The level runs from the lowest point where the crystal leaves the stone to its highest point.
+    const p = g.attributes.position;
+    let hi = -Infinity, apexY = -Infinity;
+    for (let k = 0; k < p.count; k++) { _v.fromBufferAttribute(p, k); hi = Math.max(hi, _v.dot(upL)); apexY = Math.max(apexY, _v.y); }
+    for (let k = 0; k < p.count; k++) { _v.fromBufferAttribute(p, k); if (_v.y >= apexY - 1e-6) this.apexT = table.worldToLocal(this.spin.localToWorld(_v.clone())); }
+    this.lo = -r * 0.95 * Math.hypot(upL.x, upL.z);
+    this.hi = hi + 0.003;
+    this.apexY = apexY;
     this.fill = 0; this.fillVel = 0; this.target = 0;
+    this.done = 0; this.total = 0; this.leakK = 0; this.leak = null;
   }
   setData(a) {
-    this.mat.uniforms.uCol.value.copy(hex(a.color));
-    this.target = a.total > 0 ? ESS_MIN + (1 - ESS_MIN) * clamp01(a.done / a.total) : 0;
+    const col = hex(a.color);
+    this.u.uCol.value.copy(col);
+    // absorption per unit length: deep enough that a full column reads the aspect's colour, dark and clear
+    this.u.uSigma.value.set(-Math.log(Math.max(col.r, 0.015)), -Math.log(Math.max(col.g, 0.015)), -Math.log(Math.max(col.b, 0.015))).multiplyScalar(5.5).addScalar(1.2);
+    this.qm.uniforms.uCol.value.copy(col);
+    this.qm.uniforms.uHas.value = a.total > 0 ? 1 : 0;
+    this.done = a.done; this.total = a.total;
+    this.target = a.total > 0 ? clamp01(a.done / a.total) : 0;
     if (state.reduce || !this.started) { this.fill = this.target; this.fillVel = 0; }
     this.started = true;
+    if (this.leak) this.tintLeak();
   }
-  update(dt) {
+  tintLeak() {
+    const col = this.u.uCol.value;
+    // a run and drops: glossy, mostly seen by the light they catch; the pool: thin, the stone shows through it
+    const { mat, pmat } = this.leak;
+    mat.color.copy(col).multiplyScalar(0.65); mat.emissive.copy(col).multiplyScalar(0.03); mat.opacity = 0.88;
+    if (pmat) { pmat.color.copy(col).multiplyScalar(0.42); pmat.emissive.copy(col).multiplyScalar(0.02); pmat.opacity = 0.74; pmat.envMapIntensity = 2.6; }
+  }
+  // A full crystal overflows: a thin run of liquid from the tip down its lowest face, drops sliding down it, and
+  // a small pool on the stone at its foot.
+  buildLeak() {
+    const { r, seed } = this.c, upL = this.u.uUpL.value;
+    const dd = new THREE.Vector3(-upL.x, 0, -upL.z);
+    if (dd.lengthSq() < 1e-6) dd.set(0, 0, 1);
+    dd.normalize();
+    const side = new THREE.Vector3().crossVectors(UP, dd).normalize();
+    const probe = new THREE.Mesh(this.glass.geometry, probeMat);
+    probe.updateMatrixWorld(true);
+    const rc = new THREE.Raycaster(), pts = [], wig = rng(seed * 13);
+    const ph = wig() * 6.28, n = 26;
+    for (let k = 0; k <= n; k++) {
+      const y = this.apexY - 0.012 - (this.apexY + 0.01) * (k / n);
+      const o = dd.clone().multiplyScalar(r * 3).addScaledVector(side, Math.sin(y * 5 + ph) * r * 0.07);
+      o.y = y;
+      rc.set(o, dd.clone().negate());
+      const hit = rc.intersectObject(probe, false)[0];
+      if (!hit) continue;
+      pts.push(hit.point.addScaledVector(hit.face.normal, 0.0035));
+    }
+    if (pts.length < 4) { this.leak = false; return; }
+    const curve = new THREE.CatmullRomCurve3(pts);
+    const segs = 80, radial = 6;
+    const tubeGeo = new THREE.TubeGeometry(curve, segs, 0.0075, radial, false);
+    // thin at the tip, fuller where it has gathered lower down
+    const tp = tubeGeo.attributes.position, c = new THREE.Vector3();
+    for (let k = 0; k < tp.count; k++) {
+      const ring = Math.floor(k / (radial + 1)), u = ring / segs;
+      curve.getPointAt(u, c);
+      _v.fromBufferAttribute(tp, k).sub(c).multiplyScalar(0.5 + 0.7 * u).add(c);
+      tp.setXYZ(k, _v.x, _v.y, _v.z);
+    }
+    tubeGeo.computeVertexNormals();
+    const mat = liquidMaterial();
+    const tube = new THREE.Mesh(tubeGeo, mat);
+    this.spin.add(tube);
+    const beadGeo = new THREE.SphereGeometry(1, 14, 10);
+    const beads = [0, 1, 2].map(() => { const b = new THREE.Mesh(beadGeo, mat); b.visible = false; this.spin.add(b); return b; });
+    // the pool: where the run ends, spread over the stone in front of the crystal's foot
+    table.updateMatrixWorld(true);
+    const endL = pts[pts.length - 1];
+    const end = table.worldToLocal(this.spin.localToWorld(endL.clone()));
+    const away = table.worldToLocal(this.spin.localToWorld(endL.clone().addScaledVector(dd, 0.1))).sub(end);
+    away.y = 0; away.normalize();
+    const across = new THREE.Vector3(-away.z, 0, away.x);
+    const c0 = end.clone().addScaledVector(away, 0.05);
+    const R = 0.1 + r * 0.22;
+    const stone = stonePatch(c0, R * 2.2);
+    let puddle = null, pmat = null;
+    if (stone) {
+      const pg = new THREE.RingGeometry(0, 1, 36, 6);
+      const pp = pg.attributes.position, grow = new Float32Array(pp.count), pr = rng(seed * 29), ph2 = pr() * 6.28;
+      const P = new THREE.Vector3(), down = new THREE.Vector3(0, -1, 0), rc2 = new THREE.Raycaster();
+      for (let k = 0; k < pp.count; k++) {
+        const x = pp.getX(k), y = pp.getY(k), a = Math.atan2(y, x);
+        const s = 0.74 + 0.2 * Math.sin(a * 3 + ph2) + 0.1 * Math.sin(a * 7 + ph2 * 2);
+        // it runs further away from the crystal than back toward it
+        P.copy(c0).addScaledVector(across, x * s * R).addScaledVector(away, y * s * R * (y > 0 ? 1.4 : 0.7));
+        P.y = 3;
+        rc2.set(P, down);
+        const h = rc2.intersectObject(stone, false)[0];
+        if (h) P.copy(h.point); else P.y = c0.y;
+        pp.setXYZ(k, P.x, P.y + 0.004, P.z);
+        grow[k] = Math.hypot(x, y);
+      }
+      pg.setAttribute('aR', new THREE.BufferAttribute(grow, 1));
+      pg.computeVertexNormals();
+      pmat = liquidMaterial();
+      const g = (pmat.userData.grow = { value: 0 });
+      pmat.onBeforeCompile = (sh) => {
+        sh.uniforms.uGrow = g;
+        sh.vertexShader = sh.vertexShader
+          .replace('#include <common>', '#include <common>\nattribute float aR; varying float vR;')
+          .replace('#include <begin_vertex>', '#include <begin_vertex>\nvR = aR;');
+        sh.fragmentShader = sh.fragmentShader
+          .replace('#include <common>', '#include <common>\nuniform float uGrow; varying float vR;')
+          .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\nif (vR > uGrow) discard;');
+      };
+      pmat.customProgramCacheKey = () => 'pool';
+      puddle = new THREE.Mesh(pg, pmat);
+      puddle.receiveShadow = true;
+      puddle.visible = false;
+      table.add(puddle);
+    }
+    this.leak = { curve, tube, segs, ringIdx: radial * 6, beads, puddle, mat, pmat };
+    this.tintLeak();
+  }
+  update(dt, t) {
     // rises toward its share with a soft settle; falls back if a task is undone
     this.fillVel += ((this.target - this.fill) * 26 - this.fillVel * 8.5) * dt;
     this.fill += this.fillVel * dt;
     const f = clamp01(this.fill);
-    this.essence.visible = f > 0.004;
-    this.mat.uniforms.uLevel.value = -0.03 + (this.top + 0.05) * f;
-    this.glass.worldToLocal(this.mat.uniforms.uCamL.value.copy(camera.position));
+    const lvl = f > 0.0005 ? this.lo + (this.hi - this.lo) * f : -9;
+    this.u.uLvl.value = lvl; this.qm.uniforms.uLvl.value = lvl;
+    this.glass.worldToLocal(this.u.uCamL.value.copy(camera.position));
+
+    const full = this.total > 0 && this.done >= this.total && f > 0.985;
+    this.leakK = full ? Math.min(1, this.leakK + dt / (state.reduce ? 0.01 : 3.2)) : Math.max(0, this.leakK - dt / 0.6);
+    if (this.leakK > 0 && this.leak === null) this.buildLeak();
+    const L = this.leak;
+    if (!L) return;
+    const k = this.leakK;
+    L.tube.visible = k > 0.001;
+    L.tube.geometry.setDrawRange(0, Math.floor(clamp01(k * 1.6) * L.segs) * L.ringIdx);
+    if (L.puddle) {
+      const g = sstep(0.35, 1, k);
+      L.puddle.visible = g > 0.001;
+      L.pmat.userData.grow.value = g;
+    }
+    L.beads.forEach((b, j) => {
+      if (k < 0.95 || state.reduce) { b.visible = false; return; }
+      const ph = (t * 0.22 + j / L.beads.length) % 1;
+      const u = ph * ph; // they gather slowly near the tip, then slide faster
+      L.curve.getPointAt(u, b.position);
+      L.curve.getTangentAt(u, _v);
+      b.quaternion.setFromUnitVectors(UP, _v);
+      const sz = (0.016 + 0.004 * Math.sin(j * 2.3 + 1)) * sstep(0, 0.08, u) * (1 - sstep(0.9, 1, u));
+      b.visible = sz > 0.0003;
+      b.scale.set(sz, sz * 1.5, sz);
+    });
   }
 }
 const crystals = LAYOUT.map((L, i) => new Crystal(i, L));
@@ -908,7 +1143,7 @@ const grade = new ShaderPass({
       c *= mix(0.5, 1.0, smoothstep(0.95, 0.22, length(q)));
       c = mix(bg, c, uFade);
       c = mix(c, bg, smoothstep(uFadeStart, 1.0, y));
-      c = mix(bg, c, smoothstep(uTop*0.35, uTop + 0.05, y));     // melts away under the status bar and top bar
+      c = mix(bg, c, smoothstep(uTop*0.3, uTop + 0.03, y));     // melts away under the status bar and top bar
       c += (fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) / 255.0;
       gl_FragColor = vec4(c, 1.0);
     }`,
@@ -938,21 +1173,36 @@ function frame() {
   grade.uniforms.uAspect.value = W / H;
   camera.aspect = W / H;
   grade.uniforms.uTop.value = state.topFrac;
-  const fTop = state.topFrac + 0.06, fBase = 0.76, yTop = TIP_Y + 0.05, yBase = 0.02;
-  const V = (yTop - yBase) / (fBase - fTop);
-  const d = V / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
-  const cy = yTop - (0.5 - fTop) * V;
-  camLook.set(0, cy, 0);
-  camBase.set(0, cy + d * Math.sin(PITCH), d * Math.cos(PITCH));
-  camera.position.copy(camBase); camera.lookAt(camLook);
-  camera.updateProjectionMatrix();
-  camera.updateMatrixWorld();
+  // Aim, then measure where every tip lands on screen with each crystal turned to the front (the near ones sit
+  // higher than their height says), and pull back until the highest is clear of the top bar.
+  const fTop = state.topFrac + 0.05, fBase = 0.79, yBase = 0.02, tan = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
+  let yTop = TIP_Y + 0.05;
+  for (let k = 0; k < 4; k++) {
+    const V = (yTop - yBase) / (fBase - fTop);
+    const d = V / (2 * tan);
+    const cy = yTop - (0.5 - fTop) * V;
+    camLook.set(0, cy, 0);
+    camBase.set(0, cy + d * Math.sin(PITCH), d * Math.cos(PITCH));
+    camera.position.copy(camBase); camera.lookAt(camLook);
+    camera.updateProjectionMatrix();
+    camera.updateMatrixWorld();
+    let high = 1;
+    for (const front of crystals) {
+      for (const c of crystals) {
+        const s = 0.5 - 0.5 * _v.copy(c.apexT).applyAxisAngle(UP, -front.az).project(camera).y;
+        high = Math.min(high, s);
+      }
+    }
+    if (high >= fTop - 0.003) break;
+    yTop += (fTop - high) * V * 1.05;
+  }
   // corner rocks: just inside the frame's top corners, about three units in front of the camera
   const D = 3.0, hh = D * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2), hw = hh * camera.aspect;
   for (const m of corners) {
     const side = m.userData.side;
-    m.position.set(side * (hw + 0.08), hh * 0.78, -D).applyMatrix4(camera.matrixWorld);
+    m.position.set(side * (hw + 0.2), hh * 0.74, -D).applyMatrix4(camera.matrixWorld);
   }
+  mouth.position.set(0, 0.3, 0.2).applyMatrix4(camera.matrixWorld);
 }
 
 // ── turning: a drag turns the boulder; let go and it coasts, then eases one crystal round to face you ───────
@@ -1097,7 +1347,7 @@ function loop(now) {
   updateTurn(dt);
   camera.updateMatrixWorld();
   table.updateMatrixWorld(true);
-  for (const c of crystals) c.update(dt);
+  for (const c of crystals) c.update(dt, t);
   composer.render(dt);
   if (!readySent && scansIn) { readySent = true; toApp({ t: 'ready' }); }
   requestAnimationFrame(loop);

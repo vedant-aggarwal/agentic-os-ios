@@ -81,6 +81,8 @@ export function whenAhead(day: string, ref = today()) {
   if (d < 7) return `on ${WD[new Date(`${day}T00:00:00Z`).getUTCDay()]}`;
   return `on ${shortDay(day)}`;
 }
+/** A day label inside a sentence: "today" and "yesterday" go lower case, a weekday or a date keeps its capital. */
+export const inLine = (label: string) => (/^(Today|Yesterday|Tomorrow)$/.test(label) ? label.toLowerCase() : label);
 /** "Today", "Tomorrow", "Thursday", "Thu 4 Dec": a heading for a day ahead. */
 export function dayAhead(day: string, ref = today()) {
   const d = daysBetween(ref, day);

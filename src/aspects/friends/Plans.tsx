@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Button, Chip, Empty, Field, Icon, Screen, Section, Sheet, SP, t } from '@/aspects/kit';
 import type { Actions } from './actions';
-import { dayAhead, roundSlot, type Plan, type Week } from './data';
+import { dayAhead, inLine, roundSlot, type Plan, type Week } from './data';
 import { AskCard, inviteFor, PlanRow, whenLine, withNames } from './LeadPlan';
 import type { Model } from './model';
 import { copy } from './parts';
@@ -34,7 +34,7 @@ function PlanSheet({ plan, onClose, m, a, week, notice }: { plan: Plan | null; o
               <View style={s.chips}>
                 {(week?.free ?? []).slice(0, 5).map((w) => (
                   <Chip key={w.date} label={`${dayAhead(w.date)}, ${roundSlot(w.from)}`} selected={live.date === w.date}
-                    onPress={() => { a.movePlan(live, w.date, roundSlot(w.from)); notice(`Moved to ${dayAhead(w.date).toLowerCase()}`); }} />
+                    onPress={() => { a.movePlan(live, w.date, roundSlot(w.from)); notice(`Moved to ${inLine(dayAhead(w.date))}`); }} />
                 ))}
               </View>
             </>

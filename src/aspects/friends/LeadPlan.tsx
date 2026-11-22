@@ -60,7 +60,8 @@ export function NextCard({ plan, m, a, more, onOpen, notice }: { plan: Plan; m: 
   const confirmed = plan.state === 'confirmed';
   const names = withNames(plan, m);
   return (
-    <Card tone={color} style={s.card} onPress={onOpen} label={`Next plan: ${plan.title}, ${whenLine(plan)}, with ${names}. Open plans`}>
+    // not pressable as a whole: it holds its own buttons. The line at the bottom, and the section's "All", open every plan.
+    <Card tone={color} style={s.card}>
       <Text style={[t.label, { color }]}>{whenLine(plan)}</Text>
       <View style={s.gap4}>
         <Text style={t.title2}>{plan.title}</Text>
@@ -78,7 +79,12 @@ export function NextCard({ plan, m, a, more, onOpen, notice }: { plan: Plan; m: 
           <Button label="They're in" kind="quiet" small wrap={s.flex} onPress={() => a.patchPlan(plan.id, { state: 'confirmed' })} />
         </View>
       )}
-      {more > 0 ? <Text style={t.caption}>{more === 1 ? 'One more plan after this' : `${more} more plans after this`}</Text> : null}
+      {more > 0 ? (
+        <Press label={`${more === 1 ? 'One more plan' : `${more} more plans`} after this. Open plans`} onPress={onOpen} feel="tick" hitSlop={8} style={s.moreRow}>
+          <Text style={[t.caption, { color }]}>{more === 1 ? 'One more plan after this' : `${more} more plans after this`}</Text>
+          <Icon name="right" size={12} color={color} />
+        </Press>
+      ) : null}
     </Card>
   );
 }
@@ -120,6 +126,7 @@ export function PlanRow({ plan, m, onPress, self }: { plan: Plan; m: Model; onPr
 }
 
 const s = StyleSheet.create({
+  moreRow: { flexDirection: 'row', alignItems: 'center', gap: SP[4], alignSelf: 'flex-start', minHeight: 32 },
   card: { gap: SP[16] },
   gap4: { gap: SP[4] },
   row: { flexDirection: 'row', gap: SP[8] },

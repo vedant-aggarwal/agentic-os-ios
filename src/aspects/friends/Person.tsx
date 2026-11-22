@@ -6,7 +6,7 @@ import { Button, Chip, dayLabel, Field, Icon, Row, Screen, Section, Sheet, SP, S
 import { fileSource } from '@/lib/mod';
 import type { Actions } from './actions';
 import { DeepenCard, LogDetail, UsualRow } from './Circle';
-import { ACT_CHIP, firstName, lastLine, LOG_ACTS, roleText, whenAgo, type Bank, type Friends, type Kind, type Moment, type Person } from './data';
+import { ACT_CHIP, firstName, inLine, lastLine, LOG_ACTS, roleText, whenAgo, type Bank, type Friends, type Kind, type Moment, type Person } from './data';
 import { PlanRow } from './LeadPlan';
 import { deepenIdeas, plansWith, visitPhrase, type DeepenIdea, type Model } from './model';
 import { Avatar, canPickPhoto, pickPhoto } from './parts';
@@ -188,7 +188,7 @@ function MomentSheet({ moment, onClose, f, a, notice }: { moment: Moment | null;
   const [seen, setSeen] = useState<string | null>(null);
   if ((live?.id ?? null) !== seen) { setSeen(live?.id ?? null); setLine(live?.line ?? ''); }
   return (
-    <Sheet open={!!moment} onClose={onClose} title={live ? `${live.title ?? 'Time together'}, ${dayLabel(live.date).toLowerCase()}` : ''}>
+    <Sheet open={!!moment} onClose={onClose} title={live ? `${live.title ?? 'Time together'}, ${inLine(dayLabel(live.date))}` : ''}>
       {live ? (
         <>
           <View style={s.chips}>

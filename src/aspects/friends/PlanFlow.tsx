@@ -191,7 +191,7 @@ const s = StyleSheet.create({
     borderRadius: R.row, borderCurve: 'continuous', backgroundColor: SURF.row, borderWidth: 1, borderColor: 'transparent',
   },
   aiWait: { alignItems: 'center' },
-  aiNote: { flexDirection: 'row', alignItems: 'center', gap: SP[12], minHeight: 36, paddingHorizontal: SP[4] },
-  more: { minHeight: 44, justifyContent: 'center', paddingHorizontal: SP[4] },
+  aiNote: { flexDirection: 'row', alignItems: 'center', gap: SP[12], minHeight: 36 },
+  more: { minHeight: 44, justifyContent: 'center' },
   ownRow: { flexDirection: 'row', alignItems: 'flex-end', gap: SP[8] },
 });

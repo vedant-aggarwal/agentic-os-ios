@@ -10,6 +10,8 @@ import Svg, { Circle, Defs, G, LinearGradient, Path, RadialGradient, Stop, Text 
 import { Glass, tap, useScale } from '@/components/Glass';
 import { Home, Nora, Scan, Work } from '@/components/Icons';
 import { Sym } from '@/components/Sym';
+import { router } from 'expo-router';
+import { useWorkOrb } from '@/work/useWorkOrb';
 import type { AspectProgress } from '@/lib/today';
 import { ASPECT_COLOR, C, F, FAMILY_LABEL, type AspectKey, type FamilyKey } from '@/theme';
 
@@ -403,6 +405,18 @@ function SideOrb({ label, side, onPress, children }: {
   );
 }
 
+/** The Work orb: tap opens the projects hub, hold opens the projects fan (src/work/useWorkOrb.ts). */
+function WorkOrb({ fan }: { fan: ReturnType<typeof useWorkOrb> }) {
+  return (
+    <View {...fan.handlers} style={[s.side, s.sideRight]}>
+      <Animated.View pointerEvents="none" style={[s.sideBody, fan.orbStyle]}>
+        <Glass radius={SIDE / 2} />
+        <View><Sym name="briefcase.fill" size={22} fallback={<Work />} /></View>
+      </Animated.View>
+    </View>
+  );
+}
+
 export function Dock({ bottom, width, aspects, onNotBuilt }: {
   bottom: number; width: number; aspects: AspectProgress; onNotBuilt: (what: string) => void;
 }) {
@@ -420,6 +434,7 @@ export function Dock({ bottom, width, aspects, onNotBuilt }: {
   const [pick, setPick] = useState(-1);
   // gesture bookkeeping, read and written only inside the touch handlers
   const g = useRef({ ox: 0, oy: 0, x0: 0, y0: 0, t0: 0, moved: false, pick: -1 });
+  const fan = useWorkOrb({ onTap: () => router.push('/work') });
 
   const release = () => {
     const st = g.current;
@@ -477,7 +492,7 @@ export function Dock({ bottom, width, aspects, onNotBuilt }: {
           <Round label="Scan" onPress={() => onNotBuilt('Scan')}><Sym name="viewfinder" size={22} fallback={<Scan />} /></Round>
           <Round label="Chat with Nora" onPress={() => onNotBuilt('Nora chat')}><Sym name="sparkle" size={22} fallback={<Nora />} /></Round>
         </View>
-        <SideOrb label="Work" side="right" onPress={() => onNotBuilt('Work')}><Sym name="briefcase.fill" size={22} fallback={<Work />} /></SideOrb>
+        <WorkOrb fan={fan} />
         <View accessible accessibilityRole="button" accessibilityLabel="Nora"
           accessibilityHint="Tap to talk. Hold and slide to open an aspect."
           onAccessibilityTap={() => onNotBuilt('Talking to Nora')}
@@ -494,6 +509,7 @@ export function Dock({ bottom, width, aspects, onNotBuilt }: {
           <Animated.View pointerEvents="none" style={[s.ball, orb.style]}><Ball t={t} /></Animated.View>
         </View>
       </View>
+      {fan.overlay}
     </>
   );
 }

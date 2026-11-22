@@ -6,6 +6,9 @@ export function redirectSystemPath({ path, initial }: { path: string; initial: b
   try {
     const m = /(?:^|[/:])flow\?(?:.*&)?id=([a-z0-9_]+)/i.exec(path);
     if (m) { requestKeyboardTake(m[1]); return initial ? '/' : null; }
+    // Job pushes ("Job needs you", "Job finished") carry agenticos://job/<id>: open its thread in the Projects hub.
+    const job = /(?:^|[/:])job\/(j?\d+)/i.exec(path);
+    if (job) return `/work/job/${job[1]}`;
   } catch {}
   return path;
 }

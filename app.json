@@ -57,6 +57,7 @@
       ],
       "expo-font",
       "expo-secure-store",
+      "expo-sqlite",
       "@bacons/apple-targets",
       [
         "expo-audio",

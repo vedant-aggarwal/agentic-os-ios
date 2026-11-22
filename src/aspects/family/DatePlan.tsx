@@ -3,7 +3,7 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { Bar, Button, Card, CheckRing, Failed, Field, Press, R, Row, rupees, Screen, Section, shortDay, Skeleton, SP, t, useAspect } from '@/aspects/kit';
 import { newId, useCollection, useGet } from '@/lib/mod';
 import { C } from '@/theme';
-import { askNora, errText, inDays, longDay, names, refresh, useAi, whenDay } from './data';
+import { askNora, errText, inDays, longDay, names, refresh, useAi, whenDay, yearsWords } from './data';
 import type { DateView, Goal, Jar, MomentBrief, NoraPlan, PlanDoc, Step } from './types';
 import { G, LinkRow, Photo } from './ui';
 
@@ -63,7 +63,7 @@ export function DateScreen({ open, onClose, id, goals, jars, onMemory, onOpenMem
           <View style={s.hero}>
             <Text style={t.title2}>{data.date.on ? longDay(data.date.on) : data.lastOn ? longDay(data.lastOn) : 'Passed'}</Text>
             {data.date.days != null ? <Text style={[t.lead, data.date.days <= 21 ? { color } : null]}>{inDays(data.date.days)}</Text> : null}
-            <Text style={t.small}>{[names(data.date.people.map((p) => p.name)), data.date.turning ? `the ${data.date.turning}` : null].filter(Boolean).join(', ')}</Text>
+            <Text style={t.small}>{[names(data.date.people.map((p) => p.name)), yearsWords(data.date)].filter(Boolean).join(', ')}</Text>
           </View>
 
           {data.after && data.lastOn ? (

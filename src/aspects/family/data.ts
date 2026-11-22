@@ -96,8 +96,13 @@ export function whenDay(day: string) {
   if (n <= 0) return 'today';
   if (n === 1) return 'yesterday';
   if (n < 7) return `${n} days ago`;
-  return `on ${shortDay(day)}`;
+  return `on ${dayShort(day)}`;
 }
+/** What the count of years adds to a date's name: "the 50th" for an anniversary, "turning 14" for a birthday. */
+export const yearsWords = (d: { kind: string; turning: string | null; years: number | null }) =>
+  d.turning ? `the ${d.turning}` : d.kind === 'birthday' && d.years && d.years > 0 ? `turning ${d.years}` : null;
+/** "12 Oct", or "12 Oct 2025" for another year. */
+export const dayShort = (day: string) => (day.slice(0, 4) === today().slice(0, 4) ? shortDay(day) : `${shortDay(day)} ${day.slice(0, 4)}`);
 /** "In 14 days", "Tomorrow", "Today". */
 export function inDays(n: number) {
   if (n <= 0) return 'Today';

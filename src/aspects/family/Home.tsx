@@ -1,7 +1,7 @@
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Bar, Card, Chip, Divider, Icon, Press, R, Row, rupees, Section, shortDay, Skeleton, SP, SURF, t, useAspect } from '@/aspects/kit';
 import { C } from '@/theme';
-import { inDays, names, whenDay } from './data';
+import { dayShort, inDays, names, whenDay, yearsWords } from './data';
 import type { CalItem, Card as PersonCardData, Chip as ChipData, DateItem, Goal, Home, Jar, MomentBrief } from './types';
 import { DateTile, G, LinkRow, MemoryTile, Monogram, Photo, ThingRow, whyOf } from './ui';
 
@@ -18,7 +18,7 @@ export function PersonCard({ c, onOpen, onToggle, onSwap, onAddPhoto, onAddLine 
   return (
     <View style={s.card}>
       <Press label={`${c.name}. ${last ? `Last together: ${last}` : 'Nothing saved yet'}. Open`} onPress={onOpen} scale={0.98} style={s.cardTop}>
-        {c.photo ? <Photo id={c.photo.id} style={{ width: photoW, height: Math.round(photoW * 0.56) }} label={c.photo.title ?? `A photo with ${c.name}`} /> : null}
+        {c.photo ? <Photo id={c.photo.id} style={{ width: photoW, height: Math.round(photoW * 0.42) }} label={c.photo.title ?? `A photo with ${c.name}`} /> : null}
         <View style={s.who}>
           {c.photo ? null : <Monogram name={c.name} />}
           <View style={s.whoText}>
@@ -105,13 +105,14 @@ export function planWords(plan: DateItem['plan']) {
 
 function DateRow({ d, onPress, live, color }: { d: DateItem; onPress: () => void; live: boolean; color: string }) {
   const plan = planWords(d.plan);
-  const title = d.turning ? `${d.title}, the ${d.turning}` : d.title;
+  const more = yearsWords(d);
+  const title = more ? `${d.title}, ${more}` : d.title;
   // the second line carries two facts in two tones: when, and how ready
   return (
     <Press label={`${title}, ${inDays(d.days)}, ${plan}. Open the plan`} onPress={onPress} style={s.dateRow} scale={0.98}>
       <DateTile day={d.on} live={live} />
       <View style={s.flex}>
-        <Text numberOfLines={1} style={t.strong}>{title}</Text>
+        <Text numberOfLines={2} style={t.strong}>{title}</Text>
         <Text numberOfLines={1} style={t.small}>
           <Text style={live ? { color } : null}>{inDays(d.days)}</Text>
           <Text>{`, ${plan}`}</Text>
@@ -142,7 +143,7 @@ export function MemoryStrip({ home, onSeeAll, onOpen, onAdd, nameOf }: {
       {recent.length ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.strip} style={s.bleed}>
           {recent.map((m) => (
-            <MemoryTile key={m.id} m={m} width={w} onPress={() => onOpen(m)} caption={`${names(m.people.map(nameOf))}, ${shortDay(m.date)}`} />
+            <MemoryTile key={m.id} m={m} width={w} onPress={() => onOpen(m)} caption={`${names(m.people.map(nameOf))}, ${dayShort(m.date)}`} />
           ))}
           <Press label="Add a memory" onPress={onAdd} wrap={{ width: w }} style={[s.addTile, { height: Math.round(w * 1.25) }]}>
             <Icon name="plus" size={20} color={C.textSoft} />
@@ -207,7 +208,7 @@ export function HomeSkeleton() {
     <View style={s.skel}>
       {[0, 1].map((i) => (
         <View key={i} style={[s.card, s.skelCard]}>
-          <View style={s.who}><Skeleton width={44} height={44} radius={22} /><View style={[s.flex, s.skelLines]}><Skeleton height={20} width="40%" /><Skeleton height={14} width="70%" /></View></View>
+          <View style={s.skelWho}><Skeleton width={44} height={44} radius={22} /><View style={[s.flex, s.skelLines]}><Skeleton height={20} width="40%" /><Skeleton height={14} width="70%" /></View></View>
           <Skeleton height={14} width="25%" />
           <Skeleton height={24} width="80%" />
         </View>
@@ -242,6 +243,7 @@ const s = StyleSheet.create({
   forPress: { gap: 8, paddingVertical: 12 },
   forHead: { flexDirection: 'row', alignItems: 'baseline', gap: 12 },
   skel: { gap: 24 },
-  skelCard: { padding: 16, gap: 12, paddingTop: 0 },
+  skelCard: { padding: 16, gap: 12 },
+  skelWho: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   skelLines: { gap: 8 },
 });

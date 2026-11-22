@@ -133,7 +133,7 @@ export function MentionSheet({ open, onClose, people, person, notice }: { open: 
   return (
     <Sheet open={open} onClose={onClose} title="They mentioned something">
       {people.length > 1 ? <PeopleChips people={people} value={who} onChange={setWho} single /> : null}
-      <Field value={text} onChangeText={(v) => { setText(v); setErr(null); }} placeholder="A warm shawl, that sweet shop near the market" autoFocus maxLength={120} onSubmit={save} label="What was it?" />
+      <Field value={text} onChangeText={(v) => { setText(v); setErr(null); }} placeholder="A warm shawl, a new phone cover" autoFocus maxLength={120} onSubmit={save} label="What was it?" />
       <View style={s.chips}>{MENTION_KINDS.map((k) => <Chip key={k.key} label={k.label} selected={kind === k.key} onPress={() => setKind(k.key)} />)}</View>
       <Problem text={err} />
       <Button label="Save" onPress={save} disabled={!ready} />
@@ -286,7 +286,7 @@ export function MemoryView({ open, onClose, m, nameOf, onAttach, notice }: {
         <Text style={t.small}>{`${names(m.people.map(nameOf))}, ${whenDay(m.date)}`}</Text>
       </View>
       <View style={s.viewActions}>
-        <Button label={m.photo ? 'Change the line' : 'Add a photo or line'} kind="quiet" small onPress={() => onAttach(m)} />
+        <Button label={m.photo ? (m.note ? 'Change the line' : 'Add a line') : m.note ? 'Add a photo' : 'Add a photo or line'} kind="quiet" small onPress={() => onAttach(m)} />
         <Button label={sure ? 'Tap again to remove' : 'Remove'} kind="danger" small onPress={remove} />
       </View>
     </Sheet>
@@ -297,7 +297,7 @@ const s = StyleSheet.create({
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   group: { gap: 8 },
   months: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  month: { width: '22%' },
+  month: { flexBasis: '22%', flexGrow: 1 },
   photoEmpty: {
     height: 96, borderRadius: R.row, borderCurve: 'continuous', backgroundColor: SURF.row, borderWidth: StyleSheet.hairlineWidth, borderColor: SURF.line,
     alignItems: 'center', justifyContent: 'center', gap: 8,

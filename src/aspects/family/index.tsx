@@ -191,6 +191,17 @@ export default function Family() {
     </>
   );
 
+  // nobody in the family yet: the welcome, even where the computed home can't load (the demo has no PC)
+  const nobody = !data && persons.items != null && !persons.error && !persons.items.some((p) => p.aspect === 'family');
+  if (nobody) {
+    return (
+      <Page right={add} footer={footer}>
+        <Empty title="Your family lives here" body="Add the people in your family. Time with them, their dates and your memories together collect here."
+          action="Add someone" onAction={() => openSheet({ kind: 'person' })} />
+      </Page>
+    );
+  }
+
   if (!data) {
     return (
       <Page right={add} footer={footer}>

@@ -36,7 +36,7 @@ export type Step = { id: string; title: string; kind: 'book' | 'buy' | 'involve'
 export type NoraPlan = { title: string; why: string; steps: { title: string; kind: Step['kind'] }[] };
 export type DateView = {
   today: string;
-  date: { id: string; title: string; kind: string; on: string | null; days: number | null; people: { id: string; name: string }[]; annual: boolean; year: number | null; turning: string | null; md: string | null };
+  date: { id: string; title: string; kind: string; on: string | null; days: number | null; people: { id: string; name: string }[]; annual: boolean; year: number | null; years: number | null; turning: string | null; md: string | null };
   plan: PlanDoc | null;
   ideas: { id: string; person: string; kind: string; title: string; from: string | null }[];
   past: MomentBrief[];

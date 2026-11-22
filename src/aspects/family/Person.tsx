@@ -47,7 +47,7 @@ export function PersonScreen({ open, onClose, card, noraMade, onToggle, onChoose
         ) : (
           <>
             {c.week.options.length ? <Text style={[t.label, s.sub]}>Or one of these</Text> : null}
-            {c.week.options.map((o) => (
+            {c.week.options.slice(0, 3).map((o) => (
               <Row key={o.key} title={o.title} sub={whyOf(o)} onPress={() => onChoose(o)} label={`Make it this week's: ${o.title}`}
                 right={<Text style={[t.label, { color }]}>Pick</Text>} />
             ))}

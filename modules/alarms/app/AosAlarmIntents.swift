@@ -1,5 +1,5 @@
 import AppIntents
-import AosAlarms
+internal import AosAlarms // the app target's ExpoModulesProvider.swift imports it as internal too
 import Foundation
 #if canImport(AlarmKit)
 import AlarmKit

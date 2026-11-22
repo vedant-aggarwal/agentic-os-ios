@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore } from 'react';
-import { api, ApiError } from './api';
+import { API, api, ApiError, currentToken, STAGE } from './api';
 import { DEMO } from './demo';
 
 // The phone's side of the server's module store (server/modules/_collection.ts). Every aspect module keeps its
@@ -257,6 +257,45 @@ export function invalidate(prefix: string) {
 /** A module route that does something (POST by default): `call<Plan>('/mod/body/plan', { day })`. */
 export function call<T>(path: string, body: unknown = {}, method = 'POST'): Promise<T> {
   return api<T>(path, { method, body });
+}
+
+/**
+ * Send a file to a module route as raw bytes: a photo, a recording. JSON bodies stop at 200,000 characters, so
+ * anything bigger than a thumbnail goes this way. `file` is a local uri (from the picker or the recorder), a data
+ * URL, or a Blob; `type` is its media type ('image/jpeg', 'audio/mp4'). The route reads `ctx.req` itself and
+ * answers JSON. Put what the route needs to know in the path or its query string.
+ */
+export async function upload<T>(path: string, file: string | Blob, type: string): Promise<T> {
+  if (DEMO) throw new ApiError(0, 'The demo has no PC to send this to.');
+  let bytes: Blob;
+  try {
+    bytes = typeof file === 'string' ? await (await fetch(file)).blob() : file;
+  } catch {
+    throw new ApiError(0, "Couldn't read that file on this phone.");
+  }
+  const token = currentToken();
+  let res: Response;
+  try {
+    res = await fetch(API + path, {
+      method: 'POST',
+      headers: { 'X-Client': 'native', 'Content-Type': type, ...(token && !STAGE ? { Authorization: `Bearer ${token}` } : {}) },
+      body: bytes,
+    });
+  } catch {
+    throw new ApiError(0, "Can't reach your PC. Check it's on and online.");
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, (data as { error?: string }).error ?? `Server answered ${res.status}.`);
+  return data as T;
+}
+
+/**
+ * Where a file the PC keeps is loaded from, with the sign-in an image or a player needs:
+ * `<Image source={fileSource('/mod/body/photos/abc')} />`, `useAudioPlayer(fileSource(path))`.
+ */
+export function fileSource(path: string): { uri: string; headers?: Record<string, string> } {
+  const token = currentToken();
+  return token && !STAGE ? { uri: API + path, headers: { Authorization: `Bearer ${token}` } } : { uri: API + path };
 }
 
 export { ApiError };

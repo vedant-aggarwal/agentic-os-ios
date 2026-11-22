@@ -22,13 +22,17 @@ import { useToday } from '@/lib/useToday';
 import { useWispr } from '@/lib/wispr';
 import { useKeyboardMic } from '@/lib/kbmic';
 import { Hero, HERO_H } from '@/hero/Hero';
-import { C, F } from '@/theme';
+import { AspectHost, dockClearance, initialAspect } from '@/aspects/AspectHost';
+import { C, F, type AspectKey } from '@/theme';
 
 export default function Today() {
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const t = useToday();
   const [local, setLocal] = useState<string | null>(null);
+  const [aspect, setAspect] = useState<AspectKey | null>(initialAspect); // the aspect page the orb's dial opened
+  const [immersive, setImmersive] = useState(false); // an aspect page's full-screen flow has hidden the dock
+  const closeAspect = useCallback(() => { setAspect(null); setImmersive(false); }, []);
   const [allCarried, setAllCarried] = useState(false);
   const [micOpen, setMicOpen] = useState(false); // opened by tapping the PC mic button
   const [voicesOpen, setVoicesOpen] = useState(false); // the top bar's waveform button
@@ -78,7 +82,7 @@ export default function Today() {
         scrollEventThrottle={100}
         onScroll={(e) => { const on = e.nativeEvent.contentOffset.y < insets.top + HERO_H; if (on !== heroOn) setHeroOn(on); }}
         refreshControl={<RefreshControl refreshing={t.refreshing} onRefresh={t.refresh} tintColor={C.muted} />}>
-        <Hero view={v} top={insets.top} topBar={TOP_GAP + TOP_H} active={heroOn} />
+        <Hero view={v} top={insets.top} topBar={TOP_GAP + TOP_H} active={heroOn && !aspect} />
 
         <View style={[s.sheet, { paddingBottom: insets.bottom + 140 }]}>
           <NowCard moment={v.moment} onDone={t.toggle} />
@@ -107,10 +111,14 @@ export default function Today() {
       <TopBar top={insets.top} width={width} live={live} onMic={() => { setClosedLive(false); setMicOpen(true); }}
         onRemote={() => setRemoteOpen(true)}
         onVoices={() => setVoicesOpen(true)} onFiles={() => setFilesOpen(true)} onNotBuilt={notBuilt} />
+      {/* an aspect page grows out of the orb, over Today and its top bar; the dock stays above it */}
+      <AspectHost aspect={aspect} origin={{ x: width / 2, y: height - orb }} dock={immersive ? insets.bottom : dockClearance(insets.bottom)}
+        onClose={closeAspect} onOpen={setAspect} onNotice={setLocal} onImmersive={setImmersive} />
       <EdgeBlur height={insets.bottom + 150} strength={35} curve={2.6} />
       <EdgeGlow height={insets.bottom + 200} orb={orb} />
       <Notice text={kbMic.state === 'recording' ? 'Listening for the keyboard. Swipe back to your app and talk.' : kbMic.error ?? local ?? t.notice} bottom={insets.bottom + 112} onClear={clear} />
-      <Dock bottom={insets.bottom} width={width} aspects={v.aspects} onNotBuilt={notBuilt} />
+      <Dock bottom={insets.bottom} width={width} aspects={v.aspects} onNotBuilt={notBuilt}
+        onAspect={setAspect} onHome={aspect ? closeAspect : undefined} hidden={immersive} />
       {/* opens by itself while a volume press has Wispr going, and closes once it has sent */}
       <PcMicSheet open={micOpen || (live && !closedLive)} onScreen={() => setRemoteOpen(true)} origin={micCenter(insets.top, width)} phase={mic.phase}
         since={mic.since} error={mic.error} source={mic.source} sourceNote={mic.sourceNote} onSource={mic.setSource}

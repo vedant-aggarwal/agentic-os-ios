@@ -1,8 +1,13 @@
 import { requireOptionalNativeModule } from 'expo';
 import { Platform } from 'react-native';
 
+// Dev-only, web-only: `?stage=<port>` points the app at a stage server on this PC (the server's stage.ts: the real
+// modules on a copy of the data, no sign-in). Never active in a TestFlight/release build or on the phone.
+const stagePort = __DEV__ && Platform.OS === 'web' && typeof location !== 'undefined'
+  ? new URLSearchParams(location.search).get('stage') : null;
+export const STAGE = !!stagePort && /^\d{2,5}$/.test(stagePort);
 // The phone server on Vedant's PC, public through the Home tunnel.
-export const API = 'https://agentic.norrita.com/api/v1';
+export const API = STAGE ? `http://127.0.0.1:${stagePort}/api/v1` : 'https://agentic.norrita.com/api/v1';
 const KEY = 'aos_token';
 
 // expo-secure-store is native. An older dev client without it falls back to memory,
@@ -35,7 +40,10 @@ const shared = Platform.OS === 'ios' ? requireOptionalNativeModule<{ set(token: 
 const share = (v: string | null) => { try { shared?.set(v, API); } catch {} };
 
 let token: string | null = null;
-export async function loadToken() { token = await store.get(); share(token); return token; }
+export async function loadToken() {
+  if (STAGE) { token = 'stage'; return token; } // the stage server asks for no sign-in
+  token = await store.get(); share(token); return token;
+}
 export async function setToken(v: string | null) { token = v; await store.set(v); share(v); }
 export const currentToken = () => token;
 
@@ -43,7 +51,8 @@ export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
 }
 
-export async function api<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
+/** `idem`: a key that makes a create safe to send twice (the PC answers the second with the first's result). */
+export async function api<T>(path: string, init: { method?: string; body?: unknown; idem?: string } = {}): Promise<T> {
   let res: Response;
   try {
     res = await fetch(API + path, {
@@ -52,6 +61,7 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
         'X-Client': 'native',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(init.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        ...(init.idem ? { 'Idempotency-Key': init.idem } : {}),
       },
       body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
     });

@@ -403,8 +403,14 @@ function SideOrb({ label, side, onPress, children }: {
   );
 }
 
-export function Dock({ bottom, width, aspects, onNotBuilt }: {
+export function Dock({ bottom, width, aspects, onNotBuilt, onAspect, onHome, hidden = false }: {
   bottom: number; width: number; aspects: AspectProgress; onNotBuilt: (what: string) => void;
+  /** Let go on a wedge: open that aspect's page. */
+  onAspect: (key: AspectKey) => void;
+  /** Set while an aspect page is open: Home goes back to Today. */
+  onHome?: () => void;
+  /** A full-screen flow (a live workout, a timer) has the screen: the bar drops out of the way. */
+  hidden?: boolean;
 }) {
   const { height } = useWindowDimensions();
   // fixed parts: two side orbs, the ball, two icons; the rest is six equal gaps, 8 to 18 pt
@@ -418,6 +424,9 @@ export function Dock({ bottom, width, aspects, onNotBuilt }: {
   const open = useSharedValue(0); // the dial
   const ringFade = useAnimatedStyle(() => ({ opacity: open.value > 0.001 ? 0 : 1 })); // the wedges take over
   const [pick, setPick] = useState(-1);
+  const away = useSharedValue(0); // 1 = dropped below the screen edge
+  useEffect(() => { away.set(withSpring(hidden ? 1 : 0, CLOSE)); }, [hidden, away]);
+  const awayStyle = useAnimatedStyle(() => ({ opacity: 1 - away.value, transform: [{ translateY: away.value * 180 }] }));
   // gesture bookkeeping, read and written only inside the touch handlers
   const g = useRef({ ox: 0, oy: 0, x0: 0, y0: 0, t0: 0, moved: false, pick: -1 });
 
@@ -463,15 +472,16 @@ export function Dock({ bottom, width, aspects, onNotBuilt }: {
     release();
     if (chosen >= 0) {
       tap(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light));
-      onNotBuilt(`${LABEL[WHEEL[chosen]]} page`);
+      onAspect(WHEEL[chosen]);
     } else if (quick) onNotBuilt('Talking to Nora');
   };
 
   return (
     <>
       <DialLayer cx={cx} cy={cy} open={open} pick={pick} aspects={aspects} />
-      <View pointerEvents="box-none" style={[s.wrap, { width: total, bottom: lift }]}>
-        <SideOrb label="Home: what Nora has ready for you" side="left" onPress={() => onNotBuilt('Home')}><Sym name="house.fill" size={22} fallback={<Home />} /></SideOrb>
+      <Animated.View pointerEvents={hidden ? 'none' : 'box-none'} style={[s.wrap, { width: total, bottom: lift }, awayStyle]}>
+        <SideOrb label={onHome ? 'Home: back to Today' : 'Home: what Nora has ready for you'} side="left"
+          onPress={() => (onHome ? onHome() : onNotBuilt('Home'))}><Sym name="house.fill" size={22} fallback={<Home />} /></SideOrb>
         <View style={[s.bar, { width: w, paddingHorizontal: Math.max(0, G - (48 - ICON) / 2) }]}>
           <Glass radius={BAR_H / 2} />
           <Round label="Scan" onPress={() => onNotBuilt('Scan')}><Sym name="viewfinder" size={22} fallback={<Scan />} /></Round>
@@ -493,7 +503,7 @@ export function Dock({ bottom, width, aspects, onNotBuilt }: {
           </Animated.View>
           <Animated.View pointerEvents="none" style={[s.ball, orb.style]}><Ball t={t} /></Animated.View>
         </View>
-      </View>
+      </Animated.View>
     </>
   );
 }

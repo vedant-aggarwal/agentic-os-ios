@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Defs, LinearGradient, Polygon, Stop } from 'react-native-svg';
 import { Backdrop, EdgeGlow } from '@/components/Backdrop';
 import { EdgeBlur } from '@/components/EdgeBlur';
-import { Crystals } from '@/components/Crystals';
 import { Dock, orbFromBottom } from '@/components/Dock';
 import { Notice } from '@/components/Notice';
 import { NowCard } from '@/components/NowCard';
@@ -21,24 +19,8 @@ import { gazeTouch } from '@/lib/gaze';
 import { useToday } from '@/lib/useToday';
 import { useWispr } from '@/lib/wispr';
 import { useKeyboardMic } from '@/lib/kbmic';
+import { Hero, HERO_H } from '@/hero/Hero';
 import { C, F } from '@/theme';
-
-/** One light falling from above onto the crystals, over the app background. */
-function Scene({ width }: { width: number }) {
-  const h = 640, cx = width / 2;
-  return (
-    <Svg pointerEvents="none" width={width} height={h} style={StyleSheet.absoluteFill}>
-      <Defs>
-        <LinearGradient id="beam" x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0" stopColor="#D6E2FF" stopOpacity={0.12} /><Stop offset="0.6" stopColor="#D6E2FF" stopOpacity={0.04} />
-          <Stop offset="1" stopColor="#D6E2FF" stopOpacity={0} />
-        </LinearGradient>
-      </Defs>
-      <Polygon points={`${cx - 30},0 ${cx + 30},0 ${cx + 150},${h - 80} ${cx - 150},${h - 80}`} fill="url(#beam)" />
-      <Polygon points={`${cx - 18},0 ${cx + 18},0 ${cx + 110},${h - 120} ${cx - 110},${h - 120}`} fill="url(#beam)" />
-    </Svg>
-  );
-}
 
 export default function Today() {
   const insets = useSafeAreaInsets();
@@ -50,6 +32,7 @@ export default function Today() {
   const [voicesOpen, setVoicesOpen] = useState(false); // the top bar's waveform button
   const [filesOpen, setFilesOpen] = useState(false); // the top bar's To PC button
   const [remoteOpen, setRemoteOpen] = useState(false); // the top bar's Remote PC button: the PC's screen, full screen
+  const [heroOn, setHeroOn] = useState(true); // the 3D hero renders only while some of it is on screen
   // volume buttons drive Wispr on the PC while Today is up
   const mic = useWispr(!!t.view);
   const kbMic = useKeyboardMic(); // records for the keyboard extension (agenticos://flow)
@@ -87,24 +70,13 @@ export default function Today() {
     // every touch on Today is passed to the smiley, which looks toward the finger
     <View style={s.screen} {...gazeTouch}>
       <Backdrop orb={orb} />
-      <Scene width={width} />
       <ScrollView
-        contentContainerStyle={{ flexGrow: 1, paddingTop: insets.top + TOP_GAP + TOP_H + 20 }}
+        contentContainerStyle={{ flexGrow: 1 }}
         showsVerticalScrollIndicator={false}
+        scrollEventThrottle={100}
+        onScroll={(e) => { const on = e.nativeEvent.contentOffset.y < insets.top + HERO_H; if (on !== heroOn) setHeroOn(on); }}
         refreshControl={<RefreshControl refreshing={t.refreshing} onRefresh={t.refresh} tintColor={C.muted} />}>
-        <View style={s.top}>
-          <View style={s.hero}>
-            <Crystals families={v.families} />
-            {v.total > 0 ? (
-              <View style={s.totalRow}>
-                <Text style={s.totalNum}>{v.done}</Text>
-                <Text style={s.totalOf}>of {v.total} done today</Text>
-              </View>
-            ) : (
-              <Text style={[s.totalOf, { marginTop: 8 }]}>Nothing due today</Text>
-            )}
-          </View>
-        </View>
+        <Hero view={v} top={insets.top} topBar={TOP_GAP + TOP_H} active={heroOn} />
 
         <View style={[s.sheet, { paddingBottom: insets.bottom + 140 }]}>
           <NowCard moment={v.moment} onDone={t.toggle} />
@@ -154,11 +126,6 @@ export default function Today() {
 const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: C.scene },
   center: { alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
-  top: { paddingHorizontal: 16, gap: 12 },
-  hero: { alignItems: 'center', paddingBottom: 12 },
-  totalRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8, marginTop: 4 },
-  totalNum: { fontFamily: F.semibold, fontSize: 36, lineHeight: 40, letterSpacing: -1, color: C.text },
-  totalOf: { fontFamily: F.regular, fontSize: 16, lineHeight: 24, color: C.muted },
   sheet: {
     flexGrow: 1, backgroundColor: C.sheet, borderTopLeftRadius: 28, borderTopRightRadius: 28,
     paddingTop: 20, paddingHorizontal: 16, gap: 24, borderTopWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.08)',

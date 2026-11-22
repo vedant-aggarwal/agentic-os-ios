@@ -1,0 +1,11 @@
+{
+  "name": "hero-scene",
+  "private": true,
+  "description": "Today hero: the 3D cave and crystals, rendered in a WebView. `npm run build` writes src/hero/sceneHtml.ts.",
+  "scripts": {
+    "build": "bun build.mjs"
+  },
+  "dependencies": {
+    "three": "0.187.0"
+  }
+}

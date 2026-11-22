@@ -28,7 +28,9 @@ import { useJobStream } from './useJobStream';
 // Spec: PROJECTS-HUB-SPEC.md section 6.
 
 type Held = { text: string; failed: boolean };
-type Ask = { kind: 'revert'; turn: TurnChoice } | { kind: 'done' };
+/** cold: Claude's prompt cache ran out (the PC answered 428), so sending re-reads the whole chat; he decides. */
+type Ask = { kind: 'revert'; turn: TurnChoice } | { kind: 'done' } | { kind: 'cold'; text: string; message: string };
+type Sent = 'sent' | 'held' | 'cold' | 'failed';
 
 const say = (e: unknown) => (e instanceof ApiError || e instanceof Error ? e.message : '') || "Couldn't reach your PC.";
 
@@ -57,18 +59,21 @@ export function JobThread({ id }: { id: string }) {
   useEffect(() => { latest.current = { events, status }; }, [events, status]);
 
   // ---- sending ----
-  /** 'sent', 'held' (a turn is running: it goes when the turn ends) or 'failed'. */
-  const sendNow = useCallback(async (text: string): Promise<'sent' | 'held' | 'failed'> => {
+  /** 'sent'; 'held' (a turn is running: it goes when the turn ends); 'cold' (the cache ran out: the Send anyway
+   *  question is up and holds the text); or 'failed'. force: send even though the cache is cold. */
+  const sendNow = useCallback(async (text: string, force = false): Promise<Sent> => {
     if (DEMO) { demoRuns.get(id)?.prompt(text); return 'sent'; }
     const st = latest.current.status;
     setPhase(st === 'stopped' || st === 'failed' ? 'resuming' : 'sending');
     try {
-      const r = await workApi.prompt(id, text, newKey());
+      const r = await workApi.prompt(id, text, newKey(), force);
       apply(r.job);
       return 'sent';
     } catch (e) {
-      // 409: a turn is still running on the PC (or the job is done, which the composer already blocks)
-      if (e instanceof ApiError && e.status === 409 && latest.current.status !== 'done') return 'held';
+      // 409 "still working": a turn is running on the PC that the phone hadn't seen yet. Any other 409 (the job never
+      // started a session, the engine's sign-in is broken, the job is done) won't clear by waiting, so it is a failure.
+      if (e instanceof ApiError && e.status === 409 && /still working/i.test(e.message)) return 'held';
+      if (e instanceof ApiError && e.status === 428 && !force) { setAsk({ kind: 'cold', text, message: e.message }); return 'cold'; }
       work.notify(say(e));
       return 'failed';
     } finally {
@@ -90,10 +95,18 @@ export function JobThread({ id }: { id: string }) {
     draining.current = true;
     const text = held.text;
     sendNow(text).then((r) => {
-      if (r === 'sent') setHeld((h) => (h?.text === text ? null : h));
+      if (r === 'sent' || r === 'cold') setHeld((h) => (h?.text === text ? null : h));
       else if (r === 'failed') setHeld((h) => (h?.text === text ? { text, failed: true } : h));
     }).finally(() => { draining.current = false; });
   }, [held, status, sendNow]);
+
+  /** Send anyway after the cold-cache question; Cancel keeps the message as "Not sent" so it isn't lost. */
+  const sendCold = useCallback(async (text: string) => {
+    setAsk(null);
+    const r = await sendNow(text, true);
+    if (r === 'held') setHeld({ text, failed: false });
+    else if (r === 'failed') setHeld({ text, failed: true });
+  }, [sendNow]);
 
   // ---- controls ----
   const stop = useCallback(async () => {
@@ -102,12 +115,12 @@ export function JobThread({ id }: { id: string }) {
     try { apply((await workApi.control(id, 'cancel')).job); } catch (e) { work.notify(say(e)); }
   }, [id, apply]);
 
-  const answer = useCallback(async (requestId: string, optionId: string) => {
+  const answer = useCallback(async (requestId: string, optionId: string, answers?: Record<string, string>) => {
     const ev = latest.current.events.find((e): e is Extract<JobEvent, { type: 'permission' }> => e.type === 'permission' && e.requestId === requestId);
     if (DEMO) { demoRuns.get(id)?.permission(requestId, optionId); return; }
     setPermBusy(optionId);
     try {
-      const r = await workApi.permission(id, requestId, optionId);
+      const r = await workApi.permission(id, requestId, optionId, answers);
       apply(r.job, ev ? [{ ...ev, decided: optionId }] : []);
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
@@ -221,6 +234,10 @@ export function JobThread({ id }: { id: string }) {
         <Confirm title={`Put files back to before turn ${ask.turn.turn}?`}
           body={`The ${ask.turn.files === 1 ? 'file' : `${ask.turn.files} files`} changed in turn ${ask.turn.turn}, and every change after it, go back to how they were. The conversation stays as it is.`}
           action="Revert" danger onCancel={() => setAsk(null)} onConfirm={() => revert(ask.turn.turn)} />
+      ) : null}
+      {ask?.kind === 'cold' ? (
+        <Confirm title="Send anyway?" body={ask.message} action="Send anyway"
+          onCancel={() => { setHeld({ text: ask.text, failed: true }); setAsk(null); }} onConfirm={() => sendCold(ask.text)} />
       ) : null}
       {ask?.kind === 'done' && job ? (
         <Confirm title="Mark this job done?" body={`${ENGINE[job.engine]} closes its session, and the job can't take messages after this.`}

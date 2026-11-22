@@ -63,9 +63,12 @@ export const workApi = {
   job: (id: string, tail = 200) => must(call<{ job: JobFull; events: JobEvent[]; more: boolean }>(`/jobs/${id}?tail=${tail}`)),
   events: (id: string, before: number, limit = 200) =>
     must(call<{ events: JobEvent[]; more: boolean }>(`/jobs/${id}/events?before=${before}&limit=${limit}`)),
-  prompt: (id: string, text: string, key: string) => must(call<{ job: JobFull }>(`/jobs/${id}/prompt`, { method: 'POST', body: { text }, key })),
-  permission: (id: string, requestId: string, optionId: string) =>
-    must(call<{ job: JobFull }>(`/jobs/${id}/permission`, { method: 'POST', body: { requestId, optionId } })),
+  /** force: send even though Claude's prompt cache went cold (the PC answers 428 without it). */
+  prompt: (id: string, text: string, key: string, force = false) =>
+    must(call<{ job: JobFull }>(`/jobs/${id}/prompt`, { method: 'POST', body: force ? { text, force: true } : { text }, key })),
+  /** answers: a question form's answers, question text to answer, sent with the "submit" option. */
+  permission: (id: string, requestId: string, optionId: string, answers?: Record<string, string>) =>
+    must(call<{ job: JobFull }>(`/jobs/${id}/permission`, { method: 'POST', body: answers ? { requestId, optionId, answers } : { requestId, optionId } })),
   control: (id: string, what: 'cancel' | 'stop' | 'done') => must(call<{ job: JobFull }>(`/jobs/${id}/${what}`, { method: 'POST', body: {} })),
   diff: (id: string, turn = 0, file?: string) =>
     must(call<JobDiff>(`/jobs/${id}/diff?turn=${turn}${file ? `&file=${encodeURIComponent(file)}` : ''}`)),

@@ -1,5 +1,5 @@
 import { memo, useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, {
   cancelAnimation, Easing, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withTiming, ZoomIn,
 } from 'react-native-reanimated';
@@ -7,7 +7,7 @@ import { Sym } from '@/components/Sym';
 import { C, F } from '@/theme';
 import type { Engine, PermOption } from '../types';
 import { Markdown } from './Markdown';
-import { currentStep, ENGINE, type Ev, type Row, sameSig, type Step, stepsSummary } from './model';
+import { currentStep, ENGINE, type Ev, formOf, type Row, sameSig, type Step, stepsSummary } from './model';
 import { ADD, ATTN, DEL, IcCheck, IcChevron, IcClose, LIVE, MONO, Press, useNow } from './ui';
 
 // The thread's rows. Each is memoized on its row object, which model.ts keeps stable while its events don't change.
@@ -172,15 +172,18 @@ export const PlanRow = memo(function PlanRow({ row }: { row: R<'plan'> }) {
 
 // ---- permission ----
 const WANTS: Record<string, string> = {
-  execute: 'wants to run a command', edit: 'wants to edit a file', delete: 'wants to delete a file', move: 'wants to move a file',
-  read: 'wants to read a file', fetch: 'wants to open a link', search: 'wants to search', switch_mode: 'wants to change mode',
+  execute: 'wants to run a command', command: 'wants to run a command', edit: 'wants to edit a file', delete: 'wants to delete a file',
+  move: 'wants to move a file', read: 'wants to read a file', fetch: 'wants to open a link', search: 'wants to search',
+  switch_mode: 'wants to change mode', plan: 'wants you to approve its plan',
 };
 const isAllow = (o: PermOption) => o.kind.startsWith('allow');
+export type Answer = (requestId: string, optionId: string, answers?: Record<string, string>) => void;
 
 export const PermissionRow = memo(function PermissionRow({ row, engine, busy, onAnswer }: {
-  row: R<'permission'>; engine: Engine; busy: string | null; onAnswer: (requestId: string, optionId: string) => void;
+  row: R<'permission'>; engine: Engine; busy: string | null; onAnswer: Answer;
 }) {
   const { ev } = row;
+  if (ev.kind === 'question') return <QuestionCard ev={ev} engine={engine} busy={busy} onAnswer={onAnswer} />;
   const deny = ev.options.find((o) => o.kind === 'reject_once') ?? ev.options.find((o) => !isAllow(o));
   const allow = ev.options.find((o) => o.kind === 'allow_once') ?? ev.options.find(isAllow);
   const extra = ev.options.filter((o) => o !== deny && o !== allow);
@@ -197,7 +200,7 @@ export const PermissionRow = memo(function PermissionRow({ row, engine, busy, on
   return (
     <View style={s.perm} accessibilityRole="alert">
       <Text style={s.permWho}>{ENGINE[engine]} {WANTS[ev.kind] ?? 'is asking'}</Text>
-      <Text selectable style={ev.kind === 'execute' ? s.permCmd : s.permTitle}>{ev.title}</Text>
+      <Text selectable style={ev.kind === 'execute' || ev.kind === 'command' ? s.permCmd : s.permTitle}>{ev.title}</Text>
       <View style={s.permRow}>
         {deny ? <View style={s.flex}>{button(deny, false)}</View> : null}
         {allow ? <View style={s.flex}>{button(allow, true)}</View> : null}
@@ -206,6 +209,76 @@ export const PermissionRow = memo(function PermissionRow({ row, engine, busy, on
     </View>
   );
 }, same);
+
+/**
+ * The agent's questions (Claude's AskUserQuestion, Codex's request for input), answered right here: tap an option
+ * (several when the question allows it) or type your own answer. The answers go back keyed by question; Skip lets the
+ * agent carry on with its own judgement. A form page (ask_form) can't be drawn here, so it offers Skip only.
+ */
+function QuestionCard({ ev, engine, busy, onAnswer }: { ev: Ev<'permission'>; engine: Engine; busy: string | null; onAnswer: Answer }) {
+  const form = formOf(ev);
+  const [picks, setPicks] = useState<Record<number, string[]>>({});
+  const [other, setOther] = useState<Record<number, string>>({});
+  const submit = ev.options.find((o) => o.optionId === 'submit') ?? ev.options.find(isAllow);
+  const skip = ev.options.find((o) => o.optionId === 'skip') ?? ev.options.find((o) => !isAllow(o));
+
+  const answerOf = (i: number) => [...(picks[i] ?? []), (other[i] ?? '').trim()].filter(Boolean).join(', ');
+  const answers: Record<string, string> = {};
+  form.forEach((q, i) => { const a = answerOf(i); if (a) answers[q.question] = a; });
+  const ready = Object.keys(answers).length > 0;
+
+  const pick = (i: number, label: string, multi: boolean) => setPicks((p) => {
+    const cur = p[i] ?? [];
+    const on = cur.includes(label);
+    return { ...p, [i]: multi ? (on ? cur.filter((x) => x !== label) : [...cur, label]) : on ? [] : [label] };
+  });
+  const btn = (o: PermOption, primary: boolean, disabled: boolean, onPress: () => void) => {
+    const mine = busy === o.optionId;
+    return (
+      <Press key={o.optionId} disabled={!!busy || disabled} accessibilityLabel={o.name} accessibilityState={{ disabled: !!busy || disabled }} onPress={onPress}
+        style={[s.permBtn, primary ? s.permAllow : s.permSoft, (disabled || (!!busy && !mine)) && { opacity: 0.4 }]}>
+        {mine ? <ActivityIndicator size="small" color={primary ? '#0B0C10' : C.text} />
+          : <Text style={[s.permBtnText, primary && { color: '#0B0C10' }]} numberOfLines={1}>{o.name}</Text>}
+      </Press>
+    );
+  };
+
+  return (
+    <View style={s.perm} accessibilityRole="alert">
+      <Text style={s.permWho}>{ENGINE[engine]} {form.length > 1 ? `has ${form.length} questions` : 'has a question'}</Text>
+      {!form.length ? (
+        <>
+          <Text selectable style={s.permTitle}>{ev.title}</Text>
+          <Text style={s.qNote}>This is a form page, which only opens on the PC. Skip it here and {ENGINE[engine]} carries on with its own judgement.</Text>
+        </>
+      ) : form.map((q, i) => (
+        <View key={`${i}:${q.question}`} style={s.qBlock}>
+          {q.header ? <Text style={s.qHeader}>{q.header}</Text> : null}
+          <Text selectable style={s.permTitle}>{q.question}</Text>
+          {q.multiSelect ? <Text style={s.qNote}>Pick any that fit.</Text> : null}
+          {(q.options ?? []).map((o) => {
+            const on = (picks[i] ?? []).includes(o.label);
+            return (
+              <Press key={o.label} haptic accessibilityRole={q.multiSelect ? 'checkbox' : 'radio'} accessibilityState={{ checked: on }}
+                accessibilityLabel={o.description ? `${o.label}. ${o.description}` : o.label}
+                onPress={() => pick(i, o.label, !!q.multiSelect)} style={[s.opt, on && s.optOn]}>
+                <Text style={[s.optLabel, on && { color: '#0B0C10' }]}>{o.label}</Text>
+                {o.description ? <Text style={[s.optDesc, on && { color: 'rgba(11,12,16,0.72)' }]}>{o.description}</Text> : null}
+              </Press>
+            );
+          })}
+          <TextInput value={other[i] ?? ''} onChangeText={(t) => setOther((x) => ({ ...x, [i]: t }))} multiline
+            placeholder={q.options?.length ? 'Or type your own answer' : 'Type your answer'} placeholderTextColor={C.faint}
+            keyboardAppearance="dark" style={s.qInput} accessibilityLabel={`Your answer to: ${q.question}`} />
+        </View>
+      ))}
+      <View style={s.permRow}>
+        {skip ? <View style={s.flex}>{btn(skip, false, false, () => onAnswer(ev.requestId, skip.optionId))}</View> : null}
+        {submit && form.length ? <View style={s.flex}>{btn(submit, true, !ready, () => onAnswer(ev.requestId, submit.optionId, answers))}</View> : null}
+      </View>
+    </View>
+  );
+}
 
 // ---- changes ----
 const SHOW_FILES = 5;
@@ -315,6 +388,21 @@ const s = StyleSheet.create({
   permSoft: { backgroundColor: 'rgba(255,255,255,0.10)' },
   permDeny: { backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: 'rgba(248,113,113,0.5)' },
   permBtnText: { fontFamily: F.semibold, fontSize: 16, lineHeight: 24, color: C.text },
+  qBlock: { gap: 8 },
+  qHeader: { fontFamily: F.medium, fontSize: 12, lineHeight: 16, color: C.muted, textTransform: 'uppercase', letterSpacing: 0.6 },
+  qNote: { fontFamily: F.regular, fontSize: 14, lineHeight: 20, color: C.muted },
+  opt: {
+    borderRadius: 12, borderCurve: 'continuous', paddingHorizontal: 12, paddingVertical: 10, gap: 2, minHeight: 44, justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.14)',
+  },
+  optOn: { backgroundColor: C.text, borderColor: C.text },
+  optLabel: { fontFamily: F.semibold, fontSize: 15, lineHeight: 22, color: C.text },
+  optDesc: { fontFamily: F.regular, fontSize: 13, lineHeight: 18, color: C.muted },
+  qInput: {
+    fontFamily: F.regular, fontSize: 16, lineHeight: 22, color: C.text, minHeight: 44, maxHeight: 120, borderRadius: 12, borderCurve: 'continuous',
+    paddingHorizontal: 12, paddingTop: 10, paddingBottom: 10, backgroundColor: 'rgba(0,0,0,0.24)',
+    borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.14)',
+  },
 
   changesHead: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 24 },
   count: { fontFamily: MONO, fontSize: 12, lineHeight: 16 },

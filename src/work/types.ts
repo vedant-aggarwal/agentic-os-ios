@@ -12,8 +12,9 @@
 //   GET    /jobs/:id?tail=200              -> { job: JobFull, events: JobEvent[], more: boolean }
 //   GET    /jobs/:id/events?before=&limit= -> { events: JobEvent[], more: boolean }
 //   GET    /jobs/:id/stream?after=<seq>    SSE: "job" (JobFull) and "ev" (JobEvent; a growing event keeps its seq)
-//   POST   /jobs/:id/prompt                { text }                    -> { job }
-//   POST   /jobs/:id/permission            { requestId, optionId }     -> { job }
+//   POST   /jobs/:id/prompt                { text, force? }            -> { job }  409 while a turn runs; 428 when Claude's
+//                                                                      prompt cache went cold (force: true sends anyway)
+//   POST   /jobs/:id/permission            { requestId, optionId, answers? } -> { job }  answers: { [question]: text }
 //   POST   /jobs/:id/cancel | stop | done  -> { job }
 //   GET    /jobs/:id/diff?turn=&file=      -> JobDiff
 //   POST   /jobs/:id/revert                { turn }
@@ -66,12 +67,17 @@ export type JobFull = JobBrief & {
 };
 
 export type PermOption = { optionId: string; name: string; kind: string };
+/** A question the agent asks (Claude's AskUserQuestion, Codex's requestUserInput): pick an option or type an answer. */
+export type FormQuestion = { question: string; header?: string; multiSelect?: boolean; options: { label: string; description?: string }[] };
+/** The server keeps the permission it raised under `permission`: `form` for questions, `html` for an ask_form page. */
+export type PermDetail = { form?: FormQuestion[]; html?: string };
 export type JobEvent =
   | { seq: number; type: 'user'; text: string; at: string }
   | { seq: number; type: 'assistant' | 'thought'; text: string; at: string }
   | { seq: number; type: 'tool'; id: string; title: string; kind?: string; status: 'pending' | 'in_progress' | 'completed' | 'failed'; locations?: string[]; output?: string; at: string }
   | { seq: number; type: 'plan'; entries: { content: string; status: 'pending' | 'in_progress' | 'completed' }[]; at: string }
-  | { seq: number; type: 'permission'; requestId: string; title: string; kind: string; options: PermOption[]; decided?: string; at: string }
+  | { seq: number; type: 'permission'; requestId: string; title: string; kind: string; options: PermOption[]; decided?: string; at: string;
+      form?: FormQuestion[]; permission?: PermDetail }
   | { seq: number; type: 'status'; status: JobStatus; text?: string; at: string }
   | { seq: number; type: 'changes'; turn: number; files: { path: string; add: number; del: number }[]; at: string }
   | { seq: number; type: 'error'; text: string; at: string };

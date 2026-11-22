@@ -11,7 +11,6 @@ import { LockHint } from '@/components/HoldLock';
 import { PcMic } from '@/components/Icons';
 import { Sym } from '@/components/Sym';
 import { PcKeysPad, PcTypePad, usePcKeys } from '@/components/PcKeyboard';
-import { RemoteScreen } from '@/components/RemoteScreen';
 import { Trackpad } from '@/components/Trackpad';
 import type { useAgent } from '@/lib/agent';
 import { usePointer } from '@/lib/pointer';
@@ -119,7 +118,7 @@ function SourceSwitch({ value, onChange, note }: { value: MicSource; onChange: (
   );
 }
 
-type View4 = 'chat' | 'screen' | 'pad' | 'type' | 'keys';
+type View4 = 'chat' | 'pad' | 'type' | 'keys';
 type ToggleIcon = 'display' | 'cursorarrow.rays' | 'keyboard' | 'command';
 const TOGGLE_FALLBACK: Record<ToggleIcon, string> = { display: '▭', 'cursorarrow.rays': '↖', keyboard: '⌨', command: '⌘' };
 
@@ -140,14 +139,14 @@ function Toggle({ on, label, icon, onPress }: { on: boolean; label: string; icon
 // and the mic row at the bottom (Wispr's orb, its state, the trackpad and keyboard toggles, Wispr | GPT).
 export function PcMicSheet({
   open, origin, phase, since, error, source, sourceNote, onSource, onClose, onTalkIn, onTalkOut, onHandsFree, onSayIn, onSayOut,
-  onSayLock, onSayToggle, sayLocked, agent, onStop, want, live = '', offline = false,
+  onSayLock, onSayToggle, sayLocked, agent, onStop, onScreen, live = '', offline = false,
 }: {
   open: boolean; origin: { x: number; y: number }; phase: Phase; since: number; error: string | null;
   source: MicSource; sourceNote: string | null; onSource: (v: MicSource) => void;
   onClose: () => void; onTalkIn: () => void; onTalkOut: () => void; onHandsFree: () => void;
   onSayIn: () => void; onSayOut: () => void; onSayLock: () => void; onSayToggle: () => void; sayLocked: boolean;
   agent: ReturnType<typeof useAgent>; onStop: () => void;
-  want?: { view: 'chat' | 'screen'; n: number } | null; // open on this view (the top bar's Remote PC button)
+  onScreen: () => void; // the PC screen toggle opens the remote desktop
   live?: string; offline?: boolean; // GPT: the PC's text so far; the PC isn't getting the audio (saved here meanwhile)
 }) {
   const { width, height } = useWindowDimensions();
@@ -158,8 +157,6 @@ export function PcMicSheet({
   const [ever, setEver] = useState(open);
   const [mounted, setMounted] = useState(open); // shown, or still animating closed
   const [view, setView] = useState<View4>('chat');
-  const [wantSeen, setWantSeen] = useState(0);
-  if (want && want.n !== wantSeen) { setWantSeen(want.n); setView(want.view); }
   if (open && !ever) setEver(true);
   const pc = usePointer(open); // one PC connection for the trackpad and the keyboard, ready as soon as this opens
   const kb = usePcKeys(pc); // held and latched modifiers, shared by both keyboard views
@@ -206,9 +203,7 @@ export function PcMicSheet({
           hasItems={agent.items.length > 0} onStop={onStop} onFresh={agent.fresh} />
 
         <View style={s.main}>
-          {view === 'screen' ? (
-            mounted ? <RemoteScreen key="screen" pc={pc} /> : null
-          ) : view === 'pad' ? (
+          {view === 'pad' ? (
             <Animated.View key="pad" entering={FadeIn.duration(200)} style={{ flex: 1 }}><Trackpad pc={pc} /></Animated.View>
           ) : view === 'keys' ? (
             <PcKeysPad key="keys" kb={kb} />
@@ -227,7 +222,7 @@ export function PcMicSheet({
             <View style={s.titleRow}>
               <Text style={[s.title, { color: phase === 'idle' ? C.text : tone }]} numberOfLines={1}>{TITLE[phase]}</Text>
               <View style={{ flex: 1 }} />
-              <Toggle on={view === 'screen'} label="PC screen" icon="display" onPress={() => flip('screen')} />
+              <Toggle on={false} label="PC screen" icon="display" onPress={onScreen} />
               <Toggle on={view === 'pad'} label="Trackpad" icon="cursorarrow.rays" onPress={() => flip('pad')} />
               <Toggle on={view === 'type'} label="Type on the PC" icon="keyboard" onPress={() => flip('type')} />
               <Toggle on={view === 'keys'} label="PC keys" icon="command" onPress={() => flip('keys')} />

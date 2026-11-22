@@ -3,7 +3,7 @@
     "name": "Agentic OS",
     "slug": "agentic-os",
     "version": "4.1.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "agenticos",
     "userInterfaceStyle": "dark",
@@ -71,6 +71,12 @@
           "photosPermission": "Agentic OS sends the photos and videos you pick to your PC.",
           "cameraPermission": false,
           "microphonePermission": false
+        }
+      ],
+      [
+        "expo-screen-orientation",
+        {
+          "initialOrientation": "PORTRAIT_UP"
         }
       ]
     ],

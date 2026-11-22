@@ -12,6 +12,7 @@ import { SignIn } from '@/components/SignIn';
 import { TaskGroup } from '@/components/TaskRow';
 import { PcMicSheet } from '@/components/PcMicSheet';
 import { VoicesSheet } from '@/components/VoicesSheet';
+import { RemoteDesktop } from '@/components/remote/RemoteDesktop';
 import { FilesSheet } from '@/components/FilesSheet';
 import { useAgent } from '@/lib/agent';
 import { micCenter, pillCenter, TOP_GAP, TOP_H, TopBar } from '@/components/TopBar';
@@ -48,6 +49,7 @@ export default function Today() {
   const [micOpen, setMicOpen] = useState(false); // opened by tapping the PC mic button
   const [voicesOpen, setVoicesOpen] = useState(false); // the top bar's waveform button
   const [filesOpen, setFilesOpen] = useState(false); // the top bar's To PC button
+  const [remoteOpen, setRemoteOpen] = useState(false); // the top bar's Remote PC button: the PC's screen, full screen
   // volume buttons drive Wispr on the PC while Today is up
   const mic = useWispr(!!t.view);
   const kbMic = useKeyboardMic(); // records for the keyboard extension (agenticos://flow)
@@ -61,7 +63,6 @@ export default function Today() {
   const live = agentLive || mic.phase !== 'idle';
   const [closedLive, setClosedLive] = useState(false);
   if (!live && closedLive) setClosedLive(false);
-  const [want, setWant] = useState<{ view: 'chat' | 'screen'; n: number } | null>(null);
   const notBuilt = useCallback((what: string) => setLocal(`${what}: not built yet`), []);
   const { clearNotice } = t;
   const clear = useCallback(() => { setLocal(null); clearNotice(); }, [clearNotice]);
@@ -130,14 +131,14 @@ export default function Today() {
       {/* the same blur under the top bar, dense at the screen's top edge */}
       <EdgeBlur edge="top" height={insets.top + TOP_GAP + TOP_H + 28} strength={30} curve={2} />
       <TopBar top={insets.top} width={width} live={live} onMic={() => { setClosedLive(false); setMicOpen(true); }}
-        onRemote={() => { setWant((w) => ({ view: 'screen', n: (w?.n ?? 0) + 1 })); setClosedLive(false); setMicOpen(true); }}
+        onRemote={() => setRemoteOpen(true)}
         onVoices={() => setVoicesOpen(true)} onFiles={() => setFilesOpen(true)} onNotBuilt={notBuilt} />
       <EdgeBlur height={insets.bottom + 150} strength={35} curve={2.6} />
       <EdgeGlow height={insets.bottom + 200} orb={orb} />
       <Notice text={kbMic.state === 'recording' ? 'Listening for the keyboard. Swipe back to your app and talk.' : kbMic.error ?? local ?? t.notice} bottom={insets.bottom + 112} onClear={clear} />
       <Dock bottom={insets.bottom} width={width} aspects={v.aspects} onNotBuilt={notBuilt} />
       {/* opens by itself while a volume press has Wispr going, and closes once it has sent */}
-      <PcMicSheet open={micOpen || (live && !closedLive)} want={want} origin={micCenter(insets.top, width)} phase={mic.phase}
+      <PcMicSheet open={micOpen || (live && !closedLive)} onScreen={() => setRemoteOpen(true)} origin={micCenter(insets.top, width)} phase={mic.phase}
         since={mic.since} error={mic.error} source={mic.source} sourceNote={mic.sourceNote} onSource={mic.setSource}
         onClose={() => { setMicOpen(false); if (live) setClosedLive(true); }}
         onTalkIn={mic.startTalk} onTalkOut={mic.endTalk} onHandsFree={mic.toggleHandsFree}
@@ -145,6 +146,7 @@ export default function Today() {
         onStop={() => { agent.stop(); mic.cancel(); api('/pc/keys', { method: 'POST', body: { action: 'stop' } }).catch(() => {}); }} />
       <FilesSheet open={filesOpen} origin={pillCenter(0, insets.top, width)} onClose={() => setFilesOpen(false)} />
       <VoicesSheet open={voicesOpen} origin={pillCenter(3, insets.top, width)} onClose={() => setVoicesOpen(false)} />
+      <RemoteDesktop open={remoteOpen} onClose={() => setRemoteOpen(false)} />
     </View>
   );
 }

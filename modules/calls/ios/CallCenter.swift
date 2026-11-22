@@ -8,8 +8,10 @@ import UIKit
 /// Nora's calls on the iPhone's own call screen. The PC sends a VoIP push (server/nora.ts push(): incomingId, reason,
 /// name, voice); it rings CallKit even when the phone is locked or the app isn't running. iOS stops delivering VoIP
 /// pushes to an app that doesn't report a call for each one, so every push is reported.
-/// Answering hands the call to the JS side (src/lib/calls.ts opens agenticos://nora/call?id=<incomingId>, and Nora's
-/// call screen joins it). Declining means "later", as in the old app: POST /nora/incoming/<id>/snooze.
+/// Answering starts the call's audio natively (NoraRelay through RelayHub: the socket opens on answer, the mic and
+/// speaker when CallKit activates the session), so a call answered on the lock screen talks without the app's UI.
+/// The JS side opens agenticos://nora/call?id=<incomingId> too (src/lib/calls.ts), and Nora's call screen joins the
+/// same relay. Declining means "later", as in the old app: POST /nora/incoming/<id>/snooze.
 /// PushKit starts at launch (AosCallsAppDelegate), before any JS runs, so a push that launched the app is delivered.
 public final class CallCenter: NSObject, CXProviderDelegate, PKPushRegistryDelegate {
   public static let shared = CallCenter()
@@ -62,8 +64,19 @@ public final class CallCenter: NSObject, CXProviderDelegate, PKPushRegistryDeleg
       timers.removeValue(forKey: uuid)?.invalidate()
       rings.removeValue(forKey: uuid)
       provider?.reportCall(with: uuid, endedAt: Date(), reason: .remoteEnded)
+      if ring.answered { RelayHub.shared.hungUp(incomingId: ring.incomingId) }
     }
     pendingAnswer = nil
+  }
+
+  /// The relay of an answered call ended (Nora hung up, the PC dropped, or it never connected): take the call off
+  /// the system call screen, and don't open it in the app later.
+  func relayEnded(incomingId: String?, failed: Bool) {
+    for (uuid, ring) in rings where ring.answered && ring.incomingId == incomingId {
+      rings.removeValue(forKey: uuid)
+      provider?.reportCall(with: uuid, endedAt: Date(), reason: failed ? .failed : .remoteEnded)
+    }
+    if pendingAnswer?["id"] as? String == (incomingId ?? "") { pendingAnswer = nil }
   }
 
   /// Calls on the system screen now: [{ id, uuid, answered }].
@@ -129,6 +142,7 @@ public final class CallCenter: NSObject, CXProviderDelegate, PKPushRegistryDeleg
     timers.removeAll()
     rings.removeAll()
     pendingAnswer = nil
+    RelayHub.shared.hungUp(incomingId: nil)
   }
 
   public func provider(_ provider: CXProvider, perform action: CXAnswerCallAction) {
@@ -142,6 +156,7 @@ public final class CallCenter: NSObject, CXProviderDelegate, PKPushRegistryDeleg
     let info: [String: Any] = ["id": ring.incomingId ?? "", "uuid": action.callUUID.uuidString, "reason": ring.reason, "voice": ring.voice ?? ""]
     // Kept until JS takes it (takePending), so an answer that launched the app still opens the call.
     pendingAnswer = info
+    RelayHub.shared.answered(incomingId: ring.incomingId, reason: ring.reason)
     emit?("onAnswer", info)
   }
 
@@ -153,6 +168,7 @@ public final class CallCenter: NSObject, CXProviderDelegate, PKPushRegistryDeleg
     if pendingAnswer?["uuid"] as? String == uuid.uuidString { pendingAnswer = nil }
     guard let ring else { return }
     if ring.answered {
+      RelayHub.shared.hungUp(incomingId: ring.incomingId)
       emit?("onEnd", ["id": ring.incomingId ?? "", "uuid": uuid.uuidString])
     } else if let id = ring.incomingId, !id.isEmpty {
       ServerLink.post("/nora/incoming/\(id)/snooze", [:])
@@ -161,14 +177,17 @@ public final class CallCenter: NSObject, CXProviderDelegate, PKPushRegistryDeleg
 
   public func provider(_ provider: CXProvider, perform action: CXSetMutedCallAction) {
     action.fulfill()
+    RelayHub.shared.active?.muted = action.isMuted
     emit?("onMute", ["muted": action.isMuted])
   }
 
   public func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
+    RelayHub.shared.setCallKitAudio(true)
     emit?("onAudio", ["active": true])
   }
 
   public func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
+    RelayHub.shared.setCallKitAudio(false)
     emit?("onAudio", ["active": false])
   }
 }

@@ -2,7 +2,7 @@ Pod::Spec.new do |s|
   s.name           = 'AosCalls'
   s.version        = '1.0.0'
   s.summary        = "Nora's calls on the iPhone's own call screen"
-  s.description    = 'PushKit VoIP token and pushes, each reported to CallKit; answering and ending reach the JS side.'
+  s.description    = 'PushKit VoIP token and pushes, each reported to CallKit, and the call audio relayed through the PC (NoraRelay).'
   s.license        = 'UNLICENSED'
   s.author         = 'Norrita'
   s.homepage       = 'https://github.com/vedant-aggarwal/agentic-os-ios'

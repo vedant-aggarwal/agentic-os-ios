@@ -423,7 +423,7 @@ const boulderGeo = addGrowth(
   rockGeometry({ detail: 60, scale: [1.06, 0.62, 0.94], amp: 0.2, freq: 1.3, seed: 4.2, flatTop: 0.4, sharp: 0.4, cuts: 7 }),
   { moss: 1, algae: 0.9, seed: 2.2, lowY: -0.55, band: 0.45 },
 );
-const boulder = rockMesh(boulderGeo, rockMaterial({ color: '#3A3835', bump: 2.1, freq: 3.4, env: 0.22, id: 'mossy_rock', scale: 0.75, tint: 0.58, moss: 0.3, wet: 0.45 }), [0, ROCK_Y, 0], [0, 0.3, 0], { cast: true });
+const boulder = rockMesh(boulderGeo, rockMaterial({ color: '#3A3835', bump: 2.1, freq: 3.4, env: 0.22, id: 'mossy_rock', scale: 0.75, tint: 0.58, moss: 0.75, wet: 0.45 }), [0, ROCK_Y, 0], [0, 0.3, 0], { cast: true });
 table.add(boulder);
 
 // moss up close is a fuzz of tiny fronds: a few thousand specks over the mossiest parts
@@ -470,7 +470,7 @@ function mossFuzz(geo, count, seed) {
   return new THREE.Points(g, m);
 }
 {
-  const fuzz = mossFuzz(boulderGeo, 2500, 31);
+  const fuzz = mossFuzz(boulderGeo, 6500, 31);
   if (fuzz) { fuzz.position.copy(boulder.position); fuzz.rotation.copy(boulder.rotation); table.add(fuzz); }
 }
 
@@ -575,7 +575,7 @@ const beamUniforms = { uTime: { value: 0 }, uColor: { value: hex('#FFD9B0') }, u
 // dust drifting through the shaft
 const dustUniforms = { uTime: { value: 0 }, uDpr: { value: PX } };
 {
-  const N = 140, r = rng(42), pos = new Float32Array(N * 3), seed = new Float32Array(N);
+  const N = 210, r = rng(42), pos = new Float32Array(N * 3), seed = new Float32Array(N);
   const dir = sunTo.clone().sub(sunFrom), len = dir.length();
   const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, -1, 0), dir.clone().normalize());
   const v = new THREE.Vector3();
@@ -610,20 +610,22 @@ const dustUniforms = { uTime: { value: 0 }, uDpr: { value: PX } };
 }
 
 // low mist drifting over the floor, warm where the shaft falls on it
-const mistTime = { value: 0 };
+const mistTime = { value: 0 }, swirlU = { value: 0 }, shearU = { value: 0 };
 {
   [[-0.98, 9, 1], [-0.86, 7.5, 0.8], [-0.74, 6, 0.55]].forEach(([y, size, amt], k) => {
     const m = new THREE.ShaderMaterial({
-      uniforms: { ...LIGHT_UNIFORMS, uTime: mistTime, uAmt: { value: amt }, uSeed: { value: k * 7.3 } },
+      uniforms: { ...LIGHT_UNIFORMS, uTime: mistTime, uAmt: { value: amt }, uSeed: { value: k * 7.3 }, uSwirl: swirlU, uShear: shearU },
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false,
       vertexShader: 'varying vec3 vW; varying vec2 vUv; void main(){ vUv = uv; vec4 w = modelMatrix*vec4(position,1.0); vW = w.xyz; gl_Position = projectionMatrix*viewMatrix*w; }',
       fragmentShader: `${NOISE}
-        uniform float uTime; uniform float uAmt; uniform float uSeed;
+        uniform float uTime; uniform float uAmt; uniform float uSeed; uniform float uSwirl; uniform float uShear;
         uniform vec3 uKeyPos; uniform vec3 uKeyDir; uniform vec3 uKeyCol; uniform float uCosO; uniform float uCosI;
         varying vec3 vW; varying vec2 vUv;
         void main(){
-          float n = snoise(vec3(vW.xz*0.55 + vec2(uTime*0.03, uTime*0.012), uSeed))*0.5 + 0.5;
-          n = n*0.65 + (snoise(vec3(vW.xz*1.5 - vec2(uTime*0.04, 0.0), uSeed + 3.0))*0.5 + 0.5)*0.35;
+          float an = uSwirl + uShear*(1.6/(length(vW.xz) + 0.5) - 0.8), ca = cos(an), sa = sin(an);
+          vec2 sp = vec2(vW.x*ca - vW.z*sa, vW.x*sa + vW.z*ca);
+          float n = snoise(vec3(sp*0.55 + vec2(uTime*0.03, uTime*0.012), uSeed))*0.5 + 0.5;
+          n = n*0.65 + (snoise(vec3(sp*1.5 - vec2(uTime*0.04, 0.0), uSeed + 3.0))*0.5 + 0.5)*0.35;
           float d = smoothstep(0.3, 0.85, n)*smoothstep(0.5, 0.18, length(vUv - 0.5));
           vec3 L = normalize(uKeyPos - vW);
           float cone = smoothstep(uCosO - 0.1, uCosI, dot(-L, uKeyDir));
@@ -637,6 +639,109 @@ const mistTime = { value: 0 };
     scene.add(p);
   });
 }
+// Fog lying round the foot of the stone. Turning the stone drags it round; spin it again and again and the fog
+// is pulled up into a whirl around the stone, which dies down a few seconds after you stop. Billboards that
+// know their own position in the world, so each one thins out where it meets the floor, the stone or the crystals.
+const fogU = { uTime: mistTime, uSwirl: swirlU, uShear: shearU, uE: { value: 0 }, tCloud: { value: null }, tFloor: { value: null }, uRockY: { value: ROCK_Y } };
+const vortex = { swirl: 0, shear: 0, w: 0, e: 0, last: null };
+{
+  // a tiling cloud texture, cheaper on a phone than noise worked out per pixel
+  const N = 128, c = document.createElement('canvas'); c.width = c.height = N;
+  const x = c.getContext('2d'), img = x.createImageData(N, N);
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const a = (i / N) * Math.PI * 2, b = (j / N) * Math.PI * 2;
+    const v = clamp01(0.5 + fbm(Math.cos(a) * 1.4, Math.sin(a) * 1.4 + Math.cos(b) * 1.4, Math.sin(b) * 1.4, 4) * 1.5);
+    const o = (j * N + i) * 4;
+    img.data[o] = img.data[o + 1] = img.data[o + 2] = Math.round(v * 255); img.data[o + 3] = 255;
+  }
+  x.putImageData(img, 0, 0);
+  const cloud = new THREE.CanvasTexture(c);
+  cloud.wrapS = cloud.wrapT = THREE.RepeatWrapping; cloud.colorSpace = THREE.NoColorSpace;
+  fogU.tCloud.value = cloud;
+  // the floor's height, so fog can thin out just above it
+  const F = 64, S = 3.2, fd = new Uint8Array(F * F * 4);
+  for (let j = 0; j < F; j++) for (let i = 0; i < F; i++) {
+    const h = floorH(((i + 0.5) / F * 2 - 1) * S, ((j + 0.5) / F * 2 - 1) * S);
+    fd[(j * F + i) * 4] = Math.round(clamp01((h + 1.7) / 1.2) * 255); fd[(j * F + i) * 4 + 3] = 255;
+  }
+  const floorTex = new THREE.DataTexture(fd, F, F, THREE.RGBAFormat);
+  floorTex.magFilter = floorTex.minFilter = THREE.LinearFilter; floorTex.needsUpdate = true;
+  fogU.tFloor.value = floorTex;
+
+  const COUNT = 64, r = rng(707);
+  const base = new THREE.PlaneGeometry(1, 1);
+  const g = new THREE.InstancedBufferGeometry();
+  g.index = base.index; g.setAttribute('position', base.attributes.position); g.setAttribute('uv', base.attributes.uv);
+  const attr = (fn) => new THREE.InstancedBufferAttribute(Float32Array.from({ length: COUNT }, fn), 1);
+  g.setAttribute('aA', attr(() => r() * Math.PI * 2));
+  g.setAttribute('aR', attr(() => 1.0 + Math.pow(r(), 0.8) * 1.5));
+  g.setAttribute('aY', attr(() => 0.06 + r() * 0.32));
+  g.setAttribute('aH', attr(() => r()));
+  g.setAttribute('aS', attr(() => 0.75 + r() * 0.7));
+  g.setAttribute('aSeed', attr(() => r()));
+  g.instanceCount = COUNT;
+  const m = new THREE.ShaderMaterial({
+    uniforms: { ...LIGHT_UNIFORMS, ...fogU },
+    transparent: true, depthWrite: false, premultipliedAlpha: true, fog: false,
+    vertexShader: `attribute float aA; attribute float aR; attribute float aY; attribute float aH; attribute float aS; attribute float aSeed;
+      uniform float uTime; uniform float uSwirl; uniform float uShear; uniform float uE;
+      varying vec3 vW; varying vec2 vUv; varying float vSeed; varying float vFade; varying float vE;
+      void main(){
+        float e = smoothstep(0.15, 0.95, uE);
+        float rise = fract(aH + uTime*(0.04 + 0.14*e));
+        float r = mix(aR, 1.08 + 0.65*rise, e*0.85);
+        float th = aA + uSwirl + uShear*(1.6/(r + 0.5) - 0.8) + uTime*0.02*(aSeed - 0.3);
+        vec3 c = vec3(sin(th)*r, -1.0 + aY + e*rise*2.2, cos(th)*r);
+        float sz = aS*mix(1.0, 0.62, e);
+        vec3 right = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
+        vec3 up = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
+        vec3 w = c + (right*position.x*mix(1.0, 1.7, e) + up*position.y*mix(0.65, 0.34, e))*sz; // streaks as it whirls
+        vW = w; vUv = uv; vSeed = aSeed;
+        vFade = mix(1.0, smoothstep(0.0, 0.15, rise)*(1.0 - smoothstep(0.55, 1.0, rise)), e); vE = e;
+        gl_Position = projectionMatrix*viewMatrix*vec4(w, 1.0);
+      }`,
+    fragmentShader: `uniform sampler2D tCloud; uniform sampler2D tFloor; uniform float uTime; uniform float uE; uniform float uRockY;
+      uniform vec3 uKeyPos; uniform vec3 uKeyDir; uniform vec3 uKeyCol; uniform float uCosO; uniform float uCosI; uniform vec3 uRimCol;
+      varying vec3 vW; varying vec2 vUv; varying float vSeed; varying float vFade; varying float vE;
+      void main(){
+        float disc = smoothstep(0.5, 0.12, length(vUv - 0.5));
+        float n = texture2D(tCloud, vUv*0.7 + vec2(vSeed*7.1 + uTime*0.012, vSeed*3.3)).r;
+        float n2 = texture2D(tCloud, vUv*1.6 - vec2(vSeed*2.0 + uTime*0.02, uTime*0.01)).r;
+        float d = disc*smoothstep(0.3, 0.85, n*0.65 + n2*0.45);
+        float fl = texture2D(tFloor, vW.xz/6.4 + 0.5).r*1.2 - 1.7;
+        d *= smoothstep(0.0, 0.25, vW.y - fl);
+        vec3 b = (vW - vec3(0.0, uRockY, 0.0))/vec3(1.12, 0.72, 1.06);
+        d *= smoothstep(0.96, 1.3, length(b));
+        d *= mix(1.0, smoothstep(0.72, 1.05, length(vW.xz)), smoothstep(-0.45, -0.2, vW.y));
+        d *= vFade;
+        vec3 L = normalize(uKeyPos - vW);
+        float cone = smoothstep(uCosO - 0.12, uCosI, dot(-L, uKeyDir));
+        vec3 col = vec3(0.045, 0.05, 0.062) + uRimCol*0.02 + uKeyCol*cone*0.2;
+        float a = d*mix(0.5, 0.22, vE);
+        gl_FragColor = vec4(col*a, a);
+      }`,
+  });
+  const fog = new THREE.Mesh(g, m);
+  fog.frustumCulled = false;
+  fog.renderOrder = 2;
+  scene.add(fog);
+}
+function updateVortex(dt) {
+  // the stone's own turning speed, from how far it turned this frame
+  if (vortex.last === null) vortex.last = turn.angle;
+  const dA = turn.angle - vortex.last; vortex.last = turn.angle;
+  const wT = Math.abs(dA) < 1 ? dA / Math.max(dt, 1e-3) : 0;
+  if (state.reduce) { vortex.e = 0; fogU.uE.value = 0; return; }
+  vortex.e = Math.min(1, vortex.e + Math.abs(wT) * dt * 0.075);
+  vortex.e *= Math.exp(-dt / 4.5);
+  // the fog follows the stone round, and keeps turning on its own while the whirl lasts
+  const target = wT * 0.9 + Math.sign(vortex.w || wT) * vortex.e * 3.2;
+  vortex.w += (target - vortex.w) * Math.min(1, dt * 1.6);
+  vortex.swirl += vortex.w * dt;
+  vortex.shear = (vortex.shear + vortex.w * dt) * Math.exp(-dt / 2.5);
+  fogU.uSwirl.value = vortex.swirl; fogU.uShear.value = vortex.shear; fogU.uE.value = vortex.e;
+}
+
 // soft haze hanging in the air: a few large faint clouds, brighter inside the shaft
 const hazeSprites = [];
 {
@@ -678,28 +783,34 @@ function crystalGeometry({ r, h, tip, seed }) {
   }
   const apex = new THREE.Vector3((rand() - 0.5) * r * 0.5, h + tip * (0.88 + rand() * 0.24), (rand() - 0.5) * r * 0.5);
   const span = h + tip - BASE;
-  const pos = [], uv = [];
-  const tri = (a, b, c, out) => {
+  const pos = [], uv = [], bary = [];
+  const tri = (a, b, c, out, skip = null) => {
     // wind every triangle to face away from `out` (a point inside the crystal)
     const n = b.clone().sub(a).cross(c.clone().sub(a));
     const cen = a.clone().add(b).add(c).multiplyScalar(1 / 3);
     if (n.dot(cen.sub(out)) < 0) [b, c] = [c, b];
-    for (const p of [a, b, c]) {
+    // barycentrics for the edge lines: the edge opposite `skip` only splits a face in two, so it gets none
+    const vs = [a, b, c], k = skip === 'all' ? -2 : vs.indexOf(skip);
+    vs.forEach((p, m) => {
       pos.push(p.x, p.y, p.z);
       uv.push((Math.atan2(p.z, p.x) / (Math.PI * 2) + 1) % 1, (p.y - BASE) / span);
-    }
+      const e = [0, 0, 0]; e[m] = 1;
+      if (k >= 0) e[k] = 1; else if (k === -2) e[0] = e[1] = e[2] = 1;
+      bary.push(...e);
+    });
   };
   for (let i = 0; i < N; i++) {
     const j = (i + 1) % N;
     const midIn = new THREE.Vector3(0, (top[i].y + BASE) / 2, 0);
-    tri(base[i], top[i], top[j], midIn);
-    tri(base[i], top[j], base[j], midIn);
+    tri(base[i], top[i], top[j], midIn, top[i]);
+    tri(base[i], top[j], base[j], midIn, base[j]);
     tri(top[i], apex, top[j], new THREE.Vector3(0, h - 0.1, 0));
-    tri(base[i], base[j], new THREE.Vector3(0, BASE, 0), new THREE.Vector3(0, BASE + 0.1, 0));
+    tri(base[i], base[j], new THREE.Vector3(0, BASE, 0), new THREE.Vector3(0, BASE + 0.1, 0), 'all');
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setAttribute('aBary', new THREE.Float32BufferAttribute(bary, 3));
   g.computeVertexNormals(); // non-indexed: flat facets
   return g;
 }
@@ -829,16 +940,16 @@ function quartzMat() {
     },
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
     polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
-    vertexShader: `varying vec3 vN; varying vec3 vW; varying vec3 vO; varying float vV;
+    vertexShader: `attribute vec3 aBary; varying vec3 vN; varying vec3 vW; varying vec3 vO; varying float vV; varying vec3 vB; varying vec3 vNL;
       void main(){
         vec4 w = modelMatrix*vec4(position,1.0); vW = w.xyz; vN = normalize(mat3(modelMatrix)*normal);
-        vO = position; vV = uv.y;
+        vO = position; vV = uv.y; vB = aBary; vNL = normal;
         gl_Position = projectionMatrix*viewMatrix*w;
       }`,
     fragmentShader: `${NOISE}
       uniform vec3 uKeyPos; uniform vec3 uKeyDir; uniform vec3 uKeyCol; uniform float uCosO; uniform float uCosI;
       uniform vec3 uRimDir; uniform vec3 uRimCol; uniform vec3 uUpL; uniform float uLvl; uniform vec3 uCol; uniform float uHas;
-      varying vec3 vN; varying vec3 vW; varying vec3 vO; varying float vV;
+      varying vec3 vN; varying vec3 vW; varying vec3 vO; varying float vV; varying vec3 vB; varying vec3 vNL;
       void main(){
         vec3 N = normalize(vN); if (!gl_FrontFacing) N = -N;
         vec3 V = normalize(cameraPosition - vW);
@@ -852,6 +963,21 @@ function quartzMat() {
         float inL = step(dot(vO, uUpL), uLvl);
         vec3 tint = mix(vec3(1.0), uCol*1.5, max(inL, uHas*0.5*milk));
         vec3 c = uKeyCol*lit*(0.07 + 0.3*veil + 0.55*milk*(1.0 - 0.7*inL))*tint + uRimCol*edge*0.3 + uRimCol*0.012;
+        // the sharp edges between faces catch a thin line of light
+        float e = min(min(vB.x, vB.y), vB.z);
+        float ew = fwidth(e);
+        float line = 1.0 - smoothstep(ew*0.35, ew*1.3, e);
+        c += (uKeyCol*cone*(0.025 + 0.14*max(dot(N, L), 0.0)) + uRimCol*0.012)*line*tint;
+        // fine growth steps across the prism faces, seen where the light grazes them
+        float prism = 1.0 - smoothstep(0.2, 0.4, abs(normalize(vNL).y));
+        float sy = vO.y*150.0 + snoise(vO*vec3(4.0, 0.6, 4.0))*3.0;
+        float st = smoothstep(0.75, 1.0, sin(sy))*(1.0 - smoothstep(0.4, 1.2, fwidth(sy)));
+        c += uKeyCol*lit*st*prism*0.025*tint;
+        // light that got inside and bounced off a far face: glints that come and go as the stone turns
+        if (!gl_FrontFacing) {
+          float g = pow(max(dot(N, normalize(L + V)), 0.0), 90.0);
+          c += uKeyCol*cone*g*0.9*tint;
+        }
         gl_FragColor = vec4(c*(gl_FrontFacing ? 0.7 : 1.0), 1.0);
       }`,
   });
@@ -883,19 +1009,13 @@ function surfaceY(x, z) {
 }
 
 const probeMat = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
-function stonePatch(centerT, rad) {
+function stoneTris(keep) {
   const g = boulder.geometry, pos = g.attributes.position, idx = g.index;
-  const inv = boulder.matrix.clone().invert();
-  const c = centerT.clone().applyMatrix4(inv), r2 = rad * rad;
   const out = [], a = new THREE.Vector3();
   const n = idx ? idx.count : pos.count;
   for (let i = 0; i < n; i += 3) {
     let near = false;
-    for (let j = 0; j < 3 && !near; j++) {
-      a.fromBufferAttribute(pos, idx ? idx.getX(i + j) : i + j);
-      const dx = a.x - c.x, dz = a.z - c.z;
-      near = dx * dx + dz * dz < r2;
-    }
+    for (let j = 0; j < 3 && !near; j++) { a.fromBufferAttribute(pos, idx ? idx.getX(i + j) : i + j); near = keep(a.x, a.z); }
     if (!near) continue;
     for (let j = 0; j < 3; j++) { a.fromBufferAttribute(pos, idx ? idx.getX(i + j) : i + j); out.push(a.x, a.y, a.z); }
   }
@@ -906,6 +1026,11 @@ function stonePatch(centerT, rad) {
   m.matrixAutoUpdate = false;
   m.matrixWorld.copy(boulder.matrix); // casts happen in table space
   return m;
+}
+function stonePatch(centerT, rad) {
+  boulder.updateMatrix();
+  const c = centerT.clone().applyMatrix4(boulder.matrix.clone().invert()), r2 = rad * rad;
+  return stoneTris((x, z) => (x - c.x) ** 2 + (z - c.z) ** 2 < r2);
 }
 const _v = new THREE.Vector3(), _q = new THREE.Quaternion();
 
@@ -1094,7 +1219,52 @@ class Crystal {
 }
 const crystals = LAYOUT.map((L, i) => new Crystal(i, L));
 
-// many small clear crystals packed between and around the nine, merged into one mesh; no essence, no meaning
+// Many small crystals packed between and around the nine, merged into one mesh. Each holds the liquid of the
+// nearest of the nine, filled to the same share and levelled the same way, so every aspect's side of the stone
+// echoes it; around an aspect with nothing open they stay clear.
+const druseU = {
+  uDCol: { value: ASPECTS.map(() => new THREE.Color()) },
+  uDSig: { value: ASPECTS.map(() => new THREE.Vector3()) },
+  uDFill: { value: ASPECTS.map(() => 0) },
+};
+const TRANSMISSION_ABS = THREE.ShaderChunk.transmission_fragment.replace(
+  'totalDiffuse = mix( totalDiffuse, transmitted.rgb, material.transmission );',
+  'transmitted.rgb *= gemAbs;\n\ttotalDiffuse = mix( totalDiffuse, transmitted.rgb, material.transmission );');
+function druseMaterial() {
+  const m = new THREE.MeshPhysicalMaterial(GLASS);
+  m.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, LIGHT_UNIFORMS, druseU);
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', `#include <common>
+        attribute float aAsp; attribute float aLo; attribute float aHi; attribute float aRad;
+        uniform vec3 uDCol[${ASPECTS.length}]; uniform vec3 uDSig[${ASPECTS.length}]; uniform float uDFill[${ASPECTS.length}];
+        varying float vS; varying float vFill; varying vec3 vDCol; varying vec3 vDSig; varying float vRad;`)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+        int ai = int(aAsp + 0.5);
+        vS = (transformed.y - aLo)/max(aHi - aLo, 1e-3);
+        vFill = uDFill[ai]; vDCol = uDCol[ai]; vDSig = uDSig[ai]; vRad = aRad;`);
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', `#include <common>
+        uniform vec3 uKeyPos; uniform vec3 uKeyDir; uniform vec3 uKeyCol; uniform float uCosO; uniform float uCosI;
+        varying float vS; varying float vFill; varying vec3 vDCol; varying vec3 vDSig; varying float vRad;
+        vec3 gemAbs = vec3(1.0); vec3 gemGlow = vec3(0.0);`)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        if (vFill > 0.0005) {
+          float w = fwidth(vS) + 1e-4;
+          float inL = 1.0 - smoothstep(-w, w, vS - vFill);
+          gemAbs = mix(vec3(1.0), exp(-vDSig*vRad*1.8), inL);
+          vec3 Lk = normalize(uKeyPos - vWorldPosition);
+          float cone = smoothstep(uCosO, uCosI, dot(-Lk, uKeyDir));
+          gemGlow = vDCol*inL*(uKeyCol*cone*0.12 + vec3(0.01));
+          float line = 1.0 - smoothstep(0.0, w*1.4, abs(vS - vFill - w*0.7));
+          gemGlow += mix(vDCol, vec3(1.0), 0.5)*line*(0.03 + 0.35*cone)*step(vFill, 0.995);
+        }`)
+      .replace('#include <transmission_fragment>', TRANSMISSION_ABS)
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += gemGlow;');
+  };
+  m.customProgramCacheKey = () => 'druse';
+  return m;
+}
 {
   const r = rng(5150), parts = [], m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), qs = new THREE.Quaternion();
   const bases = crystals.map((c) => ({ x: c.group.position.x, z: c.group.position.z, r: c.c.r }));
@@ -1109,15 +1279,83 @@ const crystals = LAYOUT.map((L, i) => new Crystal(i, L));
     const lean = 0.15 + dist * 1.15 + (r() - 0.5) * 0.3;
     q.setFromUnitVectors(UP, new THREE.Vector3(Math.sin(az) * Math.sin(lean), Math.cos(lean), Math.cos(az) * Math.sin(lean)));
     qs.setFromAxisAngle(UP, r() * 6.28);
-    m4.compose(new THREE.Vector3(x, surfaceY(x, z) + 0.01, z), q.multiply(qs), new THREE.Vector3(1, 1, 1));
+    const at = new THREE.Vector3(x, surfaceY(x, z) + 0.01, z);
+    m4.compose(at, q.multiply(qs), new THREE.Vector3(1, 1, 1));
     g.applyMatrix4(m4);
+    // which of the nine it sits by, and the heights its liquid runs between
+    let asp = 0, bd = Infinity;
+    bases.forEach((b, i) => { const d = Math.hypot(b.x - x, b.z - z) - b.r; if (d < bd) { bd = d; asp = i; } });
+    const pa = g.attributes.position, n = pa.count;
+    let hi = -Infinity;
+    for (let k = 0; k < n; k++) hi = Math.max(hi, pa.getY(k));
+    const fill = (v) => new THREE.Float32BufferAttribute(new Float32Array(n).fill(v), 1);
+    g.setAttribute('aAsp', fill(asp)); g.setAttribute('aLo', fill(at.y - 0.004)); g.setAttribute('aHi', fill(hi)); g.setAttribute('aRad', fill(sr));
     parts.push(g);
   }
   const geo = mergeGeometries(parts);
-  const druse = new THREE.Mesh(geo, glass);
+  const druse = new THREE.Mesh(geo, druseMaterial());
   druse.castShadow = true; druse.receiveShadow = true;
   const shine = new THREE.Mesh(geo, quartzLight); shine.renderOrder = 4;
   table.add(druse, shine);
+}
+function updateDruse() {
+  crystals.forEach((c, i) => {
+    druseU.uDCol.value[i].copy(c.u.uCol.value);
+    druseU.uDSig.value[i].copy(c.u.uSigma.value);
+    druseU.uDFill.value[i] = c.total > 0 ? clamp01(c.fill) : 0;
+  });
+}
+
+// Water seeps through the crack the light comes in by: now and then a drop falls through the shaft, catching
+// the sun, and breaks on the stone.
+const drip = { t: 0, next: 2.5, falling: false, y0: 2.2, land: new THREE.Vector3(), x: -0.6, z: 0.34 };
+{
+  const rho = Math.hypot(drip.x, drip.z);
+  drip.ring = stoneTris((x, z) => Math.abs(Math.hypot(x, z) - rho) < 0.08);
+  const mat = new THREE.MeshStandardMaterial({ color: hex('#D8E0E8'), roughness: 0.04, metalness: 0, envMapIntensity: 3, emissive: hex('#2A3038') });
+  const g = new THREE.SphereGeometry(1, 10, 8);
+  drip.drop = new THREE.Mesh(g, mat); drip.drop.visible = false; scene.add(drip.drop);
+  drip.bits = [0, 1, 2, 3, 4].map(() => { const b = new THREE.Mesh(g, mat); b.visible = false; scene.add(b); return { m: b, v: new THREE.Vector3() }; });
+}
+function updateDrip(dt) {
+  if (state.reduce) { drip.drop.visible = false; drip.bits.forEach((b) => (b.m.visible = false)); return; }
+  drip.t += dt;
+  if (!drip.falling && drip.t > drip.next) {
+    // where it will land: the stone below, wherever it has turned to
+    const a = -table.rotation.y, c = Math.cos(a), s = Math.sin(a);
+    const lx = drip.x * c + drip.z * s, lz = -drip.x * s + drip.z * c;
+    let y = -0.2;
+    if (drip.ring) {
+      ray.set(new THREE.Vector3(lx, 3, lz), new THREE.Vector3(0, -1, 0));
+      const h = ray.intersectObject(drip.ring, false)[0];
+      if (h) y = h.point.y;
+    }
+    drip.land.set(drip.x, y, drip.z);
+    drip.falling = true; drip.t = 0; drip.v = 0;
+    drip.drop.position.set(drip.x, drip.y0, drip.z); drip.drop.visible = true;
+  }
+  if (drip.falling) {
+    drip.v += 9.8 * dt;
+    drip.drop.position.y -= drip.v * dt;
+    drip.drop.scale.set(0.009, 0.009 * (1.4 + drip.v * 0.35), 0.009);
+    if (drip.drop.position.y <= drip.land.y) {
+      drip.falling = false; drip.drop.visible = false; drip.t = 0; drip.next = 3.5 + Math.random() * 4.5;
+      drip.bits.forEach((b) => {
+        const a = Math.random() * 6.28, sp = 0.25 + Math.random() * 0.35;
+        b.m.position.copy(drip.land).y += 0.01;
+        b.v.set(Math.cos(a) * sp, 0.6 + Math.random() * 0.7, Math.sin(a) * sp);
+        b.m.visible = true; b.life = 0.3 + Math.random() * 0.2; b.age = 0;
+      });
+    }
+  }
+  drip.bits.forEach((b) => {
+    if (!b.m.visible) return;
+    b.age += dt; b.v.y -= 9.8 * dt;
+    b.m.position.addScaledVector(b.v, dt);
+    const k = 1 - b.age / b.life;
+    if (k <= 0) { b.m.visible = false; return; }
+    b.m.scale.setScalar(0.0045 * k);
+  });
 }
 
 // ── post: a little bloom on real highlights, ACES, vignette, and the fade into the app ──────────────────────
@@ -1130,7 +1368,7 @@ composer.addPass(new OutputPass());
 const grade = new ShaderPass({
   uniforms: {
     tDiffuse: { value: null }, uBg: { value: new THREE.Vector3() }, uBgTop: { value: new THREE.Vector3() }, uBgStop: { value: 1 },
-    uFade: { value: 0 }, uFadeStart: { value: 0.7 }, uAspect: { value: 1 }, uTop: { value: 0.24 },
+    uFade: { value: 0 }, uFadeStart: { value: 0.78 }, uAspect: { value: 1 }, uTop: { value: 0.24 },
   },
   vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
   fragmentShader: `uniform sampler2D tDiffuse; uniform vec3 uBg; uniform vec3 uBgTop; uniform float uBgStop; uniform float uFade;
@@ -1348,6 +1586,14 @@ function loop(now) {
   camera.updateMatrixWorld();
   table.updateMatrixWorld(true);
   for (const c of crystals) c.update(dt, t);
+  updateDruse();
+  updateVortex(dt);
+  updateDrip(dt);
+  if (!state.reduce) {
+    const sunK = 1 + 0.13 * noise3(t * 0.05, 1.7, 4.2);
+    spot.intensity = 30 * sunK; scatter.intensity = 1.3 * sunK; beamUniforms.uStrength.value = 0.26 * sunK;
+    LIGHT_UNIFORMS.uKeyCol.value.copy(SUN_COLOR).multiplyScalar(1.15 * sunK);
+  }
   composer.render(dt);
   if (!readySent && scansIn) { readySent = true; toApp({ t: 'ready' }); }
   requestAnimationFrame(loop);

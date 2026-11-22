@@ -339,7 +339,7 @@ export async function startVisualPlan(id: string) {
   return putReel((await act<{ reel: Reel }>('reels.visuals_plan', { id })).reel);
 }
 
-/** Claude Code codes the shots, makes the images with Codex and renders the video (20-40 minutes). */
+/** Claude Code codes every shot in raea; the PC renders it and lays the voice under it (10-25 minutes). */
 export async function startVisualBuild(id: string) {
   return putReel((await act<{ reel: Reel }>('reels.visuals_build', { id })).reel);
 }

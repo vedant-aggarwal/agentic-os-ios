@@ -197,7 +197,7 @@ export default function ReelScreen() {
             shown === 'voice'
               ? ['Make it more intense', 'More pauses before the reveal', 'Make the ending softer', 'Make it faster']
               : shown === 'visuals'
-                ? ['Make the first 3 seconds scarier', 'Fewer images, more coded shots', 'Keep the character consistent', 'Which shots are weakest?']
+                ? ['Make the first 3 seconds scarier', 'Make the phone screens feel more real', 'Keep the character consistent', 'Which shots are weakest?']
                 : ['Make the hook hit harder', 'Tighten it to 30 seconds', 'Make the ending more shareable', 'Make it clear to anyone']
           }
           onDone={kaiDone}
@@ -474,7 +474,6 @@ function VoiceTab({ reel, pending, onWrite, onEdit, onTake, onScript, onNext }: 
   );
 }
 
-const METHOD: Record<string, string> = { coded: 'Coded', image: 'Image', clip: 'Clip' };
 const fmt = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 
 function Video({ id, v }: { id: string; v?: string }) {
@@ -495,7 +494,6 @@ function VisualsTab({ reel, pending, onPlan, onBuild, onStop, onNext }: { reel: 
   const plan = vis?.plan;
   const build = vis?.build;
   const busy = pending || !!reel.working;
-  const count = (m: string) => plan?.scenes.filter((x) => x.method === m).length || 0;
   const len = plan?.scenes.length ? plan.scenes[plan.scenes.length - 1].end : 0;
   const staleTake = plan && reel.voice?.audio?.file && plan.take !== reel.voice.audio.file;
   const staleVersion = plan && plan.fromVersion != null && reel.version != null && plan.fromVersion !== reel.version;
@@ -515,12 +513,12 @@ function VisualsTab({ reel, pending, onPlan, onBuild, onStop, onNext }: { reel: 
       ) : null}
 
       {reel.working === 'plan' ? (
-        <Busy text="The visual director is planning every shot against the take: what is coded, what is an image, where each cut lands. A minute or two." />
+        <Busy text="The visual director is planning every shot against the take: what each one draws in code and where each cut lands. A minute or two." />
       ) : !plan ? (
         <View style={styles.card}>
           <Text style={[styles.body, { marginTop: 0 }]}>
             {reel.voice?.audio
-              ? 'Every shot gets cut on a word in your take. Coded shots (phone screens, text, timestamps, motion) are drawn in code; image shots are made with Codex. Planning is free.'
+              ? 'Every shot is cut on a word in your take and drawn in code: phone screens, type, light, rooms and people in the channel’s style. No generated images. Planning is free.'
               : 'There is no voice take yet, so shots will be timed from the script. Record the take first for exact cuts.'}
           </Text>
           <Press style={[styles.primary, busy && styles.off]} disabled={busy} scale={0.98} onPress={onPlan} accessibilityLabel="Plan the shots">
@@ -543,16 +541,13 @@ function VisualsTab({ reel, pending, onPlan, onBuild, onStop, onNext }: { reel: 
 
           <View style={styles.card}>
             <Text style={styles.len}>
-              {plan.scenes.length} shots · {fmt(len)} · {count('coded')} coded · {count('image')} images{count('clip') ? ` · ${count('clip')} clip` : ''}
+              {plan.scenes.length} shots · {fmt(len)} · all coded
             </Text>
             {plan.notes ? <Text style={[styles.notes, { marginTop: 4 }]}>{plan.notes}</Text> : null}
             {plan.scenes.map((sh, i) => (
               <View key={sh.id} style={[styles.beat, i > 0 && styles.beatLine]}>
                 <View style={{ width: 52 }}>
                   <Text style={styles.time}>{fmt(sh.start)}</Text>
-                  <View style={[styles.method, sh.method === 'coded' ? styles.mCoded : sh.method === 'clip' ? styles.mClip : styles.mImage]}>
-                    <Text style={styles.methodText}>{METHOD[sh.method]}</Text>
-                  </View>
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.beatText}>{sh.shows}</Text>
@@ -575,7 +570,7 @@ function VisualsTab({ reel, pending, onPlan, onBuild, onStop, onNext }: { reel: 
                 <ActivityIndicator color={C.ink} />
                 <Text style={[styles.cardTitle, { flex: 1 }]}>Claude Code is building the video</Text>
               </View>
-              <Text style={styles.meta}>Coding each shot, making {count('image') + count('clip')} images with Codex, then rendering. 20-40 minutes; you can leave this screen.</Text>
+              <Text style={styles.meta}>Coding {plan.scenes.length} shots in raea, then rendering on the PC. 10-25 minutes; you can leave this screen.</Text>
               {(build?.progress || []).map((l, i) => (
                 <Text key={i} numberOfLines={2} style={styles.log}>
                   {l}
@@ -603,7 +598,7 @@ function VisualsTab({ reel, pending, onPlan, onBuild, onStop, onNext }: { reel: 
             <Press style={[styles.primary, busy && styles.off]} disabled={busy} scale={0.98} onPress={onBuild} accessibilityLabel="Build the visuals with Claude Code">
               <Text style={styles.primaryText}>Build visuals with Claude Code</Text>
               <Text style={styles.primarySub}>
-                Codes {count('coded')} shots, makes {count('image') + count('clip')} images with Codex, renders the video
+                Codes {plan.scenes.length} shots and renders them with raea
               </Text>
             </Press>
           )}
@@ -621,11 +616,6 @@ function VisualsTab({ reel, pending, onPlan, onBuild, onStop, onNext }: { reel: 
 }
 
 const styles = StyleSheet.create({
-  method: { marginTop: 4, alignSelf: 'flex-start', height: 20, paddingHorizontal: 6, borderRadius: 6, justifyContent: 'center' },
-  mCoded: { backgroundColor: '#E6ECFF' },
-  mImage: { backgroundColor: '#FFF1DE' },
-  mClip: { backgroundColor: '#FFE3E8' },
-  methodText: { fontFamily: F.b, fontSize: 10, color: C.ink },
   log: { marginTop: 6, fontFamily: F.m, fontSize: 12, lineHeight: 16, color: C.muted },
   bar: { flexDirection: 'row', alignItems: 'center', height: 44 },
   pill: { height: 32, paddingHorizontal: 14, borderRadius: 16, backgroundColor: C.bg, justifyContent: 'center' },

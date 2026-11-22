@@ -303,16 +303,17 @@ function Round({ label, onPress, children }: { label: string; onPress: () => voi
 }
 
 /** A floating orb beside the pill: the same glass, detached, a true circle, holding one page. */
-function SideOrb({ label, side, onPress, children }: {
-  label: string; side: 'left' | 'right'; onPress: () => void; children: React.ReactNode;
+function SideOrb({ label, side, onPress, on = false, children }: {
+  label: string; side: 'left' | 'right'; onPress: () => void; on?: boolean; children: React.ReactNode;
 }) {
   const p = useScale(0.92);
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} hitSlop={6}
+    <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected: on }} onPress={onPress} hitSlop={6}
       onPressIn={() => p.set(p.to)} onPressOut={() => p.set(1)} style={[s.side, side === 'left' ? s.sideLeft : s.sideRight]}>
       {({ pressed }) => (
         <Animated.View style={[s.sideBody, p.style]}>
           <Glass radius={SIDE / 2} />
+          {on ? <View style={[StyleSheet.absoluteFill, s.sideOn]} /> : null}
           {pressed ? <View style={[StyleSheet.absoluteFill, s.sidePressed]} /> : null}
           {/* own view, so the icon stacks above the glass on web too */}
           <View>{children}</View>
@@ -364,7 +365,7 @@ export function Dock({ bottom, width, aspects, onNotBuilt, onAspect, onHome, hid
   useEffect(() => { away.set(withSpring(hidden ? 1 : 0, CLOSE)); }, [hidden, away]);
   const awayStyle = useAnimatedStyle(() => ({ opacity: 1 - away.value, transform: [{ translateY: away.value * 180 }] }));
   // gesture bookkeeping, read and written only inside the touch handlers
-  const g = useRef({ ox: 0, oy: 0, x0: 0, y0: 0, t0: 0, moved: false, pick: -1 });
+  const g = useRef({ ox: 0, oy: 0, x0: 0, y0: 0, t0: 0, ts: 0, moved: false, pick: -1 });
   const fan = useWorkOrb({ onTap: () => router.push('/work') });
 
   const release = () => {
@@ -380,7 +381,7 @@ export function Dock({ bottom, width, aspects, onNotBuilt, onAspect, onHome, hid
     const n = e.nativeEvent, st = g.current;
     st.ox = n.pageX - n.locationX + ORB / 2; // orb centre in page coordinates
     st.oy = n.pageY - n.locationY + ORB / 2;
-    st.x0 = n.pageX; st.y0 = n.pageY; st.t0 = Date.now(); st.moved = false; st.pick = -1;
+    st.x0 = n.pageX; st.y0 = n.pageY; st.t0 = Date.now(); st.ts = n.timestamp || 0; st.moved = false; st.pick = -1;
     open.set(withSpring(1, OPEN));
     orb.set(1.04);
     tap(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
@@ -404,8 +405,11 @@ export function Dock({ bottom, width, aspects, onNotBuilt, onAspect, onHome, hid
     }
   };
 
-  const onRelease = () => {
-    const st = g.current, chosen = st.pick, quick = !st.moved && Date.now() - st.t0 < TAP;
+  // a tap is timed by the touches' own timestamps, so a busy moment on the JS thread can't turn it into a hold
+  const onRelease = (e: GestureResponderEvent) => {
+    const st = g.current, chosen = st.pick, ts = e.nativeEvent.timestamp || 0;
+    const held = st.ts && ts ? ts - st.ts : Date.now() - st.t0;
+    const quick = !st.moved && held < TAP;
     release();
     if (chosen >= 0) {
       tap(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light));
@@ -419,7 +423,7 @@ export function Dock({ bottom, width, aspects, onNotBuilt, onAspect, onHome, hid
       <NoraUnder home={homeAt} />
       <DialLayer cx={cx} cy={cy} open={open} pick={pick} aspects={aspects} />
       <Animated.View pointerEvents={hidden ? 'none' : 'box-none'} style={[s.wrap, { width: total, bottom: lift }, awayStyle]}>
-        <SideOrb label={onHome ? 'Home: back to Today' : ui.home ? 'Close Home' : 'Home: what Nora has ready for you'} side="left"
+        <SideOrb label={onHome ? 'Home: back to Today' : ui.home ? 'Close Home' : 'Home: what Nora has ready for you'} side="left" on={!onHome && ui.home}
           onPress={() => (onHome ? onHome() : noraUi.toggleHome())}><Sym name="house.fill" size={22} fallback={<Home />} /></SideOrb>
         <View style={[s.bar, { width: w, paddingHorizontal: Math.max(0, G - (48 - ICON) / 2) }]}>
           <Glass radius={BAR_H / 2} />
@@ -466,6 +470,7 @@ const s = StyleSheet.create({
     boxShadow: '0 12px 28px rgba(0,0,0,0.45)',
   },
   sidePressed: { borderRadius: SIDE / 2, backgroundColor: 'rgba(255,255,255,0.1)' },
+  sideOn: { borderRadius: SIDE / 2, backgroundColor: 'rgba(255,255,255,0.16)' }, // Home is open
   orbWrap: { position: 'absolute', top: ORB_TOP, width: ORB, height: ORB, alignItems: 'center', justifyContent: 'center' },
   ball: {
     width: ORB_R * 2, height: ORB_R * 2, borderRadius: ORB_R, backgroundColor: '#F0457A',

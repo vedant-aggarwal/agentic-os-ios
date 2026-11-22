@@ -1,6 +1,6 @@
 import type { SymbolViewProps } from 'expo-symbols';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { Glyph, Icon, IconButton, Press, SURF, t } from '@/aspects/kit';
 import { Glass } from '@/components/Glass';
@@ -77,9 +77,11 @@ export function useElapsed(since: number | null) {
  * The reply box: type, or tap the mic and talk. While a take runs its words fill in as the PC hears them; the send
  * button stops the take and sends what was said in one tap, the mic button stops it and leaves the words to edit.
  */
-export function Composer({ draft, setDraft, onSend, dict, placeholder, sending = false, autoFocus, label = 'Message' }: {
+export function Composer({ draft, setDraft, onSend, dict, placeholder, sending = false, autoFocus, label = 'Message', inset = false }: {
   draft: string; setDraft: (v: string) => void; onSend: (text: string) => void; dict: ReturnType<typeof useDictate>;
   placeholder: string; sending?: boolean; autoFocus?: boolean; label?: string;
+  /** inside a card: a plain filled field, no glass or shadow on top of the card's own surface */
+  inset?: boolean;
 }) {
   const rec = dict.state !== 'idle';
   const canSend = !sending && dict.state !== 'finishing' && (rec || !!draft.trim());
@@ -112,8 +114,8 @@ export function Composer({ draft, setDraft, onSend, dict, placeholder, sending =
           <Press label="Dismiss" onPress={dict.clearError} hitSlop={10} style={s.noteX}><Icon name="close" size={12} color={C.muted} /></Press>
         </Animated.View>
       ) : null}
-      <View style={s.bar}>
-        <Glass radius={26} />
+      <View style={[s.bar, inset ? s.barInset : s.barFloat]}>
+        {inset ? null : <Glass radius={26} />}
         <Press label={rec ? 'Stop talking and edit' : 'Talk instead of typing'} onPress={micTap} scale={0.9}
           style={[s.round, rec && { backgroundColor: NORA }]}>
           {dict.state === 'finishing' ? <ActivityIndicator size="small" color={C.text} />
@@ -128,7 +130,7 @@ export function Composer({ draft, setDraft, onSend, dict, placeholder, sending =
           </View>
         ) : (
           <TextInput value={draft} onChangeText={setDraft} placeholder={placeholder} placeholderTextColor={C.faint}
-            multiline style={s.input} keyboardAppearance="dark" accessibilityLabel={label} autoFocus={autoFocus}
+            multiline {...WEB_ONE_ROW} style={s.input} keyboardAppearance="dark" accessibilityLabel={label} autoFocus={autoFocus}
             submitBehavior="newline" />
         )}
         <Press label="Send" onPress={send} disabled={!canSend} scale={0.9} style={[s.round, s.send]}>
@@ -138,6 +140,9 @@ export function Composer({ draft, setDraft, onSend, dict, placeholder, sending =
     </View>
   );
 }
+
+// a web textarea starts two rows tall; the phone's field starts at one line and grows
+const WEB_ONE_ROW = Platform.OS === 'web' ? { rows: 1 } : null;
 
 const s = StyleSheet.create({
   flex: { flex: 1 },
@@ -151,9 +156,12 @@ const s = StyleSheet.create({
     borderCurve: 'continuous', backgroundColor: 'rgba(30,31,35,0.96)', borderWidth: StyleSheet.hairlineWidth, borderColor: SURF.line,
   },
   noteX: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  bar: { flexDirection: 'row', alignItems: 'flex-end', gap: 4, minHeight: 52, borderRadius: 26, padding: 4, boxShadow: '0 12px 32px rgba(0,0,0,0.4)' },
+  bar: { flexDirection: 'row', alignItems: 'flex-end', gap: 4, minHeight: 52, borderRadius: 26, padding: 4 },
+  barFloat: { boxShadow: '0 12px 32px rgba(0,0,0,0.4)' },
+  barInset: { backgroundColor: SURF.track },
   round: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   send: { backgroundColor: C.text },
-  input: { flex: 1, fontFamily: F.regular, fontSize: 16, lineHeight: 24, color: C.text, maxHeight: 132, paddingTop: 10, paddingBottom: 10, paddingHorizontal: 4 },
+  // web preview only: position keeps the textarea above the absolute Glass, a 0 wide solid outline drops the focus ring
+  input: { flex: 1, position: 'relative', outlineStyle: 'solid', outlineWidth: 0, fontFamily: F.regular, fontSize: 16, lineHeight: 24, color: C.text, maxHeight: 132, paddingTop: 10, paddingBottom: 10, paddingHorizontal: 4 },
   live: { flex: 1, minHeight: 44, justifyContent: 'center', paddingVertical: 10, paddingHorizontal: 4, gap: 2 },
 });

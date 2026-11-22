@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Button, Empty, Failed, Glyph, IconButton, Press, Skeleton, SURF, t, tint } from '@/aspects/kit';
+import { Button, clock, Empty, Failed, Glyph, IconButton, Press, Skeleton, SURF, t, tint } from '@/aspects/kit';
 import { useReveal } from '@/components/Reveal';
 import { callLength, type NoraMessage } from '@/lib/nora';
 import { C } from '@/theme';
@@ -28,7 +28,7 @@ function dayLabel(iso: string) {
   if (days === 1) return 'Yesterday';
   return d.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
 }
-const timeOf = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+const timeOf = (iso: string) => clock(iso); // "00:27", the app's one clock
 
 export function NoraChat({ origin }: { origin: { x: number; y: number } }) {
   const ui = useNora();
@@ -222,7 +222,7 @@ function Message({ m, name, error, onRetry, onUndo, onUndoDid, onAnswer }: {
 
 const s = StyleSheet.create({
   hidden: { display: 'none' },
-  tint: { backgroundColor: 'rgba(9,10,14,0.94)' },
+  tint: { backgroundColor: 'rgba(9,10,14,0.96)' },
   fill: { flex: 1 },
   flex: { flex: 1 },
   pad: { paddingHorizontal: 16 },

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Button, Card, Empty, Failed, Glyph, Press, Section, Skeleton, SURF, t, tint } from '@/aspects/kit';
+import { Button, Card, clock, Empty, Failed, Glyph, Press, Section, Skeleton, SURF, t, tint } from '@/aspects/kit';
 import { useReveal } from '@/components/Reveal';
 import { ApiError } from '@/lib/api';
 import { DEMO } from '@/lib/demo';
@@ -96,7 +96,7 @@ function HomeBody({ open }: { open: boolean }) {
   const did = items.filter((x) => x.kind === 'did');
   const noticed = items.filter((x) => x.kind !== 'did' && x.kind !== 'ask' && x.status !== 'expired');
   const nothing = !!d && !asks.length && !did.length && !noticed.length;
-  const sub = !d ? greeting() : asks.length ? `${greeting()}. ${asks.length === 1 ? 'One thing' : `${asks.length} things`} waiting on you.` : `${greeting()}. Nothing waiting on you.`;
+  const sub = !d ? `${greeting()}.` : asks.length ? `${greeting()}. ${asks.length === 1 ? 'One thing' : `${asks.length} things`} waiting on you.` : `${greeting()}. Nothing waiting on you.`;
 
   const answer = (x: FeedItem, text: string) => {
     setAnswering(null);
@@ -125,7 +125,7 @@ function HomeBody({ open }: { open: boolean }) {
           <Card style={s.gap8}>
             <Text style={t.heading}>{d.mood?.label ?? 'Today'}</Text>
             {d.mood?.line ? <Text style={t.body}>{d.mood.line}</Text> : null}
-            {d.busy ? <Text style={t.small}>Busy with {d.busy.title} until {new Date(d.busy.until).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</Text> : null}
+            {d.busy ? <Text style={t.small}>Busy with {d.busy.title} until {clock(d.busy.until)}</Text> : null}
             {d.heartbeat.last ? (
               <Text style={t.small}>Last looked at {d.heartbeat.last.time}{d.heartbeat.last.note ? `: ${d.heartbeat.last.note}` : ''}</Text>
             ) : <Text style={t.small}>{d.heartbeat.on ? "She hasn't looked yet today." : 'Her check ins are off.'}</Text>}
@@ -144,7 +144,7 @@ function HomeBody({ open }: { open: boolean }) {
                   reply={answering === x.id ? (
                     <View style={s.gap8}>
                       <Composer draft={draft} setDraft={setDraft} onSend={(text) => answer(x, text)} dict={dict} autoFocus
-                        placeholder={`Your answer for ${x.from ?? 'them'}`} label="Your answer" />
+                        inset placeholder="Your answer" label={`Your answer for ${x.from ?? 'them'}`} />
                       <Press label="Cancel answering" onPress={() => { dict.cancel(); setAnswering(null); }} style={s.cancel}>
                         <Text style={t.label}>Cancel</Text>
                       </Press>
@@ -278,7 +278,7 @@ function CallRow({ label, first }: { label: string; first: boolean }) {
 
 const s = StyleSheet.create({
   hidden: { display: 'none' },
-  tint: { backgroundColor: 'rgba(9,10,14,0.94)' },
+  tint: { backgroundColor: 'rgba(9,10,14,0.96)' },
   content: { paddingHorizontal: 16, gap: 24 },
   flex: { flex: 1, minWidth: 0 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },

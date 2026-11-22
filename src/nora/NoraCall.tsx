@@ -1,5 +1,5 @@
 import { BlurView } from 'expo-blur';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useReducedMotion, type SharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -24,9 +24,17 @@ export function NoraCall({ origin }: { origin: { x: number; y: number } }) {
   const r = useReveal(!!ui.call, origin);
   const [shown, setShown] = useState<CallAsk | null>(ui.call); // kept while the screen closes, so it still says Call ended
   if (ui.call && ui.call !== shown) setShown(ui.call);
+  // the first moments after it opens take no taps: on a touch browser the tap that opened it sends a late click to
+  // whatever now sits under the finger, which is the End button
+  const [armed, setArmed] = useState(false);
+  useEffect(() => {
+    if (!ui.call) return;
+    const id = setTimeout(() => setArmed(true), 450);
+    return () => { clearTimeout(id); setArmed(false); };
+  }, [ui.call]);
   if (!r.mounted && !ui.call) return null;
   return (
-    <Animated.View style={r.shell} pointerEvents={ui.call ? 'auto' : 'none'}>
+    <Animated.View style={r.shell} pointerEvents={ui.call ? (armed ? 'auto' : 'box-only') : 'none'}>
       <Animated.View style={r.stage}>
         <BlurView intensity={50} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, s.tint]} />
@@ -62,7 +70,7 @@ function CallBody({ ask }: { ask: CallAsk | null }) {
       </View>
 
       <View style={s.stage}>
-        <Orb t={turn} level={c.level} dim={failed} />
+        <Orb t={turn} level={c.level} dim={failed || c.phase === 'ended'} />
         <Text accessibilityLiveRegion="polite" style={[t.strong, s.centre, c.talk === 'thinking' && c.phase === 'live' && { color: NORA }]}>{word}</Text>
       </View>
 
@@ -87,13 +95,15 @@ function CallBody({ ask }: { ask: CallAsk | null }) {
         <Press label="Close" onPress={noraUi.closeCall} style={s.close} wrap={s.closeWrap}><Text style={t.label}>Close</Text></Press>
       ) : (
         <View style={s.controls}>
-          <Control label={c.muted ? 'Unmute' : 'Mute'} on={c.muted} onPress={c.toggleMute} disabled={c.phase === 'ended'}>
+          <Control label="Mute" on={c.muted} onPress={c.toggleMute} disabled={c.phase === 'ended'}>
             <NGlyph name={c.muted ? 'micOff' : 'mic'} size={24} color={c.muted ? C.scene : C.text} />
           </Control>
           <View style={s.ctl}>
-            <Press label="End call" onPress={c.end} scale={0.92} feel="medium" style={s.end} disabled={c.phase === 'ended'}>
-              <NGlyph name="hangup" size={30} color="#fff" />
-            </Press>
+            <View style={s.slot}>
+              <Press label="End call" onPress={c.end} scale={0.92} feel="medium" style={s.end} disabled={c.phase === 'ended'}>
+                <NGlyph name="hangup" size={30} color="#fff" />
+              </Press>
+            </View>
             <Text style={t.caption}>End</Text>
           </View>
           {showSpeaker ? (
@@ -123,15 +133,17 @@ function Orb({ t: turn, level, dim }: { t: SharedValue<number>; level: SharedVal
 function Control({ label, on, onPress, disabled, children }: { label: string; on: boolean; onPress: () => void; disabled?: boolean; children: React.ReactNode }) {
   return (
     <View style={s.ctl}>
-      <Press label={label} onPress={onPress} scale={0.92} disabled={disabled} role="button" state={{ selected: on }}
-        style={[s.round, on && s.roundOn]}>{children}</Press>
+      <View style={s.slot}>
+        <Press label={label} onPress={onPress} scale={0.92} disabled={disabled} role="button" state={{ selected: on }}
+          style={[s.round, on && s.roundOn]}>{children}</Press>
+      </View>
       <Text style={t.caption}>{label}</Text>
     </View>
   );
 }
 
 const s = StyleSheet.create({
-  tint: { backgroundColor: 'rgba(8,9,12,0.9)' },
+  tint: { backgroundColor: 'rgba(8,9,12,0.96)' }, // dense enough that Today's bright pills don't ghost through
   fill: { flex: 1, paddingHorizontal: 24 },
   head: { alignItems: 'center', gap: 4 },
   centre: { textAlign: 'center' },
@@ -143,6 +155,7 @@ const s = StyleSheet.create({
   failRow: { flexDirection: 'row', justifyContent: 'center', gap: 12, paddingTop: 16 },
   controls: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingHorizontal: 8 },
   ctl: { width: 80, alignItems: 'center', gap: 8 },
+  slot: { height: 72, alignItems: 'center', justifyContent: 'center' }, // all three captions sit on one line
   round: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center', backgroundColor: SURF.raised },
   roundOn: { backgroundColor: C.text },
   end: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', backgroundColor: END },

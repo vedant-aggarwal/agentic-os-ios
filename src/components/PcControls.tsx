@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { lightTap } from '@/components/Glass';
 import { MediaPanel } from '@/components/MediaRemote';
 import { CameraPanel } from '@/components/PhoneCam';
+import { AwayCard } from '@/components/AwayCard';
 import { PowerPanel } from '@/components/PcPower';
 import { Sym } from '@/components/Sym';
 import { usePointer } from '@/lib/pointer';
@@ -41,7 +42,7 @@ export function PcControls({ tab, onTab, onClose }: { tab: PcTab | null; onTab: 
           </Pressable>
         </View>
         <ScrollView contentContainerStyle={{ paddingBottom: 4 }}>
-          {t === 'media' ? <MediaPanel open={tab === 'media'} onKey={(k) => pc.key(k)} /> : t === 'camera' ? <CameraPanel open={tab === 'camera'} /> : <PowerPanel />}
+          {t === 'media' ? <MediaPanel open={tab === 'media'} onKey={(k) => pc.key(k)} /> : t === 'camera' ? <CameraPanel open={tab === 'camera'} /> : <View style={{ gap: 14 }}><PowerPanel /><AwayCard open={tab === 'power'} /></View>}
         </ScrollView>
       </View>
     </Modal>

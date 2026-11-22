@@ -5,7 +5,8 @@ import { openLink } from './links';
 
 // Nora's calls ring like a phone call (modules/calls: PushKit + CallKit). The VoIP token goes to the PC
 // (POST /devices { kind: 'voip', token }); the PC's VoIP push rings the system call screen even when the app is
-// closed. Answering opens agenticos://nora/call?id=<call id>, which Nora's call screen listens for and joins.
+// closed. Answering starts the call's audio natively (NoraRelay, src/nora/call/relay.ts), so it talks from the lock
+// screen; it also opens agenticos://nora/call?id=<call id>, and Nora's call screen joins that relay.
 // Declining is handled natively (Nora calls back later). When Nora's call ends in the app, call endSystemCall(id)
 // so the system call screen hangs up too; onSystemCall tells the call screen when he hangs up or mutes there.
 

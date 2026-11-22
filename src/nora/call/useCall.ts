@@ -11,7 +11,8 @@ import { startRtc, type Rtc } from './webrtc';
 // One call with Nora, whichever way its audio runs:
 //   follow  the call is already on and its audio runs elsewhere (answered on the lock screen): this screen reads
 //           GET /nora/call/live each second for whether it's connected, her hand offs and both sides' words
-//   relay   the phone's call audio module (call/relay.ts) streams it through the PC; followed the same way
+//   relay   the phone's call audio module (call/relay.ts) streams it through the PC; followed the same way, and it
+//           also joins a call he answered on the lock screen, whose relay started natively
 //   webrtc  a browser holds the audio itself (web build)
 //   sim     the ?demo preview: a scripted call, no audio
 // Without any of them on this build the screen says so and offers chat instead. A call he answered on the system call
@@ -61,8 +62,9 @@ export function useCall(ask: CallAsk | null, onClosed: () => void) {
     if (est) speakT.current = setTimeout(() => setTalk((x) => (x === 'speaking' ? 'listening' : x)), Math.min(12_000, 1200 + text.length * 60));
   }, []);
 
-  // GET /nora/call/live once a second: connected, muted, hand offs and the words, for follow and relay
-  const follow = useCallback((alive: () => boolean, wantId: string | null) => {
+  // GET /nora/call/live once a second: connected, muted, hand offs and the words, for follow and relay. With the relay
+  // her voice's loudness says when she's speaking, so her words only update the text.
+  const follow = useCallback((alive: () => boolean, wantId: string | null, byLevel = false) => {
     let lastAt = '', misses = 0;
     const since = Date.now();
     const id = setInterval(async () => {
@@ -81,7 +83,7 @@ export function useCall(ask: CallAsk | null, onClosed: () => void) {
       if (call.handoff) setTalk('thinking');
       for (const x of call.transcript.filter((y) => String(y.at) > lastAt)) {
         lastAt = String(x.at);
-        if (x.who === 'nora') spoke(x.text); else setHis(x.text);
+        if (x.who === 'nora') { if (byLevel) setHer(x.text); else spoke(x.text); } else setHis(x.text);
       }
     }, 1000);
     stops.current.push(() => clearInterval(id));
@@ -119,36 +121,45 @@ export function useCall(ask: CallAsk | null, onClosed: () => void) {
       // a call already on (he answered on the lock screen, or rang from another screen): follow it
       let live: LiveCall | null = null;
       try { live = (await nora.liveCall()).call; } catch {}
+      // the phone's relay already carries a call (answered on the lock screen): join it rather than follow it
+      let joined = false;
+      if (can === 'relay') { try { joined = !!(await relayModule()!.current()); } catch {} }
       if (!alive) return;
-      if (live && (ask.follow || ask.incomingId || can === 'none')) {
+      if (live && !joined && (ask.follow || ask.incomingId || can === 'none')) {
         way('follow'); callId.current = live.id;
         if (live.connected) { started(Date.now() - live.seconds * 1000); go('live'); }
         follow(isAlive, live.id);
         return;
       }
       // answered on the lock screen: the phone's own audio is bringing the call up; wait for it to show
-      if (ask.follow) { way('follow'); follow(isAlive, null); return; }
+      if (ask.follow && !joined) { way('follow'); follow(isAlive, null); return; }
 
       if (can === 'relay') {
         const m = relayModule()!;
         way('relay');
+        if (joined && live?.connected) started(Date.now() - live.seconds * 1000);
         const subs = [
           m.addListener('state', (e) => {
             if (!alive) return;
             if (e.callId) callId.current = e.callId;
+            if (typeof e.speaker === 'boolean') setSpeaker(e.speaker);
             if (e.state === 'ready') { started(); go('live'); }
-            if (e.state === 'ended' && phaseRef.current !== 'ended') {
+            if (e.state === 'ended' && phaseRef.current !== 'ended' && phaseRef.current !== 'failed') {
               if (e.error) fail(e.error);
               else { setLasted(t0Ref.current ? Math.round((Date.now() - t0Ref.current) / 1000) : 0); go('ended'); setTimeout(onClosed, 1600); }
             }
           }),
-          m.addListener('level', (e) => { if (alive) lvl(e.level); }),
+          m.addListener('level', (e) => {
+            if (!alive) return;
+            lvl(e.level);
+            if (e.level > 0.06) setTalk('speaking'); else setTalk((x) => (x === 'speaking' ? 'listening' : x));
+          }),
         ];
         stops.current.push(() => subs.forEach((x) => x.remove()));
         try {
           await m.start({ url: relayUrl(), token: currentToken() ?? '', incomingId: ask.incomingId ?? undefined, reason: ask.reason ?? 'You called' });
         } catch (e) { fail(errText(e)); return; }
-        follow(isAlive, null);
+        follow(isAlive, null, true);
         return;
       }
 
@@ -185,9 +196,9 @@ export function useCall(ask: CallAsk | null, onClosed: () => void) {
       if (speakT.current) clearTimeout(speakT.current);
       rtc.current?.close();
       const id = callId.current;
-      if (id && phaseRef.current !== 'ended' && phaseRef.current !== 'failed') {
-        if (modeRef.current === 'relay') relayModule()?.stop();
-        nora.endCall(id).catch(() => {});
+      if (phaseRef.current !== 'ended' && phaseRef.current !== 'failed') {
+        if (modeRef.current === 'relay') relayModule()?.stop(); // also while it's still connecting
+        if (id) nora.endCall(id).catch(() => {});
       }
     };
   }, [ask, follow, go, lvl, spoke, started, way, onClosed]);

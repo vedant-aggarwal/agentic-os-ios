@@ -1,6 +1,6 @@
 import { requireOptionalNativeModule } from 'expo';
 import { Image } from 'expo-image';
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ComponentRef, type ReactNode } from 'react';
 import { Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 import {
   addDays, Button, Card, Chip, dayLabel, Field, haptic, Icon, IconButton, Press, Screen, SURF, t, tint, today, useAspect,
@@ -45,6 +45,7 @@ export function Editor({ open, onClose, entry, seed }: { open: boolean; onClose:
   const [busy, setBusy] = useState<null | 'ask' | 'tidy' | 'photo' | 'listen'>(null);
   const [sure, setSure] = useState(false);
   const dirty = useRef(false);
+  const input = useRef<ComponentRef<typeof TextInput>>(null);
   const at = useRef('');
 
   const wasOpen = useRef(false);
@@ -56,6 +57,8 @@ export function Editor({ open, onClose, entry, seed }: { open: boolean; onClose:
       setBookmark(!!e?.bookmark); setRaw(e?.raw ?? null); setTidy(e?.tidy ?? null); setOffer(null); setKind(e?.kind ?? 'typed');
       setState(e ? 'saved' : 'idle'); setSure(false); dirty.current = false; at.current = e?.at ?? new Date().toISOString();
       if (seed?.speak) setTimeout(() => { void listen(); }, 350);
+      // focus once the screen has slid in: focusing it off screen makes the web preview scroll the page sideways
+      else if (!e) setTimeout(() => input.current?.focus(), 480);
     }
     wasOpen.current = open;
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -167,7 +170,7 @@ export function Editor({ open, onClose, entry, seed }: { open: boolean; onClose:
         </View>
       ) : null}
 
-      <TextInput value={text} onChangeText={(v) => { setText(v); touch(); }} multiline autoFocus={!entry && !seed?.speak}
+      <TextInput ref={input} value={text} onChangeText={(v) => { setText(v); touch(); }} multiline
         placeholder={prompt ? 'Write as much or as little as you like' : 'What happened today?'} placeholderTextColor={C.faint}
         selectionColor={color} keyboardAppearance="dark" textAlignVertical="top" accessibilityLabel="Entry" style={s.input} />
 
@@ -258,7 +261,7 @@ const s = StyleSheet.create({
   moods: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   prompt: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, paddingLeft: 16, borderRadius: 16, borderWidth: 1, borderCurve: 'continuous' },
   flex: { flex: 1 },
-  input: { minHeight: 200, color: C.text, fontFamily: F.regular, fontSize: 18, lineHeight: 28, padding: 0, outlineWidth: 0 },
+  input: { minHeight: 200, color: C.text, fontFamily: F.regular, fontSize: 18, lineHeight: 28, padding: 0, outlineWidth: 0, outlineStyle: 'none' } as never,
   tools: { flexDirection: 'row', gap: 8 },
   tool: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 40, paddingHorizontal: 14, borderRadius: 20, backgroundColor: SURF.card },
   toolText: { fontFamily: F.medium, fontSize: 14, lineHeight: 20, color: C.textSoft },

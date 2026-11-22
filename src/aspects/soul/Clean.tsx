@@ -138,14 +138,14 @@ function Live({ d, open, onMoment, onSlip }: { d: On; open: boolean; onMoment: (
 
       <Card>
         <View style={s.figs}>
-          <Fig value={`${d.kept.kept}`} label={`of ${plural(d.kept.of, 'day')} kept`} color={color} />
+          <Fig value={`${d.kept.kept}`} label={`of ${d.kept.of} kept`} color={color} />
           <Fig value={pct(d.last30)} label="last 30 days" />
           <Fig value={pct(d.last90)} label="last 90 days" />
           <Fig value={`${d.best}`} label="longest run" />
         </View>
         <Divider />
         <View style={s.strip}>
-          <DayDots strip={d.strip} color={color} size={11} gap={4} />
+          <DayDots strip={d.strip} color={color} size={18} gap={6} />
         </View>
         <Text style={t.caption}>Last 13 weeks. Filled: kept. Open ring: a slip. Today has the coloured ring.</Text>
         {m.next ? (
@@ -157,7 +157,7 @@ function Live({ d, open, onMoment, onSlip }: { d: On; open: boolean; onMoment: (
             <Bar progress={d.day / Math.max(1, m.next.days)} />
           </View>
         ) : null}
-        {d.yesterday.closed === 'auto' && !d.yesterday.slip ? <Text style={t.caption}>Yesterday closed itself as kept.</Text> : null}
+        {d.yesterday.closed === 'auto' && !d.yesterday.slip ? <Text style={[t.caption, s.gap8]}>Yesterday closed itself as kept.</Text> : null}
       </Card>
 
       <View style={s.two}>
@@ -171,7 +171,7 @@ function Live({ d, open, onMoment, onSlip }: { d: On; open: boolean; onMoment: (
 
       <Section title="What helps right now">
         <Text style={t.small}>Shown in a rough moment. Moving your body has the best backing.</Text>
-        <Lines items={d.actions} onChange={(v) => saveList('actions', v)} placeholder="Something to do" max={16} limit={80} suggestions={ACTION_BANK} />
+        <Lines items={d.actions} onChange={(v) => saveList('actions', v)} placeholder="Something to do" max={16} limit={80} suggestions={ACTION_BANK} chips />
       </Section>
 
       <Section title="Your hours">
@@ -238,7 +238,7 @@ function PatternRead({ d, onUse }: { d: On; onUse: (p: Partial<Plan>) => void })
           {r.out.when ? <Text style={[t.body, s.gap8]}>{r.out.when}</Text> : null}
           {r.out.why ? <Text style={[t.body, s.gap8]}>{r.out.why}</Text> : null}
           {r.out.kept ? <Text style={[t.body, s.gap8]}>{r.out.kept}</Text> : null}
-          <Text style={[t.caption, s.gap8]}>Read {ago(r.at)} from {plural(r.n ?? 0, 'log')}.</Text>
+          <Text style={[t.caption, s.gap8]}>Read {ago(r.at).replace(/^Y/, 'y')} from {plural(r.n ?? 0, 'log')}.</Text>
         </Card>
       ) : null}
       {!busy && r?.out.plans.length ? r.out.plans.map((p, i) => {

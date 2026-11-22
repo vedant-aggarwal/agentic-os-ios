@@ -149,11 +149,12 @@ export function Moment({ open, base, onClose, onSlip }: {
             <Button label="Still here, go again" kind="quiet" onPress={again} />
             <Press label="It happened" onPress={happened} style={s.link}><Text style={t.label}>It happened</Text></Press>
           </View>
+          <View style={s.tail} />
         </>
       ) : (
         <View style={s.done}>
           <Text style={[t.title2, s.centre]}>That one passed.</Text>
-          <Text style={[t.small, s.centre]}>It&apos;s logged as a day kept. Two taps if you want them.</Text>
+          <Text style={[t.small, s.centre]}>Logged. Two more taps if you want them.</Text>
           <Section title="How strong was it">
             <Choice options={LEVELS.map((l) => l.label)} value={level} onChange={(v) => tag(v, before)} />
           </Section>
@@ -167,7 +168,7 @@ export function Moment({ open, base, onClose, onSlip }: {
   );
 }
 
-const lower = (x: string) => (x ? x[0].toLowerCase() + x.slice(1) : x).replace(/\.$/, '');
+const lower = (x: string) => (x && !/^I[\s']/.test(x) ? x[0].toLowerCase() + x.slice(1) : x).replace(/\.$/, '');
 
 const s = StyleSheet.create({
   top: { gap: 4, paddingTop: 8 },
@@ -179,5 +180,6 @@ const s = StyleSheet.create({
   actions: { gap: 12 },
   link: { alignSelf: 'center', paddingVertical: 12, paddingHorizontal: 16 },
   done: { gap: 24, paddingTop: 24 },
+  tail: { height: 48 },
 });
 

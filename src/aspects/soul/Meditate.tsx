@@ -53,11 +53,11 @@ export function Meditate({ open, onClose, start }: { open: boolean; onClose: () 
           {sits.items ? (
             <Card>
               <View style={s.figs}>
-                <Fig value={`${weekMins}`} label="minutes this week" color={color} />
+                <Fig value={`${weekMins}`} label="min this week" color={color} />
                 <Fig value={`${list.length}`} label={list.length === 1 ? 'sit in all' : 'sits in all'} />
-                <Fig value={`${total}`} label="minutes in all" />
+                <Fig value={`${total}`} label="min in all" />
               </View>
-              <Bars values={perDay} labels={week.map(weekLetter)} on={6} height={56} />
+              <Bars values={perDay} labels={week.map(weekLetter)} height={56} />
             </Card>
           ) : null}
           {sits.items && list.length === 0 ? <Text style={t.small}>Each sit logs itself when it ends.</Text> : null}
@@ -92,7 +92,8 @@ function SitRoom({ open, mins, pattern, onClose }: { open: boolean; mins: number
   useEffect(() => {
     if (!running) return;
     let last = Date.now();
-    const id = setInterval(() => { const n = Date.now(); setMs((x) => x + (n - last)); last = n; }, 250);
+    // the step is read before the updater runs: React may call the updater later, after `last` has moved on
+    const id = setInterval(() => { const n = Date.now(), step = n - last; last = n; setMs((x) => x + step); }, 250);
     return () => clearInterval(id);
   }, [running]);
   const sat = Math.floor(ms / 1000);

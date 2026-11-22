@@ -87,6 +87,7 @@ export function Slip({ open, onClose, state, from }: {
             <Choice options={CHANGES} value={change} onChange={setChange} />
           </Section>
           <Button label="Log it" onPress={log} busy={busy} />
+          <View style={s.tail} />
         </>
       ) : (
         <>
@@ -114,6 +115,7 @@ export function Slip({ open, onClose, state, from }: {
             <Button label="Done" onPress={onClose} />
             <Button label="Undo, that was a wrong tap" kind="quiet" small onPress={undo} busy={busy} />
           </View>
+          <View style={s.tail} />
         </>
       )}
     </Screen>
@@ -125,4 +127,5 @@ const s = StyleSheet.create({
   figs: { flexDirection: 'row', gap: 12 },
   gap: { marginTop: 4 },
   actions: { gap: 12 },
+  tail: { height: 48 },
 });

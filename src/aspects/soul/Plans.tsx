@@ -13,7 +13,7 @@ const DAYS = [
   { key: 'end', label: 'Weekends', days: [6, 7] },
 ] as const;
 const daysKey = (d?: number[]) => DAYS.find((x) => x.days.length === (d?.length ?? 7) && x.days.every((v) => (d ?? [1, 2, 3, 4, 5, 6, 7]).includes(v)))?.key ?? 'all';
-const lower = (x: string) => (x ? x[0].toLowerCase() + x.slice(1) : x).replace(/\.$/, '');
+const lower = (x: string) => (x && !/^I[\s']/.test(x) ? x[0].toLowerCase() + x.slice(1) : x).replace(/\.$/, '');
 
 /** "If it is late and I am in bed, phone goes on the desk." */
 export const planLine = (p: { if?: string | null; then: string }) => (p.if ? `If ${lower(p.if)}, ${lower(p.then)}.` : `${p.then.replace(/\.$/, '')}.`);

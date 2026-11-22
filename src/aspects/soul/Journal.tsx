@@ -221,7 +221,7 @@ function JournalRead({ reading }: { reading: Reading<JournalOut> | null }) {
               <Text style={t.caption}>{dayLabel(x.date)}</Text>
             </View>
           ))}
-          <Text style={[t.caption, s.gap8]}>Read {ago(r.at)} from {plural(r.n ?? 0, 'entry', 'entries')}.</Text>
+          <Text style={[t.caption, s.gap8]}>Read {ago(r.at).replace(/^Y/, 'y')} from {plural(r.n ?? 0, 'entry', 'entries')}.</Text>
         </Card>
       ) : null}
       {!busy && !r ? (

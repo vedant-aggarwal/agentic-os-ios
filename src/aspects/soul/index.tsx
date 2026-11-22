@@ -11,7 +11,7 @@ import { Editor, type Seed } from './Editor';
 import { Journal } from './Journal';
 import { Meditate } from './Meditate';
 import { Moment } from './Moment';
-import { DayDots, Gl, plural, PrivacyCover } from './parts';
+import { DayRow, Gl, plural, PrivacyCover } from './parts';
 import { Slip } from './Slip';
 import { SIT_LENGTHS } from './words';
 
@@ -93,16 +93,18 @@ export default function Soul() {
         </Card>
       ) : null}
       {on ? (
-        <Card onPress={() => setScreen('clean')} label={`Day ${on.day}. Open`}>
-          <View style={s.dayHead}>
-            <View style={s.flex}>
-              <Text style={[t.big, t.num, { color }]}>Day {on.day}</Text>
-              <Text style={[t.small, t.num]}>{on.kept.kept} of {plural(on.kept.of, 'day')} kept · longest run {on.best}</Text>
+        <Card>
+          <Press label={`Day ${on.day}. Open`} onPress={() => setScreen('clean')} scale={0.98}>
+            <View style={s.dayHead}>
+              <View style={s.flex}>
+                <Text style={[t.big, t.num, { color }]}>Day {on.day}</Text>
+                <Text style={[t.small, t.num]}>{on.kept.kept} of {plural(on.kept.of, 'day')} kept · longest run {on.best}</Text>
+              </View>
+              <Icon name="right" size={16} color={C.faint} />
             </View>
-            <Icon name="right" size={16} color={C.faint} />
-          </View>
-          <View style={s.dots}><DayDots strip={on.strip.slice(-28)} color={color} size={10} gap={4} /></View>
-          {on.milestone.reached?.today ? <Text style={[t.label, { color }]}>{plural(on.milestone.reached.days, 'day')} today.</Text> : null}
+            <View style={s.dots}><DayRow strip={on.strip.slice(-14)} color={color} /></View>
+            {on.milestone.reached?.today ? <Text style={[t.label, { color }]}>{plural(on.milestone.reached.days, 'day')} today.</Text> : null}
+          </Press>
           {!on.pledged ? (
             <Button label="Promise today" kind="soft" small onPress={pledge} wrap={[s.self, s.gap12]} />
           ) : (
@@ -144,8 +146,8 @@ export default function Soul() {
             <Chip key={m} label={`${m} min`} icon={<Gl k="circle" size={12} color={C.muted} />}
               onPress={() => { setSitStart((x) => ({ mins: m, n: (x?.n ?? 0) + 1 })); setScreen('meditate'); }} />
           ))}
-          {weekMins ? <Text style={[t.caption, s.push]}>{weekMins} min this week</Text> : null}
         </View>
+        {weekMins ? <Text style={t.caption}>{plural(weekMins, 'minute')} this week</Text> : null}
       </Section>
 
       {waiting ? <Text style={[t.caption, s.centre]}>{plural(waiting, 'log')} waiting on this phone for the PC.</Text> : null}

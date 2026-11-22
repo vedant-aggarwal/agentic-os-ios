@@ -57,6 +57,25 @@ export function DayDots({ strip, color, size = 12, gap = 4 }: { strip: Strip; co
   );
 }
 
+/** The last days in one row, oldest first, spread across the width, with the weekday letter under each. */
+export function DayRow({ strip, color }: { strip: Strip; color: string }) {
+  const kept = strip.filter((d) => d.s === 'kept').length;
+  return (
+    <View accessible accessibilityLabel={`Last ${strip.length} days: ${kept} kept`} style={s.dayRow}>
+      {strip.map((d) => (
+        <View key={d.d} style={s.dayCol}>
+          <View style={[s.dayDot,
+            d.s === 'kept' ? { backgroundColor: color }
+              : d.s === 'slip' ? { borderWidth: 1.5, borderColor: C.muted }
+                : d.s === 'today' ? { borderWidth: 1.5, borderColor: color, backgroundColor: tint(color, 0.25) }
+                  : { backgroundColor: SURF.track }]} />
+          <Text style={[t.caption, d.s === 'today' && { color: C.text }]}>{'SMTWTFS'[new Date(`${d.d}T00:00:00Z`).getUTCDay()]}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 /** Twenty-four bars, one per hour of the day: urges in a soft tint, slips stacked in full colour on top. */
 export function Hours({ counts, slips, color, height = 64 }: { counts: number[]; slips: number[]; color: string; height?: number }) {
   const top = Math.max(1, ...counts);
@@ -83,9 +102,12 @@ export function Hours({ counts, slips, color, height = 64 }: { counts: number[];
 }
 
 /** An editable list of his own lines (reasons, things that help): each row removable, one field to add. */
-export function Lines({ items, onChange, placeholder, max = 12, limit = 400, suggestions = [] }: {
+export function Lines({ items, onChange, placeholder, max = 12, limit = 400, suggestions = [], chips = false }: {
   items: string[]; onChange: (v: string[]) => void; placeholder: string; max?: number; limit?: number; suggestions?: string[];
+  /** Short items: show them as chips, each with its own remove button. */
+  chips?: boolean;
 }) {
+  const { color } = useAspect();
   const [draft, setDraft] = useState('');
   const add = (v: string) => {
     const x = v.trim().slice(0, limit);
@@ -95,7 +117,16 @@ export function Lines({ items, onChange, placeholder, max = 12, limit = 400, sug
   const left = suggestions.filter((x) => !items.includes(x)).slice(0, 8);
   return (
     <View style={{ gap: 8 }}>
-      {items.map((x) => (
+      {chips ? (
+        <View style={s.wrap}>
+          {items.map((x) => (
+            <View key={x} style={[s.mine, { backgroundColor: tint(color, 0.14), borderColor: tint(color, 0.4) }]}>
+              <Text style={[s.mineText, { color }]}>{x}</Text>
+              <IconButton label={`Remove ${x}`} size={28} plain onPress={() => onChange(items.filter((y) => y !== x))}><Icon name="close" size={12} color={color} /></IconButton>
+            </View>
+          ))}
+        </View>
+      ) : items.map((x) => (
         <View key={x} style={s.line}>
           <Text style={[t.body, s.lineText]}>{x}</Text>
           <IconButton label={`Remove ${x}`} size={32} plain onPress={() => onChange(items.filter((y) => y !== x))}><Icon name="close" size={14} color={C.muted} /></IconButton>
@@ -156,6 +187,9 @@ export const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n ==
 const s = StyleSheet.create({
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   cols: { flexDirection: 'row' },
+  dayRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  dayCol: { alignItems: 'center', gap: 6 },
+  dayDot: { width: 14, height: 14, borderRadius: 7 },
   hours: { flexDirection: 'row', alignItems: 'flex-end', gap: 2 },
   hourCol: { flex: 1, justifyContent: 'flex-end' },
   hourLabels: { flexDirection: 'row', justifyContent: 'space-between' },
@@ -165,5 +199,7 @@ const s = StyleSheet.create({
   addInput: { flex: 1, minHeight: 44, color: C.text, fontFamily: F.regular, fontSize: 16, outlineWidth: 0 },
   addBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   fig: { flex: 1, gap: 2 },
+  mine: { flexDirection: 'row', alignItems: 'center', height: 36, borderRadius: 18, paddingLeft: 12, paddingRight: 4, borderWidth: 1 },
+  mineText: { fontFamily: F.medium, fontSize: 14, lineHeight: 20 },
   cover: { backgroundColor: C.scene },
 });

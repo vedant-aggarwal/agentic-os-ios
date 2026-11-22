@@ -8,14 +8,14 @@ import {
 } from '@/aspects/kit';
 import { addMeal, dismissPhoto, filePath, logWater, useDiet, usePoll, type Diet, type MealPhoto, type MealRow } from '../api';
 import { useNav } from '../nav';
-import { List, s as u } from '../ui';
+import { List, s as u, useInnerWidth, useSeen } from '../ui';
 import { EditMeal } from './Log';
 
 const SLOT: Record<string, string> = { breakfast: 'Breakfast', lunch: 'Lunch', snack: 'Snack', dinner: 'Dinner', 'pre-workout': 'Before training', 'post-workout': 'After training' };
 
 export function DietScreen({ open, onClose, title }: { open: boolean; onClose: () => void; title: string }) {
   const [day, setDay] = useState<string | null>(null);
-  const read = useDiet(day ?? undefined);
+  const read = useDiet(day ?? undefined, useSeen(open));
   const nav = useNav();
   const [editing, setEditing] = useState<MealRow | null>(null);
   const { data, error, refresh } = read;
@@ -78,6 +78,9 @@ function Water({ d }: { d: Diet }) {
   const [n, setN] = useState<number | null>(null);
   const have = n ?? d.water;
   const target = d.targets.water.v;
+  const count = Math.max(target, have);
+  // one row of glasses: each as wide as fits, never wider than 24
+  const gw = Math.max(14, Math.min(24, Math.floor((useInnerWidth() - SP[4] * (count - 1)) / count)));
   const set = async (v: number) => {
     const next = Math.max(0, Math.min(30, v));
     setN(next);
@@ -90,9 +93,9 @@ function Water({ d }: { d: Diet }) {
         <Text style={[t.label, t.num]}>{`${have} of ${target} glasses`}</Text>
       </View>
       <View style={[u.wrap, { gap: SP[4] }]}>
-        {Array.from({ length: Math.max(target, have) }, (_, i) => (
-          <Press key={i} label={i < have ? `Glass ${i + 1}, drunk. Remove` : `Add glass ${i + 1}`} feel="tick" onPress={() => { void set(i < have ? i : i + 1); }} hitSlop={2}
-            style={{ width: 24, height: 32, borderRadius: 6, borderWidth: 1.5, borderColor: i < have ? a.color : 'rgba(255,255,255,0.18)', backgroundColor: i < have ? a.color : 'transparent' }}>
+        {Array.from({ length: count }, (_, i) => (
+          <Press key={i} label={i < have ? `Glass ${i + 1}, drunk. Remove` : `Add glass ${i + 1}`} feel="tick" onPress={() => { void set(i < have ? i : i + 1); }} hitSlop={{ top: 6, bottom: 6, left: 2, right: 2 }}
+            style={{ width: gw, height: 32, borderRadius: 6, borderWidth: 1.5, borderColor: i < have ? a.color : 'rgba(255,255,255,0.18)', backgroundColor: i < have ? a.color : 'transparent' }}>
             <View />
           </Press>
         ))}
@@ -156,13 +159,11 @@ function Photos({ photos }: { photos: MealPhoto[] }) {
 
 // ── the day's meals ──
 function Meals({ d, isToday, onEdit }: { d: Diet; isToday: boolean; onEdit: (m: MealRow) => void }) {
-  const nav = useNav();
   if (!d.meals.length) {
     return (
       <Section title="Meals">
         <Card>
-          <Empty title={isToday ? 'Nothing logged today' : 'Nothing logged this day'} body="Pick a recent meal, type what you ate, or send a photo."
-            action={isToday ? 'Log a meal' : undefined} onAction={isToday ? () => nav.openSheet({ kind: 'meal' }) : undefined} />
+          <Empty title={isToday ? 'Nothing logged today' : 'Nothing logged this day'} body={isToday ? 'Pick a recent meal, type what you ate, or send a photo.' : 'Meals you log today show up under today.'} />
         </Card>
       </Section>
     );
@@ -195,12 +196,12 @@ function Week({ d, day, onDay }: { d: Diet; day: string; onDay: (d: string) => v
         <Bars values={d.week.map((x) => x.protein)} labels={d.week.map((x) => weekLetter(x.date))} on={sel >= 0 ? sel : undefined} max={Math.max(target, ...d.week.map((x) => x.protein))} height={88} />
         <View style={u.between}>
           {d.week.map((x) => (
-            <Press key={x.date} label={`${dayLabel(x.date)}, ${x.protein} grams`} onPress={() => onDay(x.date)} feel="tick" wrap={{ flex: 1 }} style={{ height: 32, alignItems: 'center', justifyContent: 'center' }}>
+            <Press key={x.date} label={`${dayLabel(x.date)}, ${x.protein} grams`} onPress={() => onDay(x.date)} feel="tick" hitSlop={{ top: 6, bottom: 6 }} wrap={{ flex: 1 }} style={{ height: 32, alignItems: 'center', justifyContent: 'center' }}>
               <Text style={[t.caption, t.num, x.date === day && { color: a.color }]}>{x.protein}</Text>
             </Press>
           ))}
         </View>
-        <Text style={t.small}>{logged ? `Target met on ${met} of ${logged} logged days. Tap a day to see it.` : 'Logged days fill in here.'}</Text>
+        <Text style={t.small}>{logged ? `Target met on ${met} of ${logged} logged ${logged === 1 ? 'day' : 'days'}. Tap a day to see it.` : 'Logged days fill in here.'}</Text>
       </Card>
     </Section>
   );

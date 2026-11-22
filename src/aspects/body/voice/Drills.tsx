@@ -4,7 +4,7 @@ import { invalidate, upload } from '@/lib/mod';
 import { Button, Card, Empty, Failed, haptic, Loading, Screen, Skeleton, t, useAspect } from '@/aspects/kit';
 import { B, tick, usePoll, useVoice, type Drill, type Take } from '../api';
 import { Guide } from '../guide';
-import { s as u } from '../ui';
+import { s as u, useSeen } from '../ui';
 import { RecordButton } from './Rec';
 import type { Recorded } from './recorder';
 
@@ -12,7 +12,7 @@ type Today = Drill & { done: boolean; take: Take | null };
 
 /** Today's drills, one after another. Drills that are recorded get a score for the one thing they train. */
 export function DrillPlayer({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const voice = useVoice();
+  const voice = useVoice(useSeen(open));
   const drills = voice.data?.today.drills ?? null;
   const [queue, setQueue] = useState<string[] | null>(null);
   // fixed when the player opens; ticking a drill doesn't move the list

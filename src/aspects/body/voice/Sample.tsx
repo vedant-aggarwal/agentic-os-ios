@@ -3,7 +3,7 @@ import { Text, View } from 'react-native';
 import { invalidate, upload } from '@/lib/mod';
 import { Button, Card, CheckRing, Failed, Screen, Skeleton, t, useAspect } from '@/aspects/kit';
 import { B, measureSample, startSample, useVoice, type Sample } from '../api';
-import { s as u } from '../ui';
+import { s as u, useSeen } from '../ui';
 import { RecordButton } from './Rec';
 import type { Recorded } from './recorder';
 
@@ -15,7 +15,7 @@ type Part = 'read' | 'free';
  */
 export function SampleFlow({ open, onClose }: { open: boolean; onClose: () => void }) {
   const a = useAspect();
-  const voice = useVoice();
+  const voice = useVoice(useSeen(open));
   const [sample, setSample] = useState<Sample | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -64,7 +64,7 @@ export function SampleFlow({ open, onClose }: { open: boolean; onClose: () => vo
       {!loading && sample && v ? (
         <>
           <View style={u.row}>
-            <PartPill n={1} name="Read the passage" done={hasRead} on={part === 'read'} onPress={hasRead ? () => setRedo(redo === 'read' ? null : 'read') : undefined} />
+            <PartPill n={1} name="Read aloud" done={hasRead} on={part === 'read'} onPress={hasRead ? () => setRedo(redo === 'read' ? null : 'read') : undefined} />
             <PartPill n={2} name="Talk freely" done={hasFree} on={part === 'free'} onPress={hasFree ? () => setRedo(redo === 'free' ? null : 'free') : undefined} />
           </View>
           {sample.status === 'failed' && hasRead && hasFree && !redo ? (
@@ -77,7 +77,7 @@ export function SampleFlow({ open, onClose }: { open: boolean; onClose: () => vo
             <>
               <Card style={u.gap8}>
                 <Text style={t.label}>Read this aloud at your normal pace</Text>
-                <Text style={[t.lead, { lineHeight: 30 }]}>{v.passage}</Text>
+                <Text style={[t.body, { lineHeight: 26 }]}>{v.passage}</Text>
               </Card>
               <RecordButton key="read" label="Record the passage" min={10} max={120} busy={busy} onDone={(r) => { void send(r); }} />
             </>

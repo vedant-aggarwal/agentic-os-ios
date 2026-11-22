@@ -6,6 +6,13 @@ import type { Change, Evidence } from './api';
 
 // Small pieces the four parts share.
 
+/** True from the first time `open` is true: a closed screen fetches nothing until it is first opened, then stays fresh. */
+export function useSeen(open: boolean) {
+  const [seen, setSeen] = useState(open);
+  if (open && !seen) setSeen(true);
+  return seen || open;
+}
+
 /** The width a chart gets inside a card on this page: the page less its padding and the card's. */
 export function useInnerWidth(extra = 0) {
   const { width } = useAspect();
@@ -51,7 +58,7 @@ export function Tag({ children }: { children: string }) {
 
 /** A score out of 100 with its bar. `margin` draws as "± 4" after the number. */
 export function Score({ v, margin, size = 'big' }: { v: number | null; margin?: number | null; size?: 'big' | 'mid' }) {
-  if (v == null) return <Text style={[size === 'big' ? t.display : t.heading, { color: C.faint }]}>–</Text>;
+  if (v == null) return <Text style={[t.heading, { color: C.faint }]}>Not measured</Text>;
   return (
     <View style={s.scoreLine}>
       <Text style={[size === 'big' ? t.display : t.heading, t.num]}>{v}</Text>

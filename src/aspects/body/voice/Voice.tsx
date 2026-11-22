@@ -2,13 +2,13 @@ import { useState } from 'react';
 import { Text, View } from 'react-native';
 import { fileSource } from '@/lib/mod';
 import { Button, Card, Failed, Icon, IconButton, Loading, Row, Screen, Section, shortDay, Skeleton, Spark, t, timer, useAspect } from '@/aspects/kit';
-import { agoDays, filePath, inDays, measureSample, tick, usePoll, useVoice, type DimId, type Drill, type Voice } from '../api';
+import { agoDays, filePath, measureSample, tick, usePoll, useVoice, type DimId, type Drill, type Voice } from '../api';
 import { useNav } from '../nav';
-import { Delta, List, Score, ScoreRow, Tag, s as u, useInnerWidth } from '../ui';
+import { Delta, List, Score, ScoreRow, Tag, s as u, useInnerWidth, useSeen } from '../ui';
 import { usePlayer } from './recorder';
 
 export function VoiceScreen({ open, onClose, title }: { open: boolean; onClose: () => void; title: string }) {
-  const read = useVoice();
+  const read = useVoice(useSeen(open));
   const { data, error, refresh } = read;
   const [dim, setDim] = useState<DimId | null>(null);
   const [drill, setDrill] = useState<Drill | null>(null);
@@ -71,6 +71,7 @@ function Hero({ v }: { v: Voice }) {
   const nav = useNav();
   const l = v.latest!;
   const days = v.due ? 7 - v.due.days : null;
+  const n = l.dims.filter((d) => d.v != null).length;
   return (
     <Card style={u.gap12}>
       <Text style={t.label}>Overall</Text>
@@ -78,12 +79,12 @@ function Hero({ v }: { v: Voice }) {
         <Score v={l.overall} />
         <Delta d={l.delta} />
       </View>
-      <Text style={t.small}>{`${shortDay(l.date)}, ${agoDays(days)}. The average of the six measures below.`}</Text>
+      <Text style={t.small}>{`${shortDay(l.date)}, ${agoDays(days)}. The average of ${n === 6 ? 'the six measures' : `the ${n} measures taken`} below.`}</Text>
       {l.explain?.text ? <Text style={t.body}>{l.explain.text}</Text> : null}
       <Listen v={v} />
       {v.due ? (
         <View style={u.between}>
-          <Text style={[t.small, u.flex]}>{v.due.days <= 0 ? 'This week\'s sample is due.' : `Next sample ${inDays(v.due.days)}, ${shortDay(v.due.date)}.`}</Text>
+          <Text style={[t.small, u.flex]}>{v.due.days <= 0 ? 'This week\'s sample is due.' : v.due.days === 1 ? 'Next sample tomorrow.' : `Next sample on ${shortDay(v.due.date)}.`}</Text>
           <Button label="Record sample" kind={v.due.days <= 0 ? 'soft' : 'quiet'} small onPress={() => nav.openFlow({ kind: 'sample' })} />
         </View>
       ) : null}
@@ -143,7 +144,7 @@ function Today({ v }: { v: Voice }) {
             <Text style={t.strong}>{focus ? `Aimed at ${focus.name.toLowerCase()}` : 'A warm up for every measure'}</Text>
             <Text style={[t.caption, t.num]}>{`${d.drills.length - left} of ${d.drills.length} done, about ${d.minutes} min`}</Text>
           </View>
-          <Button label={left ? (left < d.drills.length ? 'Continue' : 'Start') : 'Again'} kind={left ? 'accent' : 'quiet'} small onPress={() => nav.openFlow({ kind: 'drills' })} />
+          <Button label={left ? (left < d.drills.length ? 'Continue' : 'Start') : 'Again'} kind={left ? (v.latest ? 'accent' : 'soft') : 'quiet'} small onPress={() => nav.openFlow({ kind: 'drills' })} />
         </View>
         {d.drills.map((x) => (
           <Row key={x.id} title={x.name} done={isDone(x.id, x.done)} onToggle={() => { void toggle(x.id, x.done); }}
@@ -186,7 +187,6 @@ function DimDetail({ id, v, onClose, onDrill }: { id: DimId | null; v: Voice | n
             {d.why ? <Text style={t.body}>{d.why}</Text> : null}
             {trend.filter((p) => p.v != null).length > 1 ? <Spark values={trend.map((p) => p.v)} width={w} height={56} /> : null}
           </Card>
-          {d.needs === 'transcript' && d.v == null ? <Text style={t.small}>This one needs a transcript of the recording. It fills in when the PC can make one.</Text> : null}
           {drills.length ? (
             <Section title="Drills that train it">
               <List>{drills.map((x) => <Row key={x.id} title={x.name} sub={`${x.minutes} min${x.measure ? ', recorded and scored' : ''}`} chevron onPress={() => onDrill(x)} />)}</List>

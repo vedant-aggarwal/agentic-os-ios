@@ -4,11 +4,11 @@ import { invalidate, upload } from '@/lib/mod';
 import { Button, Card, Chip, dayOf, Field, Section, Sheet, Skeleton, Stepper, t, useAspect } from '@/aspects/kit';
 import { addMeal, B, estimate, putDoc, removeDoc, setTargets, useDiet, useGym, type Estimate, type MealRow, type Recent } from '../api';
 import { canPick, pickPhoto } from '../pick';
-import { s as u } from '../ui';
+import { s as u, useSeen } from '../ui';
 
 /** Log a meal in one or two taps: a recent meal, a typed line estimated on the PC, or a photo read in the background. */
 export function LogMeal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const diet = useDiet();
+  const diet = useDiet(undefined, useSeen(open));
   return (
     <Sheet open={open} onClose={onClose} title="Log a meal">
       {open ? <LogBody recent={diet.data?.recent ?? null} error={diet.error} onClose={onClose} /> : null}
@@ -113,8 +113,9 @@ function EditBody({ meal, onClose }: { meal: MealRow; onClose: () => void }) {
 
 /** The day's targets, each saying it was set by you once changed. */
 export function TargetsSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const diet = useDiet();
-  const gym = useGym();
+  const seen = useSeen(open);
+  const diet = useDiet(undefined, seen);
+  const gym = useGym(seen);
   const d = diet.data;
   return (
     <Sheet open={open} onClose={onClose} title="Targets">
@@ -140,7 +141,7 @@ function TargetsBody({ p, k, w, days, onClose }: { p: number; k: number; w: numb
       <Stepper label="Protein" value={protein} onChange={setProtein} step={5} min={20} max={400} format={(v) => `${v} g protein`} />
       <Stepper label="Calories" value={kcal} onChange={setKcal} step={50} min={800} max={6000} format={(v) => `${v} kcal`} />
       <Stepper label="Water" value={water} onChange={setWater} step={1} min={1} max={30} format={(v) => `${v} glasses`} />
-      <Stepper label="Training days" value={train} onChange={setTrain} step={1} min={1} max={7} format={(v) => `${v} days a week`} />
+      <Stepper label="Training days" value={train} onChange={setTrain} step={1} min={1} max={7} format={(v) => `${v} training days a week`} />
       <Button label="Save" kind="accent" busy={busy} onPress={() => { void save(); }} />
     </>
   );

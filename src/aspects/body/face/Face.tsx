@@ -5,16 +5,16 @@ import { C } from '@/theme';
 import { fileSource } from '@/lib/mod';
 import { Button, Card, Failed, Icon, Loading, Press, Row, Screen, Section, Sheet, shortDay, Skeleton, Spark, SP, t, today, useAspect } from '@/aspects/kit';
 import {
-  agoDays, dropScan, filePath, inDays, readScan, tick, useFace, usePoll, useProtocols, useRubric, type Face, type FaceFeature, type Pick, type Protocol, type RoutineRow,
+  agoDays, dropScan, filePath, readScan, tick, useFace, usePoll, useProtocols, useRubric, type Face, type FaceFeature, type Pick, type Protocol, type RoutineRow,
 } from '../api';
 import { useNav } from '../nav';
-import { CHANGE, Delta, EvidenceTag, EVIDENCE, List, Score, ScoreRow, Tag, s as u, useInnerWidth } from '../ui';
+import { CHANGE, Delta, EvidenceTag, EVIDENCE, List, Score, ScoreRow, Tag, s as u, useInnerWidth, useSeen } from '../ui';
 
 export const FREQ: Record<Protocol['freq'], string> = { daily: 'Every day', '3x': 'Three times a week', '2x': 'Twice a week', weekly: 'Once a week', once: 'Once' };
 export const WHEN: Record<'am' | 'pm' | 'day', string> = { am: 'Morning', day: 'Through the day', pm: 'Night' };
 
 export function FaceScreen({ open, onClose, title }: { open: boolean; onClose: () => void; title: string }) {
-  const read = useFace();
+  const read = useFace(useSeen(open));
   const nav = useNav();
   const [feature, setFeature] = useState<string | null>(null);
   const [proto, setProto] = useState<{ p: Protocol; why?: string } | null>(null);
@@ -96,7 +96,7 @@ function Hero({ f }: { f: Face }) {
       <Text style={t.small}>{`${shortDay(l.date)}, ${agoDays(days)}. An AI reading of your photos against a fixed rubric; a change inside the margin is not counted.`}</Text>
       {due ? (
         <View style={u.between}>
-          <Text style={[t.small, u.flex]}>{due.days <= 0 ? 'Rescan due. Skin turns over in about four weeks; two weeks shows the start.' : `Next scan ${inDays(due.days)}, ${shortDay(due.date)}.`}</Text>
+          <Text style={[t.small, u.flex]}>{due.days <= 0 ? 'Rescan due. Skin turns over in about four weeks; two weeks shows the start.' : due.days === 1 ? 'Next scan tomorrow.' : `Next scan on ${shortDay(due.date)}.`}</Text>
           <Button label="Rescan" kind={due.days <= 0 ? 'soft' : 'quiet'} small onPress={() => nav.openFlow({ kind: 'scan' })} />
         </View>
       ) : null}
@@ -162,7 +162,9 @@ function Features({ f, onOpen }: { f: Face; onOpen: (id: string) => void }) {
 const SHOT_WORD: Record<string, string> = { front: 'front', smile: 'smile', left: 'left profile', right: 'right profile', three: 'three quarter', skin: 'skin' };
 const unseenWhy = (f: Face) => {
   const bad = (f.latest?.checks ?? []).filter((c) => !c.ok);
-  return bad.length ? `The ${bad.map((c) => SHOT_WORD[c.shot] ?? c.shot).join(', ')} ${bad.length === 1 ? 'photo was' : 'photos were'} not usable.` : 'Retake those angles next scan.';
+  const names = bad.map((c) => SHOT_WORD[c.shot] ?? c.shot);
+  const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0];
+  return bad.length ? `The ${list} ${bad.length === 1 ? 'photo was' : 'photos were'} not usable.` : 'Retake those angles next scan.';
 };
 
 function FeatureDetail({ id, f, onClose, onProto }: { id: string | null; f: Face | null; onClose: () => void; onProto: (p: Protocol) => void }) {

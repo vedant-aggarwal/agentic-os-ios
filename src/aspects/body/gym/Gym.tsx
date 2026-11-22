@@ -4,15 +4,15 @@ import { C } from '@/theme';
 import { api } from '@/lib/api';
 import { call } from '@/lib/mod';
 import {
-  Bar, Button, Card, Empty, Failed, num, Press, Row, Screen, Section, shortDay, Skeleton, Spark, SP, SURF, t, tint, useAspect, weekLetter,
+  Bar, Button, Card, Empty, Failed, num, Press, Row, Screen, Section, shortDay, Skeleton, Spark, SP, SURF, t, tint, today, useAspect, weekLetter,
 } from '@/aspects/kit';
 import { agoDays, B, goalOf, planAgain, quickLog, useGym, useSession, type Gym, type HistoryRow } from '../api';
 import { useNav } from '../nav';
-import { List, s as u, useInnerWidth } from '../ui';
+import { List, s as u, useInnerWidth, useSeen } from '../ui';
 import { setText } from './workout';
 
 export function GymScreen({ open, onClose, title }: { open: boolean; onClose: () => void; title: string }) {
-  const read = useGym();
+  const read = useGym(useSeen(open));
   const [detail, setDetail] = useState<string | null>(null);
   const { data, error, refresh } = read;
   return (
@@ -186,7 +186,7 @@ function WeightCard({ g }: { g: Gym }) {
               <Button label="Weigh in" kind={(weight.days ?? 0) > 7 ? 'soft' : 'quiet'} small onPress={() => nav.openSheet({ kind: 'weigh' })} />
             </View>
             {weight.trail.length > 1 ? <Spark values={weight.trail.map((x) => x.v)} width={w} height={72} goal={goal ?? undefined} /> : null}
-            {goal ? <Text style={t.caption}>{`Goal ${num(goal)} kg${typeof weight.goal === 'object' && weight.goal?.by ? ` by ${shortDay(weight.goal.by)}` : ''}. The dashed line.`}</Text> : null}
+            {goal ? <Text style={t.caption}>{`Goal ${num(goal)} kg${typeof weight.goal === 'object' && weight.goal?.by && weight.goal.by >= today() ? ` by ${shortDay(weight.goal.by)}` : ''}. The dashed line.`}</Text> : null}
           </>
         )}
       </Card>
@@ -269,7 +269,7 @@ function History({ g, onOpen }: { g: Gym; onOpen: (id: string) => void }) {
   );
 }
 function HistoryLine({ h, onOpen }: { h: HistoryRow; onOpen: (id: string) => void }) {
-  const parts = [h.minutes ? `${h.minutes} min` : null, h.sets ? `${h.sets} sets` : null, h.records ? `${h.records} ${h.records === 1 ? 'record' : 'records'}` : null].filter(Boolean);
+  const parts = [h.minutes ? `${h.minutes} min` : null, h.sets ? `${h.sets} ${h.sets === 1 ? 'set' : 'sets'}` : null, h.records ? `${h.records} ${h.records === 1 ? 'record' : 'records'}` : null].filter(Boolean);
   return <Row title={h.name} sub={`${shortDay(h.date)}${parts.length ? `, ${parts.join(', ')}` : ''}`} chevron onPress={() => onOpen(h.id)} />;
 }
 

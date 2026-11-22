@@ -6,7 +6,7 @@ import { call, fileSource, invalidate, upload } from '@/lib/mod';
 import { Button, Card, CheckRing, Failed, Icon, Screen, Skeleton, SP, t, useAspect } from '@/aspects/kit';
 import { B, dropScan, filePath, readScan, startScan, useRubric, type ScanSummary, type Shot } from '../api';
 import { canPick, pickPhoto } from '../pick';
-import { s as u } from '../ui';
+import { s as u, useSeen } from '../ui';
 
 /**
  * The guided six-photo scan. Each photo goes to the PC as soon as it is chosen; the PC checks size, light and focus
@@ -14,7 +14,7 @@ import { s as u } from '../ui';
  */
 export function ScanFlow({ open, onClose }: { open: boolean; onClose: () => void }) {
   const a = useAspect();
-  const rubric = useRubric();
+  const rubric = useRubric(useSeen(open));
   const [scan, setScan] = useState<ScanSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refused, setRefused] = useState<Record<string, string>>({});
@@ -77,7 +77,7 @@ export function ScanFlow({ open, onClose }: { open: boolean; onClose: () => void
 
   const loading = !error && (!scan || !rubric.data);
   return (
-    <Screen open={open} onClose={onClose} title="Face scan"
+    <Screen open={open} onClose={onClose} title="Face scan" immersive
       right={scan && have > 0 ? <Button label="Throw away" kind="quiet" small onPress={() => { void throwAway(); }} /> : undefined}>
       {error ? <Failed message={error} onRetry={() => { setError(null); setAttempt((n) => n + 1); }} /> : null}
       {!error && rubric.error && !rubric.data ? <Failed message={rubric.error} onRetry={() => { void rubric.refresh(); }} /> : null}

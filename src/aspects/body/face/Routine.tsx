@@ -3,12 +3,12 @@ import { Text, View } from 'react-native';
 import { Button, Card, Empty, Failed, haptic, Screen, Skeleton, t, useAspect } from '@/aspects/kit';
 import { tick, useFace, type RoutineRow } from '../api';
 import { Guide } from '../guide';
-import { s as u } from '../ui';
+import { s as u, useSeen } from '../ui';
 import { WHEN } from './Face';
 
 /** The routine, guided: one step at a time with its timer. Finishing a row ticks it for today. */
 export function RoutinePlayer({ open, when, onClose }: { open: boolean; when: 'am' | 'pm' | 'day'; onClose: () => void }) {
-  const face = useFace();
+  const face = useFace(useSeen(open));
   const r = face.data?.routine ?? null;
   const [queue, setQueue] = useState<RoutineRow[] | null>(null);
   // the rows are fixed when the player opens, so ticking one doesn't reshuffle the list under the thumb

@@ -111,11 +111,11 @@ export type Voice = {
 
 // ── reads ──
 export const useHome = () => useGet<Home>(`${B}/home`);
-export const useGym = () => useGet<Gym>(`${B}/gym`);
-export const useDiet = (day?: string) => useGet<Diet>(`${B}/diet${day ? `?day=${day}` : ''}`);
-export const useFace = () => useGet<Face>(`${B}/face`);
-export const useVoice = () => useGet<Voice>(`${B}/voice`);
-export const useRubric = () => useGet<Rubric>(`${B}/face/rubric`);
+export const useGym = (on = true) => useGet<Gym>(on ? `${B}/gym` : null);
+export const useDiet = (day?: string, on = true) => useGet<Diet>(on ? `${B}/diet${day ? `?day=${day}` : ''}` : null);
+export const useFace = (on = true) => useGet<Face>(on ? `${B}/face` : null);
+export const useVoice = (on = true) => useGet<Voice>(on ? `${B}/voice` : null);
+export const useRubric = (on = true) => useGet<Rubric>(on ? `${B}/face/rubric` : null);
 export const useProtocols = () => useGet<Library>(`${B}/face/protocols`);
 export const useSession = (id: string | null) => useGet<SessionDetail>(id ? `${B}/session/${encodeURIComponent(id)}` : null);
 export const usePrev = (ex: string | null, reps = 10) => useGet<Prev>(ex ? `${B}/prev?ex=${encodeURIComponent(ex)}&reps=${reps}` : null);

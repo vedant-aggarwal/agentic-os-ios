@@ -140,8 +140,11 @@ function PartRow({ part, h }: { part: Part; h: HomeData }) {
     ? <MiniRing done={Math.min(done, total)} total={total} text={part === 'diet' ? `${Math.round((Math.min(done, total) / total) * 100)}%` : undefined} />
     : <View style={u.icon40}><Glyph sf={icon[0] as never} d={icon[1]} size={22} color={C.muted} /></View>;
   return (
-    <Row title={PART_NAME[part]} sub={sub} label={`${PART_NAME[part]}, ${sub}`} onPress={() => nav.openPart(part)} left={left}
-      right={btn ? <Button label={btn.label} kind="soft" small onPress={btn.run} /> : undefined} />
+    // the row opens the part; the button beside it (not inside it) does today's one thing
+    <View style={u.row}>
+      <Row title={PART_NAME[part]} sub={sub} label={`Open ${PART_NAME[part]}, ${sub}`} onPress={() => nav.openPart(part)} left={left} style={u.flex} chevron={!btn} />
+      {btn ? <Button label={btn.label} kind="soft" small onPress={btn.run} /> : null}
+    </View>
   );
 }
 

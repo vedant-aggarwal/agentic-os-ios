@@ -38,8 +38,9 @@ type Rotate = 'auto' | 'landscape' | 'portrait';
 type Route = { route: 'connecting' | 'direct' | 'relay' | 'frames'; net?: string; stream?: string };
 type Stats = { fps: number; rtt: number; w: number; h: number };
 
+type Screen = { i: number; label: string; w: number; h: number; primary: boolean };
 // kept for the rest of the app session, so the next session opens the way the last one was left
-const prefs = { input: 'mouse' as Input, quality: 'auto' as Quality, fit: 'fit' as Fit, rotate: 'auto' as Rotate, side: 'r' as 'l' | 'r', y: 0.62 };
+const prefs = { input: 'mouse' as Input, quality: 'auto' as Quality, fit: 'fit' as Fit, rotate: 'auto' as Rotate, side: 'r' as 'l' | 'r', y: 0.62, display: 0 };
 
 const haptic = (k: 'light' | 'medium' | 'select') => {
   if (Platform.OS === 'web') return;
@@ -73,7 +74,9 @@ export function RemoteDesktop({ open, onClose }: { open: boolean; onClose: () =>
   const [kbH, setKbH] = useState(0);
   const [bar, setBar] = useState(true); // the session bar at the top
   const [hint, setHint] = useState<string | null>(null);
-  const [inject] = useState(() => `window.AOS = ${JSON.stringify({ api: API, token: currentToken() ?? '', quality: prefs.quality, input: prefs.input, fit: prefs.fit })}; true;`);
+  const [screens, setScreens] = useState<Screen[]>([]);
+  const [display, setDisplay] = useState(prefs.display);
+  const [inject] = useState(() => `window.AOS = ${JSON.stringify({ api: API, token: currentToken() ?? '', quality: prefs.quality, input: prefs.input, fit: prefs.fit, display: prefs.display })}; true;`);
 
   // rotation: free (or as chosen) while open, back to portrait on close
   useEffect(() => {
@@ -123,12 +126,24 @@ export function RemoteDesktop({ open, onClose }: { open: boolean; onClose: () =>
   const pickQuality = (q: Quality) => { prefs.quality = q; setQuality(q); js(`setQuality(${JSON.stringify(q)})`); };
   const pickFit = (f: Fit) => { prefs.fit = f; setFit(f); js(`setFit(${JSON.stringify(f)})`); };
   const pickRotate = (r: Rotate) => { prefs.rotate = r; setRotate(r); applyRotation(r); };
+  /** Turn the phone's view by hand (works with the iPhone's rotation lock on): landscape, then back to portrait. */
+  const turn = () => {
+    const next: Rotate = rotate === 'landscape' ? 'portrait' : 'landscape';
+    pickRotate(next);
+    setHint(next === 'landscape' ? 'Landscape. Tap Rotate again for portrait; Display has Auto.' : 'Portrait.');
+  };
+  const pickDisplay = (i: number) => {
+    prefs.display = i; setDisplay(i); js(`setDisplay(${i})`);
+    const sc = screens.find((x) => x.i === i);
+    if (sc) setHint(`${sc.label} screen`);
+  };
+  const nextDisplay = () => { if (screens.length > 1) pickDisplay(screens[(screens.findIndex((x) => x.i === display) + 1) % screens.length].i); };
 
   const onMessage = (e: { nativeEvent: { data: string } }) => {
     let m: { type: string; [k: string]: any };
     try { m = JSON.parse(e.nativeEvent.data); } catch { return; }
     switch (m.type) {
-      case 'a': pc.abs(m.x, m.y); break;
+      case 'a': pc.abs(m.x, m.y, m.d ?? 0); break;
       case 'btn':
         pc.button(m.op, m.which === 'r' ? 'r' : 'l');
         haptic(m.op === 'd' ? 'medium' : 'select');
@@ -139,6 +154,12 @@ export function RemoteDesktop({ open, onClose }: { open: boolean; onClose: () =>
       case 'route': setRoute({ route: m.route, net: m.net, stream: m.stream }); if (m.route !== 'direct' && m.route !== 'relay') setStats(null); break;
       case 'stats': setStats({ fps: m.fps, rtt: m.rtt, w: m.w, h: m.h }); break;
       case 'zoom': setZoom(m.s); break;
+      case 'displays':
+        if (Array.isArray(m.list)) {
+          setScreens(m.list);
+          if (!m.list.some((x: Screen) => x.i === prefs.display)) { prefs.display = 0; setDisplay(0); }
+        }
+        break;
     }
   };
 
@@ -166,6 +187,7 @@ export function RemoteDesktop({ open, onClose }: { open: boolean; onClose: () =>
           onBlur={() => setTyping(false)} />
 
         <SessionBar visible={bar || menu} top={insets.top + 8} route={route} stats={stats} zoom={zoom} controls={pc.connected}
+          screen={screens.length > 1 ? screens.find((x) => x.i === display)?.label : undefined}
           onPress={() => setBar((b) => !b)} />
 
         {hint ? <View pointerEvents="none" style={[s.hint, { top: insets.top + 52 }]}><Text style={s.hintText}>{hint}</Text></View> : null}
@@ -176,17 +198,21 @@ export function RemoteDesktop({ open, onClose }: { open: boolean; onClose: () =>
         {menu ? <Pressable style={StyleSheet.absoluteFill} onPress={() => setMenu(false)} accessibilityLabel="Close the menu" /> : null}
 
         <Fab width={width} height={height} insets={insets} bottomLimit={keysRow ? (kbH || insets.bottom) + 52 : insets.bottom}
-          open={menu} onToggle={() => { setMenu((v) => !v); setSheet(null); }}
+          open={menu} setOpen={(v) => { setMenu(v); if (v) setSheet(null); }}
           items={[
-            { key: 'kb', icon: 'keyboard', label: typing ? 'Hide keyboard' : 'Keyboard', on: typing, onPress: () => { setMenu(false); toggleKeyboard(); } },
-            { key: 'keys', icon: 'command', label: 'PC keys', on: keysOnly, onPress: () => { setMenu(false); setKeysOnly((v) => !v); } },
+            { key: 'kb', icon: 'keyboard', label: typing ? 'Hide keyboard' : 'Keyboard', on: typing, onPress: toggleKeyboard },
+            { key: 'keys', icon: 'command', label: 'PC keys', on: keysOnly, onPress: () => setKeysOnly((v) => !v) },
             {
               key: 'mode', icon: mode === 'mouse' ? 'cursorarrow' : 'hand.point.up.left', label: mode === 'mouse' ? 'Mouse mode' : 'Touch mode',
               onPress: () => pickMode(mode === 'mouse' ? 'touch' : 'mouse'),
             },
-            { key: 'act', icon: 'bolt.fill', label: 'Actions', onPress: () => { setMenu(false); setSheet('actions'); } },
-            { key: 'disp', icon: 'display', label: 'Display', onPress: () => { setMenu(false); setSheet('display'); } },
-            { key: 'fit', icon: 'arrow.down.right.and.arrow.up.left', label: 'Fit screen', onPress: () => { setMenu(false); js('resetView()'); } },
+            ...(screens.length > 1 ? [{
+              key: 'scr', icon: 'rectangle.on.rectangle', label: `Screen: ${screens.find((x) => x.i === display)?.label ?? 'Main'} (next)`, onPress: nextDisplay,
+            }] : []),
+            { key: 'rot', icon: 'rectangle.landscape.rotate', label: rotate === 'landscape' ? 'Portrait' : 'Landscape', on: rotate === 'landscape', onPress: turn },
+            { key: 'act', icon: 'bolt.fill', label: 'Actions', onPress: () => setSheet('actions') },
+            { key: 'disp', icon: 'slider.horizontal.3', label: 'Display', onPress: () => setSheet('display') },
+            { key: 'fit', icon: 'arrow.down.right.and.arrow.up.left', label: 'Fit screen', onPress: () => js('resetView()') },
             { key: 'end', icon: 'xmark', label: 'End session', danger: true, onPress: close },
           ]} />
 
@@ -195,6 +221,7 @@ export function RemoteDesktop({ open, onClose }: { open: boolean; onClose: () =>
             {sheet === 'actions'
               ? <Actions onKey={(k) => { kb.shortcut(k); haptic('light'); }} />
               : <Display quality={quality} fit={fit} rotate={rotate} mode={mode} canRotate={!!orient}
+                  screens={screens} display={display} onDisplay={pickDisplay}
                   onQuality={pickQuality} onFit={pickFit} onRotate={pickRotate} onMode={pickMode}
                   onReconnect={() => { js('start()'); setSheet(null); }} />}
           </Sheet>
@@ -205,8 +232,8 @@ export function RemoteDesktop({ open, onClose }: { open: boolean; onClose: () =>
 }
 
 // ---- the session bar: route, frame rate, round trip ----
-function SessionBar({ visible, top, route, stats, zoom, controls, onPress }: {
-  visible: boolean; top: number; route: Route; stats: Stats | null; zoom: number; controls: boolean; onPress: () => void;
+function SessionBar({ visible, top, route, stats, zoom, controls, screen, onPress }: {
+  visible: boolean; top: number; route: Route; stats: Stats | null; zoom: number; controls: boolean; screen?: string; onPress: () => void;
 }) {
   const [a] = useState(() => new Animated.Value(1));
   useEffect(() => { Animated.timing(a, { toValue: visible ? 1 : 0, duration: 220, useNativeDriver: true }).start(); }, [visible, a]);
@@ -214,6 +241,7 @@ function SessionBar({ visible, top, route, stats, zoom, controls, onPress }: {
     : route.net === 'tailscale' ? 'Tailscale' : route.net === 'wifi' ? 'Wi-Fi' : 'Direct';
   const color = route.route === 'direct' ? '#3DDC97' : route.route === 'relay' ? '#FFB547' : route.route === 'frames' ? '#FF7A59' : C.faint;
   const parts = [net];
+  if (screen) parts.unshift(screen);
   if (stats?.fps) parts.push(`${stats.fps} fps`);
   if (stats?.rtt) parts.push(`${stats.rtt} ms`);
   if (stats?.h) parts.push(`${stats.h}p`);
@@ -229,72 +257,125 @@ function SessionBar({ visible, top, route, stats, zoom, controls, onPress }: {
   );
 }
 
-// ---- the floating button and its menu ----
+// ---- the floating button: press and slide to an action ----
+// Press the button and the actions fan out around it, facing the middle of the screen. Keep the finger down, slide
+// onto one and let go to run it. A quick tap leaves the fan open to tap instead. Hold still on the button to move it;
+// let go and it snaps to the nearer side.
 type Item = { key: string; icon: string; label: string; on?: boolean; danger?: boolean; onPress: () => void };
 const FAB = 54;
 const ITEM = 46;
+const HOLD_TO_MOVE = 450;
+const savePos = (side: 'l' | 'r', y: number) => { prefs.side = side; prefs.y = y; };
 
-function Fab({ width, height, insets, bottomLimit, open, onToggle, items }: {
+function Fab({ width, height, insets, bottomLimit, open, setOpen, items }: {
   width: number; height: number; insets: { top: number; left: number; right: number; bottom: number }; bottomLimit: number;
-  open: boolean; onToggle: () => void; items: Item[];
+  open: boolean; setOpen: (v: boolean) => void; items: Item[];
 }) {
   const [side, setSide] = useState(prefs.side);
   const [fy, setFy] = useState(prefs.y); // 0..1 down the screen
+  const [hot, setHot] = useState<string | null>(null); // the action under the finger
+  const [moving, setMoving] = useState<{ x: number; y: number } | null>(null); // moving the button: where the finger went down
+  const [drag] = useState(() => new Animated.ValueXY({ x: 0, y: 0 }));
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const press = useRef({ moved: false, wasOpen: false, x0: 0, y0: 0, moving: false });
+
   const minY = insets.top + 12, maxY = height - bottomLimit - FAB - 12;
   const x = side === 'l' ? insets.left + 12 : width - insets.right - FAB - 12;
   const y = Math.min(Math.max(minY + (maxY - minY) * fy, minY), maxY);
-  const [drag] = useState(() => new Animated.ValueXY({ x: 0, y: 0 }));
-  const [start, setStart] = useState<{ x: number; y: number } | null>(null); // where the finger went down
+  const cx = x + FAB / 2, cy = y + FAB / 2;
 
-  // drag it anywhere; let go and it snaps to the nearer side. A touch that hardly moves is a tap.
-  const release = (dx: number, dy: number) => {
-    setStart(null);
-    drag.setValue({ x: 0, y: 0 });
-    if (Math.hypot(dx, dy) < 6) { lightTap(); onToggle(); return; }
-    const ny = Math.min(Math.max(y + dy, minY), maxY);
-    const nside = x + dx + FAB / 2 < width / 2 ? 'l' : 'r';
-    const nfy = maxY > minY ? (ny - minY) / (maxY - minY) : 0.5;
-    prefs.side = nside; prefs.y = nfy;
-    setSide(nside); setFy(nfy);
-    if (nside !== side || Math.abs(dy) > 6) haptic('light');
+  // the fan: an arc around the button, centred on the direction of the screen's middle
+  const n = items.length;
+  const step = Math.min(Math.PI / 6, Math.PI / Math.max(n - 1, 1));
+  const R = Math.max(104, (ITEM + 6) / step);
+  const toward = Math.atan2(height / 2 - cy, width / 2 - cx);
+  const spots = items.map((it, k) => {
+    const a = toward + (k - (n - 1) / 2) * step;
+    const ix = Math.min(Math.max(cx + R * Math.cos(a), insets.left + ITEM / 2 + 4), width - insets.right - ITEM / 2 - 4);
+    const iy = Math.min(Math.max(cy + R * Math.sin(a), insets.top + ITEM / 2 + 4), height - insets.bottom - ITEM / 2 - 4);
+    return { it, x: ix, y: iy };
+  });
+  const hotItem = items.find((i) => i.key === hot);
+  const pillX = cx + (R + 64) * Math.cos(toward), pillY = cy + (R + 64) * Math.sin(toward);
+
+  const near = (px: number, py: number) => {
+    let best: string | null = null, bestD = ITEM * 0.85;
+    for (const s of spots) { const d = Math.hypot(px - s.x, py - s.y); if (d < bestD) { bestD = d; best = s.it.key; } }
+    return best;
   };
+  const clearTimer = () => { if (timer.current) { clearTimeout(timer.current); timer.current = null; } };
+  type Ev = { nativeEvent: { pageX: number; pageY: number } };
   const handlers = {
     onStartShouldSetResponder: () => true,
     onMoveShouldSetResponder: () => true,
     onResponderTerminationRequest: () => false,
-    onResponderGrant: (e: { nativeEvent: { pageX: number; pageY: number } }) => setStart({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY }),
-    onResponderMove: (e: { nativeEvent: { pageX: number; pageY: number } }) => {
-      if (start) drag.setValue({ x: e.nativeEvent.pageX - start.x, y: e.nativeEvent.pageY - start.y });
+    onResponderGrant: (e: Ev) => {
+      const { pageX, pageY } = e.nativeEvent;
+      press.current = { moved: false, wasOpen: open, x0: pageX, y0: pageY, moving: false };
+      setOpen(true);
+      haptic('light');
+      clearTimer();
+      timer.current = setTimeout(() => { // held still: move the button instead
+        if (press.current.moved) return;
+        press.current.moving = true;
+        setOpen(false); setHot(null); setMoving({ x: press.current.x0, y: press.current.y0 });
+        haptic('medium');
+      }, HOLD_TO_MOVE);
     },
-    onResponderRelease: (e: { nativeEvent: { pageX: number; pageY: number } }) => {
-      if (start) release(e.nativeEvent.pageX - start.x, e.nativeEvent.pageY - start.y); else setStart(null);
+    onResponderMove: (e: Ev) => {
+      const { pageX, pageY } = e.nativeEvent;
+      const P = press.current;
+      if (P.moving) { drag.setValue({ x: pageX - P.x0, y: pageY - P.y0 }); return; }
+      if (!P.moved && Math.hypot(pageX - P.x0, pageY - P.y0) > 8) { P.moved = true; clearTimer(); }
+      const h = near(pageX, pageY);
+      if (h !== hot) { setHot(h); if (h) haptic('select'); }
     },
-    onResponderTerminate: () => { setStart(null); drag.setValue({ x: 0, y: 0 }); },
+    onResponderRelease: (e: Ev) => {
+      clearTimer();
+      const { pageX, pageY } = e.nativeEvent;
+      const P = press.current;
+      if (P.moving) {
+        const dx = pageX - P.x0, dy = pageY - P.y0;
+        drag.setValue({ x: 0, y: 0 });
+        setMoving(null);
+        const ny = Math.min(Math.max(y + dy, minY), maxY);
+        const nside = x + dx + FAB / 2 < width / 2 ? 'l' : 'r';
+        const nfy = maxY > minY ? (ny - minY) / (maxY - minY) : 0.5;
+        savePos(nside, nfy);
+        setSide(nside); setFy(nfy);
+        return;
+      }
+      const h = near(pageX, pageY);
+      setHot(null);
+      if (h) { setOpen(false); haptic('medium'); items.find((i) => i.key === h)?.onPress(); return; }
+      if (!P.moved) { setOpen(!P.wasOpen); return; } // a tap: open the fan to tap, or close it
+      setOpen(false); // slid off without choosing
+    },
+    onResponderTerminate: () => { clearTimer(); setHot(null); setMoving(null); drag.setValue({ x: 0, y: 0 }); },
   };
 
-  // the menu opens toward the middle of the screen: up from a low button, down from a high one
-  const up = y > height / 2;
-  const listH = items.length * (ITEM + 10);
-  const listTop = up ? Math.max(insets.top + 8, y - listH - 4) : y + FAB + 10;
   return (
     <>
       {open ? (
-        <View pointerEvents="box-none" style={[s.menu, side === 'l' ? { left: x + (FAB - ITEM) / 2 } : { right: width - x - FAB + (FAB - ITEM) / 2 }, { top: listTop }]}>
-          {items.map((it) => (
-            <Pressable key={it.key} accessibilityRole="button" accessibilityLabel={it.label} onPress={() => { lightTap(); it.onPress(); }}
-              style={({ pressed }) => [s.itemRow, side === 'r' && { flexDirection: 'row-reverse' }, pressed && { opacity: 0.7 }]}>
-              <View style={[s.item, it.on && { backgroundColor: ACCENT }, it.danger && { backgroundColor: RED }]}>
-                <Sym name={it.icon as never} size={19} color="#fff" fallback={<Text style={s.itemFallback}>{it.label[0]}</Text>} />
-              </View>
-              <View style={s.itemLabel}><Text style={s.itemLabelText}>{it.label}</Text></View>
+        <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+          {spots.map(({ it, x: ix, y: iy }) => (
+            <Pressable key={it.key} accessibilityRole="button" accessibilityLabel={it.label}
+              onPress={() => { lightTap(); setOpen(false); it.onPress(); }}
+              style={[s.item, { left: ix - ITEM / 2, top: iy - ITEM / 2 }, it.on && { backgroundColor: ACCENT }, it.danger && { backgroundColor: RED },
+                hot === it.key && s.itemHot]}>
+              <Sym name={it.icon as never} size={19} color="#fff" fallback={<Text style={s.itemFallback}>{it.label[0]}</Text>} />
             </Pressable>
           ))}
+          <View pointerEvents="none" style={[s.fanPill, { left: Math.min(Math.max(pillX - 90, 8), width - 188), top: Math.min(Math.max(pillY - 16, insets.top + 4), height - 40) }]}>
+            <Text style={s.itemLabelText} numberOfLines={1}>{hotItem ? hotItem.label : 'Slide to an action'}</Text>
+          </View>
         </View>
       ) : null}
       <Animated.View {...handlers} accessible accessibilityRole="button" accessibilityLabel={open ? 'Close the session menu' : 'Session menu'}
-        onAccessibilityTap={onToggle}
-        style={[s.fab, { left: x, top: y, transform: drag.getTranslateTransform() }, open && { backgroundColor: '#2A2D36' }]}>
-        <Sym name={open ? 'xmark' : 'ellipsis'} size={open ? 18 : 22} color="#fff" fallback={<Text style={s.itemFallback}>{open ? '×' : '•••'}</Text>} />
+        onAccessibilityTap={() => setOpen(!open)}
+        style={[s.fab, { left: x, top: y, transform: drag.getTranslateTransform() }, (open || moving) && { backgroundColor: '#2A2D36' }]}>
+        <Sym name={moving ? 'arrow.up.and.down.and.arrow.left.and.right' : open ? 'xmark' : 'circle.grid.2x2.fill'} size={open ? 18 : 20} color="#fff"
+          fallback={<Text style={s.itemFallback}>{open ? '×' : '•••'}</Text>} />
       </Animated.View>
     </>
   );
@@ -431,12 +512,18 @@ function Seg<T extends string>({ value, options, onChange }: { value: T; options
   );
 }
 
-function Display({ quality, fit, rotate, mode, canRotate, onQuality, onFit, onRotate, onMode, onReconnect }: {
-  quality: Quality; fit: Fit; rotate: Rotate; mode: Input; canRotate: boolean;
+function Display({ quality, fit, rotate, mode, canRotate, screens, display, onDisplay, onQuality, onFit, onRotate, onMode, onReconnect }: {
+  quality: Quality; fit: Fit; rotate: Rotate; mode: Input; canRotate: boolean; screens: Screen[]; display: number; onDisplay: (i: number) => void;
   onQuality: (q: Quality) => void; onFit: (f: Fit) => void; onRotate: (r: Rotate) => void; onMode: (m: Input) => void; onReconnect: () => void;
 }) {
   return (
     <>
+      {screens.length > 1 ? (
+        <Field label="Screen" note="Which of the PC's monitors to show. Taps and the pointer land on that one.">
+          <Seg value={String(display)} onChange={(v) => onDisplay(Number(v))}
+            options={screens.map((x) => [String(x.i), `${x.label}${x.h > x.w ? ' ▯' : ''}`] as [string, string])} />
+        </Field>
+      ) : null}
       <Field label="Quality" note="Auto picks Best on Wi-Fi or Tailscale and Fast through the relay.">
         <Seg value={quality} onChange={onQuality} options={[['auto', 'Auto'], ['pc', 'Best 1080p'], ['lite', 'Fast 720p']]} />
       </Field>
@@ -486,14 +573,13 @@ const s = StyleSheet.create({
     position: 'absolute', width: FAB, height: FAB, borderRadius: FAB / 2, alignItems: 'center', justifyContent: 'center',
     backgroundColor: ACCENT, opacity: 0.94, shadowColor: '#000', shadowOpacity: 0.45, shadowRadius: 10, shadowOffset: { width: 0, height: 4 },
   },
-  menu: { position: 'absolute', gap: 10 },
-  itemRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   item: {
-    width: ITEM, height: ITEM, borderRadius: ITEM / 2, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(32,34,42,0.96)',
+    position: 'absolute', width: ITEM, height: ITEM, borderRadius: ITEM / 2, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(32,34,42,0.96)',
     borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.16)',
   },
   itemFallback: { fontFamily: F.semibold, fontSize: 15, color: '#fff' },
-  itemLabel: { paddingHorizontal: 11, height: 30, borderRadius: 15, justifyContent: 'center', backgroundColor: 'rgba(16,17,22,0.9)' },
+  itemHot: { transform: [{ scale: 1.22 }], borderColor: '#fff', borderWidth: 1.5 },
+  fanPill: { position: 'absolute', width: 180, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(16,17,22,0.92)' },
   itemLabelText: { fontFamily: F.semibold, fontSize: 13, lineHeight: 17, color: C.text },
   keysWrap: {
     position: 'absolute', left: 0, right: 0, height: 52, flexDirection: 'row', alignItems: 'center', overflow: 'hidden',

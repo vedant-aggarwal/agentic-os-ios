@@ -101,8 +101,8 @@ export function usePointer(active: boolean) {
   // "kd <key>" / "ku <key>": hold a key down and let it go (hold Alt, tap Tab); the PC lets go of all if this drops
   const keyDown = useCallback((k: string) => raw(`kd ${k}`), [raw]);
   const keyUp = useCallback((k: string) => raw(`ku ${k}`), [raw]);
-  // the remote screen: put the cursor at a point on the PC's main display, x and y from 0 to 1
-  const abs = useCallback((x: number, y: number) => raw(`a ${x.toFixed(4)} ${y.toFixed(4)}`), [raw]);
+  // the remote screen: put the cursor at a point on one of the PC's monitors (0 = main), x and y from 0 to 1
+  const abs = useCallback((x: number, y: number, d = 0) => raw(`a ${x.toFixed(4)} ${y.toFixed(4)} ${d}`), [raw]);
 
   return { connected: route !== null, route, move, scroll, button, type, key, keyDown, keyUp, abs };
 }

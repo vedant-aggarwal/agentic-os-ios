@@ -9,6 +9,7 @@
 //          follows the pointer).
 //   touch: the pointer goes where you touch; tap clicks there, hold and let go right-clicks, hold then move drags,
 //          two-finger tap right-clicks, two fingers scroll (or pan when zoomed in), pinch to zoom.
+// Monitors: setDisplay(i) switches to monitor i (0 = main); the list comes from GET /pc/screen and goes to the app.
 // Three-finger tap: show or hide the keyboard. Input goes to the app (postMessage), which sends it to the PC.
 export const REMOTE_PAGE = String.raw`<!doctype html><html><head>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
@@ -30,7 +31,8 @@ var A = window.AOS || {}, H = { Authorization: 'Bearer ' + A.token, 'Content-Typ
 var post = function(m){ try { window.ReactNativeWebView.postMessage(JSON.stringify(m)); } catch(e){} };
 var video = document.getElementById('v'), img = document.getElementById('i'), stage = document.getElementById('stage');
 var curEl = document.getElementById('cur'), ring = document.getElementById('ring');
-var pc = null, ws = null, gen = 0, mode = 'video', quality = A.quality || 'auto', input = A.input || 'mouse', fit = A.fit || 'fit';
+var pc = null, ws = null, gen = 0, mode = 'video', quality = A.quality || 'auto', input = A.input || 'mouse', fit = A.fit || 'fit', mon = A.display || 0;
+function streamName(src){ return src + (mon ? String(mon) : ''); }
 
 // ---------------- connection ----------------
 function cleanup(){
@@ -66,12 +68,13 @@ async function connect(src, my){
   post({ type: 'route', route: 'connecting' });
   var ice = await (await fetch(A.api + '/pc/screen', { headers: H })).json();
   if (my !== gen) return;
+  if (ice.displays) post({ type: 'displays', list: ice.displays });
   var p = pc = new RTCPeerConnection({ iceServers: ice.iceServers || [] });
   p.addTransceiver('video', { direction: 'recvonly' });
   p.ontrack = function(e){ video.srcObject = e.streams[0] || new MediaStream([e.track]); video.play().catch(function(){}); };
   await p.setLocalDescription(await p.createOffer());
   await gathered(p, 2500);
-  var r = await fetch(A.api + '/pc/screen/offer', { method: 'POST', headers: H, body: JSON.stringify({ sdp: p.localDescription.sdp, stream: src }) });
+  var r = await fetch(A.api + '/pc/screen/offer', { method: 'POST', headers: H, body: JSON.stringify({ sdp: p.localDescription.sdp, stream: streamName(src) }) });
   var j = await r.json();
   if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
   if (my !== gen) return;
@@ -80,7 +83,7 @@ async function connect(src, my){
   var rt = await routeOf(p);
   if (rt.type === 'relay' && src === 'pc' && quality === 'auto') return connect('lite', my); // through the relay: less data
   video.style.display = 'block'; img.style.display = 'none';
-  post({ type: 'route', route: rt.type, net: rt.net, stream: src });
+  post({ type: 'route', route: rt.type, net: rt.net, stream: src, display: mon });
   p.onconnectionstatechange = function(){
     if (p.connectionState === 'failed' || p.connectionState === 'disconnected') { post({ type: 'route', route: 'connecting' }); setTimeout(start, 800); }
   };
@@ -88,7 +91,7 @@ async function connect(src, my){
 function frames(my){
   cleanup(); mode = 'frames';
   post({ type: 'route', route: 'frames' });
-  var s = ws = new WebSocket(A.api.replace(/^http/, 'ws') + '/pc/screen/frames?token=' + encodeURIComponent(A.token));
+  var s = ws = new WebSocket(A.api.replace(/^http/, 'ws') + '/pc/screen/frames?token=' + encodeURIComponent(A.token) + '&d=' + mon);
   s.binaryType = 'blob';
   var last = null;
   s.onmessage = function(e){
@@ -107,6 +110,7 @@ async function start(){
 window.start = start;
 window.stop = function(){ gen++; cleanup(); };
 window.setQuality = function(q){ quality = q; start(); };
+window.setDisplay = function(i){ mon = i; cur = { x: 0.5, y: 0.5 }; start(); };
 
 // frame rate and round trip, for the session bar
 setInterval(async function(){
@@ -177,7 +181,7 @@ function drawCursor(){
   curEl.style.display = 'block';
   curEl.style.transform = 'translate(' + (p.x - 3) + 'px,' + (p.y - 2) + 'px)';
 }
-function sendCur(){ post({ type: 'a', x: cur.x, y: cur.y }); drawCursor(); }
+function sendCur(){ post({ type: 'a', x: cur.x, y: cur.y, d: mon }); drawCursor(); }
 // zoomed in: slide the view so the pointer stays on screen
 function follow(){
   if (view.s <= 1.01) return;
@@ -204,7 +208,7 @@ document.addEventListener('touchstart', function(e){
       if (!g || g.n !== 1 || g.moved) return;
       g.held = true; post({ type: 'hold' });
       if (input === 'mouse') showRing(fromPc(cur.x, cur.y).x, fromPc(cur.x, cur.y).y, true);
-      else { showRing(g.x0, g.y0, true); var q = toPc(g.x0, g.y0); if (q.inside) post({ type: 'a', x: q.x, y: q.y }); }
+      else { showRing(g.x0, g.y0, true); var q = toPc(g.x0, g.y0); if (q.inside) post({ type: 'a', x: q.x, y: q.y, d: mon }); }
     }, input === 'mouse' ? HOLD : LONG);
   } else if (p.length >= 2) {
     if (!g) g = { t0: now, maxN: 1 };
@@ -226,7 +230,7 @@ document.addEventListener('touchmove', function(e){
       g.moved = true;
       if (g.held) { // hold, then move: drag
         g.drag = true;
-        if (input === 'touch') { var q0 = toPc(g.x0, g.y0); post({ type: 'a', x: q0.x, y: q0.y }); }
+        if (input === 'touch') { var q0 = toPc(g.x0, g.y0); post({ type: 'a', x: q0.x, y: q0.y, d: mon }); }
         post({ type: 'btn', op: 'd' });
       } else clearTimeout(g.timer);
     }
@@ -241,7 +245,7 @@ document.addEventListener('touchmove', function(e){
         if (g.drag) showRing(fromPc(cur.x, cur.y).x, fromPc(cur.x, cur.y).y, true);
       }
     } else if (g.moved) {
-      var q = toPc(x, y); post({ type: 'a', x: q.x, y: q.y });
+      var q = toPc(x, y); post({ type: 'a', x: q.x, y: q.y, d: mon });
       if (g.drag) showRing(x, y, true);
     }
     g.lx = x; g.ly = y; g.lt = now;
@@ -273,12 +277,12 @@ function end(e){
   else if (g.maxN >= 3) { if (quick && g.travel < 14) post({ type: 'kbd' }); }
   else if (g.maxN === 2) {
     if (quick && g.travel < TAP) {
-      if (input === 'touch') { var q2 = toPc(g.m0.x, g.m0.y); if (q2.inside) post({ type: 'a', x: q2.x, y: q2.y }); }
+      if (input === 'touch') { var q2 = toPc(g.m0.x, g.m0.y); if (q2.inside) post({ type: 'a', x: q2.x, y: q2.y, d: mon }); }
       post({ type: 'btn', op: 'c', which: 'r' });
     }
   } else if (!g.moved) {
     if (input === 'mouse') post({ type: 'btn', op: 'c', which: g.held ? 'r' : 'l' });
-    else { var q = toPc(g.x0, g.y0); if (q.inside) { post({ type: 'a', x: q.x, y: q.y }); post({ type: 'btn', op: 'c', which: g.held ? 'r' : 'l' }); } }
+    else { var q = toPc(g.x0, g.y0); if (q.inside) { post({ type: 'a', x: q.x, y: q.y, d: mon }); post({ type: 'btn', op: 'c', which: g.held ? 'r' : 'l' }); } }
   }
   g = null;
 }

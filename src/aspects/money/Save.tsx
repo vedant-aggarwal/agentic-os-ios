@@ -44,7 +44,9 @@ export function JarMini({ jar }: { jar: Jar }) {
 function paceText(j: Jar) {
   if (j.done) return `Reached, ${rupees(j.saved)} in it.`;
   if (j.late) return `Its date has passed. ${rupees(j.left ?? 0)} to go.`;
-  const thisMonth = j.month > 0 ? `${rupees(j.month)} in this month.` : 'Nothing in yet this month.';
+  const thisMonth = j.month > 0
+    ? (j.dueThisMonth ? `${rupees(j.month)} in this month, ${rupees(j.dueThisMonth)} more to keep pace.` : `${rupees(j.month)} in this month.`)
+    : 'Nothing in yet this month.';
   if (j.need != null && j.due) return j.onTrack ? `On pace for ${monthLabel(j.due.slice(0, 7))}. ${thisMonth}` : `Needs ${rupees(j.need)} a month to reach it by ${monthLabel(j.due.slice(0, 7))}. ${thisMonth}`;
   if (j.need != null) return `You planned ${rupees(j.need)} a month. ${thisMonth}`;
   return j.target ? `${rupees(j.left ?? 0)} to go. Give it a date to see the pace.` : `${rupees(j.saved)} in it so far.`;
@@ -195,7 +197,7 @@ export function JarSheet({ open, jar, onClose }: { open: boolean; jar: Jar | nul
       <Field label="Saving for" value={name} onChangeText={setName} placeholder="A laptop, a trip, a cushion" maxLength={60} autoFocus={open && !jar} />
       <Text style={t.label}>Target</Text>
       <AmountInput value={target} onChange={setTarget} label="Target in rupees" autoFocus={false} />
-      <Text style={t.label}>By when</Text>
+      <Text style={t.label}>{due ? `By ${monthLabel(due)}` : 'By when'}</Text>
       <ChipRow>
         <Chip label="No date" selected={due == null} onPress={() => setDue(null)} />
         {months.map((m) => <Chip key={m} label={monthLabel(m)} selected={due === m} onPress={() => setDue(m)} />)}
@@ -205,7 +207,7 @@ export function JarSheet({ open, jar, onClose }: { open: boolean; jar: Jar | nul
           <Text style={t.label}>For a Mission goal</Text>
           <ChipRow>
             <Chip label="None" selected={goal == null} onPress={() => setGoal(null)} />
-            {live.map((g) => <Chip key={g.id} label={g.title.length > 36 ? `${g.title.slice(0, 35).trim()}…` : g.title} selected={goal === g.id} onPress={() => setGoal(g.id)} />)}
+            {[...live].sort((x, y) => Number(y.id === jar?.goal) - Number(x.id === jar?.goal)).map((g) => <Chip key={g.id} label={g.title.length > 36 ? `${g.title.slice(0, 35).trim()}…` : g.title} selected={goal === g.id} onPress={() => setGoal(g.id)} />)}
           </ChipRow>
         </>
       ) : null}

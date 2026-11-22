@@ -43,7 +43,7 @@ export function SpendScreen({ open, onClose, home, onStatement }: { open: boolea
       <LogLine home={home} />
 
       <View style={s.part}>
-        <Head title="Subscriptions and bills" right={rec.count ? `${rupees(rec.monthly)} a month` : null} action="Add" onAction={() => setAdding(true)} />
+        <Head title="Subscriptions and bills" right={rec.count ? `${rupees(rec.monthly)} a month` : null} action={rec.count ? 'Add' : undefined} onAction={() => setAdding(true)} />
         {rec.count ? (
           <>
             {rec.ai > 0 && rec.ai < rec.monthly ? <Text style={t.small}>AI tools are {rupees(rec.ai)} of it.</Text> : null}
@@ -85,7 +85,7 @@ export function SpendScreen({ open, onClose, home, onStatement }: { open: boolea
       </View>
 
       <View style={s.part}>
-        <Head title={`${month.name} so far`} right={spend.month.out > 0 ? rupees(spend.month.out) : null} />
+        <Head title={`${month.name} so far`} right={spend.month.spent > 0 ? rupees(spend.month.spent) : null} />
         {days.length ? days.map((d) => (
           <View key={d.date} style={s.day}>
             <View style={s.dayHead}>
@@ -117,7 +117,7 @@ const waitingCount = (c: Record<string, number>) => {
 };
 function billSub(b: Bill) {
   const next = `Next on ${shortDay(b.next)}`;
-  if (b.every === 'year') return `${rupees(b.amount)} a year, ${next.toLowerCase()}`;
+  if (b.every === 'year') return `${rupees(b.amount)} a year, next on ${shortDay(b.next)}`;
   if (b.every === 'week') return `${rupees(b.amount)} a week`;
   return b.found ? `${next}, found in a statement` : next;
 }
@@ -149,7 +149,7 @@ function LeakRow({ leak }: { leak: Leak }) {
           <Text style={t.strong} numberOfLines={2}>{leak.title}</Text>
           {leak.meta ? <Text style={t.small} numberOfLines={2}>{leak.meta}</Text> : null}
         </View>
-        <Text style={[t.label, t.num]}>{rupees(leak.amount)}{leak.monthly ? ' a month' : ''}</Text>
+        <Text style={[t.label, t.num]}>{rupees(leak.amount)}{leak.every === 'year' ? ' a year' : leak.every === 'week' ? ' a week' : leak.monthly ? ' a month' : ''}</Text>
       </View>
       <View style={s.leakActions}>
         {info ? <Button label="Got it" kind="quiet" small busy={busy} onPress={() => void decide(true)} /> : (

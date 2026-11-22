@@ -144,7 +144,7 @@ export const s = StyleSheet.create({
   group: { borderRadius: R.card, borderCurve: 'continuous', backgroundColor: SURF.card, paddingHorizontal: SP[16], borderWidth: StyleSheet.hairlineWidth, borderColor: SURF.line },
   head: { flexDirection: 'row', alignItems: 'center', gap: SP[8], minHeight: 24 },
   amount: { flexDirection: 'row', alignItems: 'center', gap: SP[8], minHeight: 56 },
-  amountInput: { flex: 1, padding: 0, fontFamily: F.semibold, fontSize: 30, lineHeight: 36, letterSpacing: -0.6, color: C.text, outlineWidth: 0 },
+  amountInput: { flex: 1, minWidth: 0, width: '100%', padding: 0, fontFamily: F.semibold, fontSize: 30, lineHeight: 36, letterSpacing: -0.6, color: C.text, outlineWidth: 0 },
   chipRow: { gap: SP[8], paddingHorizontal: SP[16] },
   bleed: { marginHorizontal: -SP[16], flexGrow: 0 },
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: SP[8] },

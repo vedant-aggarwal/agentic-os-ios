@@ -102,7 +102,7 @@ export default function Money() {
 function monthSub(d: Home) {
   const parts: string[] = [];
   if (d.spend.month.bills > 0) parts.push(`plus ${rupees(d.spend.month.bills)} in bills`);
-  if (d.spend.recurring.count) parts.push(`subscriptions ${rupees(d.spend.recurring.monthly)} a month`);
+  else if (d.spend.recurring.count) parts.push(`bills come to ${rupees(d.spend.recurring.monthly)} a month`);
   if (d.spend.imports.lastFiled?.period) parts.push(`statement filed to ${shortDay(d.spend.imports.lastFiled.period.to)}`);
   if (!parts.length) return d.spend.month.count === 0 ? 'Nothing logged yet' : null;
   const out = parts.join(', ');

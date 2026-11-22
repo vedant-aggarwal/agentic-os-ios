@@ -19,7 +19,7 @@ export type Bill = {
 };
 export type Ended = { id: string; name: string; amount: number; every: string; monthly: number; cancelledAt: string | null };
 export type Leak = {
-  id: string; kind: 'subscription' | 'repeat' | 'over' | 'flag'; title: string; amount: number; monthly: boolean;
+  id: string; kind: 'subscription' | 'repeat' | 'over' | 'flag'; title: string; amount: number; every: 'month' | 'year' | 'week' | null; monthly: boolean;
   meta: string | null; why: string | null; ref: string | null;
 };
 export type Repeat = { amount: number; merchant: string; category: string; n: number; last: string };

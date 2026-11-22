@@ -88,7 +88,7 @@ const s = StyleSheet.create({
     minHeight: 52, borderRadius: R.row, borderCurve: 'continuous', paddingLeft: SP[16], paddingRight: SP[8], flexDirection: 'row', alignItems: 'center', gap: SP[8],
     backgroundColor: SURF.card, borderWidth: StyleSheet.hairlineWidth, borderColor: SURF.line,
   },
-  input: { flex: 1, minHeight: 24, padding: 0, fontFamily: F.regular, fontSize: 16, lineHeight: 24, color: C.text, outlineWidth: 0 },
+  input: { flex: 1, minWidth: 0, minHeight: 24, padding: 0, fontFamily: F.regular, fontSize: 16, lineHeight: 24, color: C.text, outlineWidth: 0 },
   done: { flexDirection: 'row', alignItems: 'center', gap: SP[12] },
   doneText: { flex: 1, minWidth: 0 },
 });

@@ -211,7 +211,7 @@ function Review({ id, home, onDone }: { id: string; home: Home; onDone: () => vo
           {by('income').map((r) => (
             <ReviewRow key={r.id} r={r} on={get(r).action !== 'skip'} onToggle={() => set(r, { action: get(r).action === 'skip' ? 'income' : 'skip' })}>
               <ChipWrap>
-                {home.earn.choices.slice(0, 6).map((c) => (
+                {home.earn.choices.map((c) => (
                   <Chip key={c.id} label={c.name} selected={get(r).action !== 'skip' && (get(r).category ?? 'otherin') === c.id} onPress={() => set(r, { action: 'income', category: c.id })} />
                 ))}
               </ChipWrap>
@@ -256,7 +256,7 @@ function ReviewRow({ r, on, onToggle, children }: { r: StRow; on?: boolean; onTo
       {onToggle ? <CheckRing done={!!on} /> : null}
       <View style={ui.fill}>
         <Text style={[t.strong, on === false && { color: C.faint }]} numberOfLines={1}>{r.merchant}</Text>
-        <Text style={t.small} numberOfLines={1}>{shortDay(r.date)}{r.why ? `, ${r.why.charAt(0).toLowerCase()}${r.why.slice(1)}` : ''}</Text>
+        <Text style={t.small} numberOfLines={2}>{shortDay(r.date)}{r.why ? `, ${r.why.charAt(0).toLowerCase()}${r.why.slice(1)}` : ''}</Text>
       </View>
       <Text style={[t.label, t.num, on === false && { color: C.faint }]}>{r.dir === 'cr' ? '+' : ''}{rupees(r.amount)}</Text>
     </>
@@ -293,7 +293,7 @@ const s = StyleSheet.create({
   rctl: { paddingLeft: SP[24] + SP[12] },
   centre: { textAlign: 'center' },
   pw: {
-    minHeight: 48, borderRadius: R.row, paddingHorizontal: SP[16], backgroundColor: SURF.card, borderWidth: StyleSheet.hairlineWidth, borderColor: SURF.line,
+    minWidth: 0, minHeight: 48, borderRadius: R.row, paddingHorizontal: SP[16], backgroundColor: SURF.card, borderWidth: StyleSheet.hairlineWidth, borderColor: SURF.line,
     fontFamily: F.regular, fontSize: 16, color: C.text, outlineWidth: 0,
   },
 });

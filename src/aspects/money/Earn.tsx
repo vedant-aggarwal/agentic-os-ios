@@ -12,7 +12,7 @@ import { AmountInput, ChipWrap, Group, Head, MonthLine, owedText, s as ui } from
 const dayWord = (n: number) => (n <= 1 ? 'Last day' : `${n} days left`);
 
 /** The lead: what he earned this month against his target, the line, and the honest gap. */
-export function EarnLead({ home, onMoneyIn, onTarget }: { home: Home; onMoneyIn: () => void; onTarget: () => void }) {
+export function EarnLead({ home, onMoneyIn, onTarget }: { home: Home; onMoneyIn: () => void; onTarget?: () => void }) {
   const a = useAspect();
   const { earn, target, month } = home;
   const owed = earn.pending?.total ?? 0;
@@ -36,7 +36,7 @@ export function EarnLead({ home, onMoneyIn, onTarget }: { home: Home; onMoneyIn:
       </View>
       <View style={s.actions}>
         <Button label="Money in" kind="soft" small onPress={onMoneyIn} icon={<Icon name="plus" size={14} color={a.color} />} />
-        {target.amount == null ? <Button label="Set a target" kind="quiet" small onPress={onTarget} /> : null}
+        {target.amount == null && onTarget ? <Button label="Set a target" kind="quiet" small onPress={onTarget} /> : null}
       </View>
     </View>
   );
@@ -58,9 +58,9 @@ export function EarnScreen({ open, onClose, home, onMoneyIn, onTarget }: {
   const top = Math.max(1, ...earn.sources.map((x) => x.amount));
   return (
     <Screen open={open} onClose={onClose} title="Earn">
-      <EarnLead home={home} onMoneyIn={onMoneyIn} onTarget={onTarget} />
+      <EarnLead home={home} onMoneyIn={onMoneyIn} />
       <Group>
-        <Row title="Monthly target" sub={target.since ? `Set ${dayLabel(target.since)}` : 'What you want to earn in a month'}
+        <Row title="Monthly target" sub={target.since ? `Set ${since(target.since)}` : 'What you want to earn in a month'}
           right={target.amount != null ? rupees(target.amount) : 'Not set'} onPress={onTarget} chevron label="Change the monthly target" />
       </Group>
 
@@ -91,7 +91,7 @@ export function EarnScreen({ open, onClose, home, onMoneyIn, onTarget }: {
       </View>
 
       <View style={s.part}>
-        <Head title="Last six months" />
+        <Head title="Last six months" right={target.amount ? `Target line ${rupees(target.amount)}` : null} />
         <MonthsChart months={earn.months} target={target.amount} />
       </View>
 
@@ -110,6 +110,9 @@ export function EarnScreen({ open, onClose, home, onMoneyIn, onTarget }: {
     </Screen>
   );
 }
+
+/** "today", "yesterday" or "on Fri 20 Nov", to follow "Set". */
+const since = (d: string) => { const l = dayLabel(d); return /^(Today|Yesterday)$/.test(l) ? l.toLowerCase() : `on ${l}`; };
 
 /** Earned money for each of the last six months, this one in full colour, the target as a dashed line. */
 function MonthsChart({ months, target }: { months: Home['earn']['months']; target: number | null }) {

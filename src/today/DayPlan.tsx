@@ -114,26 +114,27 @@ function TaskLine({ row, first, onToggle }: { row: Row; first: boolean; onToggle
   );
 }
 
-/** Water: the plus adds a glass here; the rest of the tile opens Diet, where the same glasses are. */
+/**
+ * Water: the plus adds a glass here; the rest of the tile opens Diet, where the same glasses are. The open target
+ * sits behind the tile's content (a button can't hold another button), and the words and pips let taps through.
+ */
 function WaterTile({ n, of, onAdd, onOpen }: { n: number; of: number; onAdd: () => void; onOpen: () => void }) {
   const pips = Math.min(of, 16), lines = pips > 8 ? 2 : 1, per = Math.ceil(pips / lines);
   const full = Math.min(pips, Math.round((n / of) * pips));
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={`Water ${n} of ${of} glasses. Open Diet`} onPress={onOpen}
-      // VoiceOver reads the tile as one button, so the plus is also offered as its action
-      accessibilityActions={[{ name: 'add', label: 'Add a glass of water' }]}
-      onAccessibilityAction={(e) => { if (e.nativeEvent.actionName === 'add') onAdd(); }}
-      style={({ pressed }) => [s.tile, pressed && { transform: [{ scale: 0.97 }] }]}>
-      <View style={s.tileTop}>
-        <Text style={s.tileLabel}>Water</Text>
+    <View style={s.tile}>
+      <Pressable accessibilityRole="button" accessibilityLabel={`Water ${n} of ${of} glasses. Open Diet`} onPress={onOpen}
+        style={({ pressed }) => [StyleSheet.absoluteFill, s.tileHit, pressed && { backgroundColor: 'rgba(255,255,255,0.05)' }]} />
+      <View style={s.tileTop} pointerEvents="box-none">
+        <Text style={s.tileLabel} pointerEvents="none">Water</Text>
         <Pressable accessibilityRole="button" accessibilityLabel="Add a glass of water" hitSlop={8}
           onPress={() => { if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onAdd(); }}
           style={({ pressed }) => [s.add, pressed && { transform: [{ scale: 0.92 }] }]}>
           <Plus size={16} />
         </Pressable>
       </View>
-      <Text style={s.big}>{n}<Text style={s.of}>{` of ${of} glasses`}</Text></Text>
-      <View style={s.pips}>
+      <Text style={s.big} pointerEvents="none">{n}<Text style={s.of}>{` of ${of} glasses`}</Text></Text>
+      <View style={s.pips} pointerEvents="none">
         {Array.from({ length: lines }, (_, r) => (
           <View key={r} style={s.pipRow}>
             {Array.from({ length: per }, (_, c) => {
@@ -143,7 +144,7 @@ function WaterTile({ n, of, onAdd, onOpen }: { n: number; of: number; onAdd: () 
           </View>
         ))}
       </View>
-    </Pressable>
+    </View>
   );
 }
 
@@ -184,6 +185,7 @@ const s = StyleSheet.create({
   moreText: { fontFamily: F.medium, fontSize: 14, lineHeight: 20, color: C.textSoft },
   tiles: { flexDirection: 'row', gap: 10 },
   tile: { flex: 1, borderRadius: 20, backgroundColor: C.glass, padding: 14, gap: 6, minHeight: 116 },
+  tileHit: { borderRadius: 20 },
   tileTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 30 },
   tileLabel: { fontFamily: F.medium, fontSize: 14, lineHeight: 20, color: C.muted },
   add: { width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center' },

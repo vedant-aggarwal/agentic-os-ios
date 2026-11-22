@@ -14,7 +14,7 @@ export const STAGE_INFO: Record<ReelStage, { name: string; what: string }> = {
 
 /** What the PC is busy with, in words. */
 export function workingLabel(w: string | null | undefined) {
-  return w === 'voice' ? 'Writing the voice script…' : w === 'take' ? 'Recording the voice…' : w ? 'Writing the script…' : '';
+  return w === 'voice' ? 'Writing the voice script…' : w === 'take' ? 'Recording the voice…' : w === 'plan' ? 'Planning the shots…' : w === 'build' ? 'Building the visuals…' : w ? 'Writing the script…' : '';
 }
 
 /** `stage` is the furthest step finished, so the step after it is what's next. */

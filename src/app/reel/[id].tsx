@@ -18,8 +18,12 @@ import {
   refreshReels,
   saveVoiceText,
   selectVersion,
+  startVisualBuild,
+  startVisualPlan,
   startVoiceScript,
+  stopVisualBuild,
   updateReel,
+  videoUrl,
   useReels,
   type Beat,
   type Reel,
@@ -41,7 +45,13 @@ export default function ReelScreen() {
   const doneUpTo = reel ? REEL_STAGES.indexOf(reel.stage) : -1;
   const working = !!reel?.working;
   const [tab, setTab] = useState<ReelStage | null>(null);
-  const shown: ReelStage = tab ?? (reel && (reel.voice?.text || reel.working === 'voice' || reel.working === 'take') ? 'voice' : 'script');
+  const shown: ReelStage =
+    tab ??
+    (reel && (reel.visuals?.plan || reel.working === 'plan' || reel.working === 'build')
+      ? 'visuals'
+      : reel && (reel.voice?.text || reel.working === 'voice' || reel.working === 'take')
+        ? 'voice'
+        : 'script');
   const [editConcept, setEditConcept] = useState(false);
   const [beatAt, setBeatAt] = useState<number | null>(null); // index being edited; beats.length = a new beat
   const [editVoice, setEditVoice] = useState(false);
@@ -154,6 +164,20 @@ export default function ReelScreen() {
                 onEdit={() => setEditVoice(true)}
                 onTake={() => run(() => recordVoiceTake(reel.id))}
                 onScript={() => setTab('script')}
+                onNext={() => {
+                  // Next goes straight to work: the shot plan starts if there is none yet.
+                  setTab('visuals');
+                  if (!reel.visuals?.plan && !reel.working) run(() => startVisualPlan(reel.id));
+                }}
+              />
+            ) : shown === 'visuals' ? (
+              <VisualsTab
+                reel={reel}
+                pending={pending}
+                onPlan={() => run(() => startVisualPlan(reel.id))}
+                onBuild={() => run(() => startVisualBuild(reel.id))}
+                onStop={() => run(() => stopVisualBuild(reel.id))}
+                onNext={() => setTab('edit')}
               />
             ) : (
               <View style={styles.card}>
@@ -167,12 +191,14 @@ export default function ReelScreen() {
 
       {reel ? (
         <KaiBar
-          context={{ screen: shown === 'voice' ? 'reel-voiceover' : 'reel-script', reelId: reel.id, channelId: reel.channelId }}
-          placeholder={shown === 'voice' ? 'Ask Kai to change the voice script' : 'Ask Kai to change this script'}
+          context={{ screen: `reel-${shown}`, reelId: reel.id, channelId: reel.channelId }}
+          placeholder={shown === 'voice' ? 'Ask Kai to change the voice script' : shown === 'visuals' ? 'Ask Kai about the shots' : 'Ask Kai to change this script'}
           suggestions={
             shown === 'voice'
               ? ['Make it more intense', 'More pauses before the reveal', 'Make the ending softer', 'Make it faster']
-              : ['Make the hook hit harder', 'Tighten it to 30 seconds', 'Make the ending more shareable', 'Make it clear to anyone']
+              : shown === 'visuals'
+                ? ['Make the first 3 seconds scarier', 'Fewer images, more coded shots', 'Keep the character consistent', 'Which shots are weakest?']
+                : ['Make the hook hit harder', 'Tighten it to 30 seconds', 'Make the ending more shareable', 'Make it clear to anyone']
           }
           onDone={kaiDone}
         />
@@ -337,7 +363,7 @@ function Player({ file, label }: { file: string; label: string }) {
   );
 }
 
-function VoiceTab({ reel, pending, onWrite, onEdit, onTake, onScript }: { reel: Reel; pending: boolean; onWrite: () => void; onEdit: () => void; onTake: () => void; onScript: () => void }) {
+function VoiceTab({ reel, pending, onWrite, onEdit, onTake, onScript, onNext }: { reel: Reel; pending: boolean; onWrite: () => void; onEdit: () => void; onTake: () => void; onScript: () => void; onNext: () => void }) {
   const voice = reel.voice;
   const count = reel.versionCount || 0;
   const v = reel.version ?? count - 1;
@@ -431,6 +457,163 @@ function VoiceTab({ reel, pending, onWrite, onEdit, onTake, onScript }: { reel: 
               ))}
             </View>
           ) : null}
+
+          {voice.audio ? (
+            <Press style={[styles.primary, styles.next]} scale={0.98} onPress={onNext} accessibilityLabel="Next: visuals">
+              <Text style={styles.primaryText}>Next: Visuals</Text>
+              <Text style={styles.primarySub}>Scenes for every beat, timed to this take</Text>
+            </Press>
+          ) : (
+            <Press style={styles.skip} scale={0.97} onPress={onNext} accessibilityLabel="Skip to visuals without a take">
+              <Text style={styles.skipText}>Skip to visuals</Text>
+            </Press>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
+const METHOD: Record<string, string> = { coded: 'Coded', image: 'Image', clip: 'Clip' };
+const fmt = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
+
+function Video({ id, v }: { id: string; v?: string }) {
+  const url = videoUrl(id, v);
+  if (Platform.OS === 'web') {
+    return createElement('video', { controls: true, playsInline: true, src: url, preload: 'metadata', style: { width: '100%', maxHeight: 520, marginTop: 10, borderRadius: 16, background: '#000' } });
+  }
+  return (
+    <Press style={styles.play} scale={0.97} onPress={() => Linking.openURL(url)} accessibilityLabel="Play the video">
+      <Text style={styles.playIcon}>▶</Text>
+      <Text style={styles.playText}>Play the video</Text>
+    </Press>
+  );
+}
+
+function VisualsTab({ reel, pending, onPlan, onBuild, onStop, onNext }: { reel: Reel; pending: boolean; onPlan: () => void; onBuild: () => void; onStop: () => void; onNext: () => void }) {
+  const vis = reel.visuals;
+  const plan = vis?.plan;
+  const build = vis?.build;
+  const busy = pending || !!reel.working;
+  const count = (m: string) => plan?.scenes.filter((x) => x.method === m).length || 0;
+  const len = plan?.scenes.length ? plan.scenes[plan.scenes.length - 1].end : 0;
+  const staleTake = plan && reel.voice?.audio?.file && plan.take !== reel.voice.audio.file;
+  const staleVersion = plan && plan.fromVersion != null && reel.version != null && plan.fromVersion !== reel.version;
+  return (
+    <>
+      <View style={styles.h2Row}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.h2}>Visuals</Text>
+          <Text style={styles.meta}>{plan ? `Design: ${plan.design}` : 'Shots timed to the voice take, built in code'}</Text>
+        </View>
+      </View>
+
+      {vis?.error ? (
+        <View style={styles.card}>
+          <Text style={[styles.body, { marginTop: 0, color: '#B4232F' }]}>{vis.error}</Text>
+        </View>
+      ) : null}
+
+      {reel.working === 'plan' ? (
+        <Busy text="The visual director is planning every shot against the take: what is coded, what is an image, where each cut lands. A minute or two." />
+      ) : !plan ? (
+        <View style={styles.card}>
+          <Text style={[styles.body, { marginTop: 0 }]}>
+            {reel.voice?.audio
+              ? 'Every shot gets cut on a word in your take. Coded shots (phone screens, text, timestamps, motion) are drawn in code; image shots are made with Codex. Planning is free.'
+              : 'There is no voice take yet, so shots will be timed from the script. Record the take first for exact cuts.'}
+          </Text>
+          <Press style={[styles.primary, busy && styles.off]} disabled={busy} scale={0.98} onPress={onPlan} accessibilityLabel="Plan the shots">
+            <Text style={styles.primaryText}>Plan the shots</Text>
+            <Text style={styles.primarySub}>Free · about two minutes</Text>
+          </Press>
+        </View>
+      ) : (
+        <>
+          {staleTake || staleVersion ? (
+            <View style={[styles.card, styles.warn]}>
+              <Text style={[styles.body, { marginTop: 0 }]}>
+                {staleTake ? 'This plan was made for an older take.' : 'This plan was made from another script version.'}
+              </Text>
+              <Press style={styles.redo} scale={0.97} onPress={onPlan} disabled={busy} accessibilityLabel="Plan the shots again">
+                <Text style={styles.redoText}>Plan again</Text>
+              </Press>
+            </View>
+          ) : null}
+
+          <View style={styles.card}>
+            <Text style={styles.len}>
+              {plan.scenes.length} shots · {fmt(len)} · {count('coded')} coded · {count('image')} images{count('clip') ? ` · ${count('clip')} clip` : ''}
+            </Text>
+            {plan.notes ? <Text style={[styles.notes, { marginTop: 4 }]}>{plan.notes}</Text> : null}
+            {plan.scenes.map((sh, i) => (
+              <View key={sh.id} style={[styles.beat, i > 0 && styles.beatLine]}>
+                <View style={{ width: 52 }}>
+                  <Text style={styles.time}>{fmt(sh.start)}</Text>
+                  <View style={[styles.method, sh.method === 'coded' ? styles.mCoded : sh.method === 'clip' ? styles.mClip : styles.mImage]}>
+                    <Text style={styles.methodText}>{METHOD[sh.method]}</Text>
+                  </View>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.beatText}>{sh.shows}</Text>
+                  <Text style={styles.visual}>
+                    {sh.shot}
+                    {sh.headline ? ` · “${sh.headline}”` : ''}
+                  </Text>
+                  <Text style={styles.line2}>“{sh.say}…”</Text>
+                </View>
+              </View>
+            ))}
+            <Press style={styles.redo} scale={0.97} onPress={onPlan} disabled={busy} accessibilityLabel="Plan the shots again">
+              <Text style={styles.redoText}>Plan again</Text>
+            </Press>
+          </View>
+
+          {reel.working === 'build' ? (
+            <View style={styles.card}>
+              <View style={styles.busy}>
+                <ActivityIndicator color={C.ink} />
+                <Text style={[styles.cardTitle, { flex: 1 }]}>Claude Code is building the video</Text>
+              </View>
+              <Text style={styles.meta}>Coding each shot, making {count('image') + count('clip')} images with Codex, then rendering. 20-40 minutes; you can leave this screen.</Text>
+              {(build?.progress || []).map((l, i) => (
+                <Text key={i} numberOfLines={2} style={styles.log}>
+                  {l}
+                </Text>
+              ))}
+              <Press style={styles.redo} scale={0.97} onPress={onStop} accessibilityLabel="Stop the build">
+                <Text style={[styles.redoText, { color: '#B4232F' }]}>Stop</Text>
+              </Press>
+            </View>
+          ) : build?.video ? (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Video</Text>
+              <Text style={styles.meta}>Built {build.finishedAt ? new Date(build.finishedAt).toLocaleString() : ''}</Text>
+              <Video id={reel.id} v={build.version} />
+              {build.notes ? (
+                <Text numberOfLines={8} style={styles.notes}>
+                  {build.notes}
+                </Text>
+              ) : null}
+              <Press style={styles.redo} scale={0.97} onPress={onBuild} disabled={busy} accessibilityLabel="Build the video again">
+                <Text style={styles.redoText}>Build again</Text>
+              </Press>
+            </View>
+          ) : (
+            <Press style={[styles.primary, busy && styles.off]} disabled={busy} scale={0.98} onPress={onBuild} accessibilityLabel="Build the visuals with Claude Code">
+              <Text style={styles.primaryText}>Build visuals with Claude Code</Text>
+              <Text style={styles.primarySub}>
+                Codes {count('coded')} shots, makes {count('image') + count('clip')} images with Codex, renders the video
+              </Text>
+            </Press>
+          )}
+
+          {build?.video ? (
+            <Press style={[styles.primary, styles.next]} scale={0.98} onPress={onNext} accessibilityLabel="Next: edit">
+              <Text style={styles.primaryText}>Next: Edit</Text>
+              <Text style={styles.primarySub}>Music, sound and the final cut</Text>
+            </Press>
+          ) : null}
         </>
       )}
     </>
@@ -438,6 +621,12 @@ function VoiceTab({ reel, pending, onWrite, onEdit, onTake, onScript }: { reel: 
 }
 
 const styles = StyleSheet.create({
+  method: { marginTop: 4, alignSelf: 'flex-start', height: 20, paddingHorizontal: 6, borderRadius: 6, justifyContent: 'center' },
+  mCoded: { backgroundColor: '#E6ECFF' },
+  mImage: { backgroundColor: '#FFF1DE' },
+  mClip: { backgroundColor: '#FFE3E8' },
+  methodText: { fontFamily: F.b, fontSize: 10, color: C.ink },
+  log: { marginTop: 6, fontFamily: F.m, fontSize: 12, lineHeight: 16, color: C.muted },
   bar: { flexDirection: 'row', alignItems: 'center', height: 44 },
   pill: { height: 32, paddingHorizontal: 14, borderRadius: 16, backgroundColor: C.bg, justifyContent: 'center' },
   pillText: { fontFamily: F.s, fontSize: 13, color: C.ink },
@@ -477,6 +666,9 @@ const styles = StyleSheet.create({
   redo: { marginTop: 12, alignSelf: 'flex-start', height: 36, paddingHorizontal: 14, borderRadius: 18, backgroundColor: C.bg, justifyContent: 'center' },
   redoText: { fontFamily: F.s, fontSize: 14, color: C.ink },
   h2: { fontFamily: F.s, fontSize: 18, lineHeight: 24, color: C.ink },
+  next: { backgroundColor: C.yt },
+  skip: { marginTop: 10, alignSelf: 'center', height: 36, paddingHorizontal: 14, justifyContent: 'center' },
+  skipText: { fontFamily: F.s, fontSize: 14, color: C.muted },
   primary: { marginTop: 12, paddingVertical: 14, paddingHorizontal: 18, borderRadius: 22, backgroundColor: C.ink, alignItems: 'center' },
   primaryText: { fontFamily: F.b, fontSize: 16, color: '#fff' },
   primarySub: { marginTop: 2, fontFamily: F.m, fontSize: 12, color: 'rgba(255,255,255,0.7)' },

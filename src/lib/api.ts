@@ -181,6 +181,12 @@ export type ReelStage = (typeof REEL_STAGES)[number];
 export type Concept = { title: string; hook: string; premise: string; why: string };
 export type Beat = { time: string; beat: string; visual: string; line: string };
 export type VoiceTake = { file: string; seconds: number | null; chars: number; voiceName: string; at: string };
+export type Shot = { id: string; beat: number; say: string; shows: string; shot: string; mood: string; method: 'coded' | 'image' | 'clip'; headline: string; prompt: string; sound: string; start: number; end: number };
+export type Visuals = {
+  plan?: { scenes: Shot[]; notes: string; design: string; fromVersion: number | null; take: string | null; at: string };
+  build?: { status: 'building' | 'done' | 'failed'; startedAt?: string; finishedAt?: string; progress?: string[]; video?: string | null; notes?: string; version?: string };
+  error?: string | null;
+};
 export type Voice = {
   text?: string;
   notes?: string;
@@ -220,6 +226,7 @@ export type Reel = {
   version?: number;
   versionsMeta?: { at: string; by: 'build' | 'edit' | 'kai' }[];
   voice?: Voice | null;
+  visuals?: Visuals | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -325,6 +332,25 @@ export async function saveVoiceText(id: string, text: string) {
 /** Record the take with ElevenLabs. Spends credits (about one per character). */
 export async function recordVoiceTake(id: string) {
   return putReel((await act<{ reel: Reel }>('reels.voice_take', { id })).reel);
+}
+
+/** Plan every shot against the voice take (free, a minute or two). */
+export async function startVisualPlan(id: string) {
+  return putReel((await act<{ reel: Reel }>('reels.visuals_plan', { id })).reel);
+}
+
+/** Claude Code codes the shots, makes the images with Codex and renders the video (20-40 minutes). */
+export async function startVisualBuild(id: string) {
+  return putReel((await act<{ reel: Reel }>('reels.visuals_build', { id })).reel);
+}
+
+export async function stopVisualBuild(id: string) {
+  return putReel((await act<{ reel: Reel }>('reels.visuals_stop', { id })).reel);
+}
+
+export function videoUrl(id: string, v?: string) {
+  const q = [TOKEN ? `token=${encodeURIComponent(TOKEN)}` : '', v ? `v=${v}` : ''].filter(Boolean).join('&');
+  return `${BASE}/api/video/${encodeURIComponent(id)}.mp4${q ? `?${q}` : ''}`;
 }
 
 /** A playable URL for a take (the token rides in the query because players can't send headers). */

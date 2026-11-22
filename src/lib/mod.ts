@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore } from 'react';
-import { API, api, ApiError, currentToken, STAGE } from './api';
+import { API, api, ApiError, currentToken, refusal, STAGE, unreachable } from './api';
 import { DEMO } from './demo';
 
 // The phone's side of the server's module store (server/modules/_collection.ts). Every aspect module keeps its
@@ -281,11 +281,11 @@ export async function upload<T>(path: string, file: string | Blob, type: string)
       headers: { 'X-Client': 'native', 'Content-Type': type, ...(token && !STAGE ? { Authorization: `Bearer ${token}` } : {}) },
       body: bytes,
     });
-  } catch {
-    throw new ApiError(0, "Can't reach your PC. Check it's on and online.");
+  } catch (e) {
+    throw unreachable(e);
   }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(res.status, (data as { error?: string }).error ?? `Server answered ${res.status}.`);
+  if (!res.ok) throw refusal(res.status, data);
   return data as T;
 }
 

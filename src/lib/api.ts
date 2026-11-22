@@ -51,6 +51,24 @@ export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
 }
 
+// A Nora answer can take longer than the phone or the tunnel will hold a request open: iOS gives up on a request that
+// has heard nothing for about a minute, Cloudflare after 100 s (524), and while the PC restarts the tunnel answers
+// 502 or 530 with an HTML page. Each used to read "Can't reach your PC" or "Server answered 524." even though the PC
+// was up and often still finishing the answer, which it then keeps.
+const SLOW = 'Your PC took too long to answer. If Nora was working on it, the answer may still land; look again in a minute.';
+/** What a fetch that threw means: the phone's own timeout, or no way through to the PC. */
+export function unreachable(e: unknown) {
+  return new ApiError(0, /timed? ?out/i.test(String((e as Error)?.message ?? e)) ? SLOW : "Can't reach your PC. Check it's on and online.");
+}
+/** A refusal: the PC's own words when it sent them, else what the tunnel's status means. */
+export function refusal(status: number, data: unknown) {
+  const said = (data as { error?: unknown } | null)?.error;
+  if (typeof said === 'string' && said) return new ApiError(status, said);
+  if (status === 504 || status === 524) return new ApiError(status, SLOW);
+  if ([502, 503, 521, 522, 523, 530].includes(status)) return new ApiError(status, "Your PC isn't answering right now. It may be restarting; try again in a moment.");
+  return new ApiError(status, `Server answered ${status}.`);
+}
+
 /** `idem`: a key that makes a create safe to send twice (the PC answers the second with the first's result). */
 export async function api<T>(path: string, init: { method?: string; body?: unknown; idem?: string } = {}): Promise<T> {
   let res: Response;
@@ -65,11 +83,11 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
       },
       body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
     });
-  } catch {
-    throw new ApiError(0, "Can't reach your PC. Check it's on and online.");
+  } catch (e) {
+    throw unreachable(e);
   }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(res.status, (data as { error?: string }).error ?? `Server answered ${res.status}.`);
+  if (!res.ok) throw refusal(res.status, data);
   return data as T;
 }
 

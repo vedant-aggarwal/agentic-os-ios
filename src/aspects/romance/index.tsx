@@ -13,6 +13,7 @@ import { EndedScreen, OutScreen, PrimerScreen } from './Out';
 import { AddSheet, LookingSheet, metLine, NextSheet, nextLine, PeopleScreen, PersonScreen, TalkedSheet, TargetSheet } from './People';
 import { DotWeek, placeAt, placeName, useNow, whenIn } from './parts';
 import type { Follow, Outing, Place } from './types';
+import { Linked } from '@/aspects/_linked/Linked';
 
 // Romance: am I meeting people? One loop on one page: a thirty second primer, going out with a counter of
 // conversations started (attempts, never results), a minute of debrief, and the debrief's one thing to try coming
@@ -236,6 +237,8 @@ export default function Romance() {
         <Row title="Speak" sub="In Mind" chevron onPress={() => openLink('mind/speak')}
           left={<Glyph sf="waveform" d="M4 12h2M8 8v8M12 5v14M16 8v8M20 12h-2" size={20} color={C.muted} />} />
       </Section>
+
+      <Linked />
     </Page>
   );
 }

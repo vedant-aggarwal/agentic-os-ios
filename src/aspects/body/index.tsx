@@ -16,6 +16,7 @@ import { NavContext, type BodyNav, type Flow, type SheetKind } from './nav';
 import { DrillPlayer } from './voice/Drills';
 import { SampleFlow } from './voice/Sample';
 import { VoiceScreen } from './voice/Voice';
+import { Linked } from '@/aspects/_linked/Linked';
 
 // The Body page: how he looks and presents himself, in four parts (Gym, Diet, Face, Voice). Home answers one
 // question, what to do for the body today and whether it is working; each part opens on top of it.
@@ -76,6 +77,7 @@ export default function Body() {
           </>
         )}>
         <Home read={home} />
+        {home.data ? <Linked /> : null}
       </Page>
     </NavContext>
   );

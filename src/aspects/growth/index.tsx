@@ -15,6 +15,7 @@ import { ScoreScreen } from './ScoreScreen';
 import type { Home, MorningRead, Section as Sec } from './types';
 import { feltLine, NAME, range, ruleSub, TREND_WORD, whenSaid } from './ui';
 import { Wheel, WheelKey } from './Wheel';
+import { Linked } from '@/aspects/_linked/Linked';
 
 // Growth: am I getting better? The wheel read honestly (his score against what the data shows), the one thing this
 // page needs from him, the overnight read in the morning, and the rules he lives by. No streak, no score to chase.
@@ -108,6 +109,8 @@ export default function Growth() {
         <Row title="Past reviews" sub={d.reviews ? `${d.reviews} closed ${d.reviews === 1 ? 'week' : 'weeks'}, with what you learned` : 'Your first closes this Sunday'} onPress={() => setOpen('reviews')} chevron
           left={<View style={s.rowIcon}><Icon name="calendar" size={18} color={C.muted} /></View>} />
       </View>
+
+      <Linked />
     </Page>
   );
 }

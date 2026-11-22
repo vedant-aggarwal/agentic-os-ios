@@ -9,6 +9,7 @@ import { MemoriesScreen } from './Memories';
 import { PersonScreen } from './Person';
 import { AddSheet, DateSheet, MemorySheet, MemoryView, MentionSheet, OwnSheet, PersonSheet, type MemoryPreset } from './sheets';
 import type { CalItem, Cand, Card, Chip, DateDoc, Goal, Home, IdeaDoc, Jar, MomentBrief, PersonDoc, Week, WeekDoc } from './types';
+import { Linked } from '@/aspects/_linked/Linked';
 
 // The Family page: am I showing up for them? People first: each with the last thing done together and this week's
 // one small thing; time together today; the dates coming up, planned ahead; memories; and what he is building for
@@ -242,6 +243,7 @@ export default function Family() {
         onMemory={(p) => addMemory({ people: p.people, date: p.date, title: p.title })} />
       <MemoryStrip home={data} nameOf={nameOf} onOpen={openMemory} onAdd={() => addMemory()} onSeeAll={() => { setMemPerson(null); setMemOpen(true); }} />
       <ForThem goals={goals} jars={jars} goalsAt={goalsAt} jarsAt={jarsAt} onMission={(id) => openLink(`mission/goal/${encodeURIComponent(id)}`)} onMoney={() => openLink('money/save')} />
+      <Linked goals={false} />
     </Page>
   );
 }

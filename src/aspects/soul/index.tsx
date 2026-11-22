@@ -14,6 +14,7 @@ import { Moment } from './Moment';
 import { DayRow, Gl, plural, PrivacyCover } from './parts';
 import { Slip } from './Slip';
 import { SIT_LENGTHS } from './words';
+import { Linked } from '@/aspects/_linked/Linked';
 
 // The Soul page: one quiet screen. The day count first, with the rough moment always one tap away, then tonight's
 // journal, then a sit. Outside the Clean screen the count is only ever "Day N".
@@ -158,6 +159,8 @@ export default function Soul() {
         </View>
         {weekMins ? <Text style={t.caption}>{plural(weekMins, 'minute')} this week</Text> : null}
       </Section>
+
+      <Linked />
 
       {waiting ? <Text style={[t.caption, s.centre]}>{plural(waiting, 'log')} waiting on this phone for the PC.</Text> : null}
     </Page>

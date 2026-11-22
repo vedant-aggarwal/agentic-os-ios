@@ -19,14 +19,15 @@ export function goalsFor(goals: Goal[], aspect: AspectKey, areaAspects: Record<s
   return goals.filter((g) => g.status === 'active' && (g.aspects?.includes(aspect) || (g.area != null && areaAspects[g.area]?.includes(aspect))));
 }
 
-export function Linked() {
+/** `goals={false}` on a home that already lists the goals serving it (Mission, Family). */
+export function Linked({ goals: withGoals = true }: { goals?: boolean }) {
   const a = useAspect();
   const life = useLife();
   const key = a.aspect;
   const need = NEEDS[key];
   const on = a.open;
   // each read is the same cached request the section that owns it makes, so nothing is fetched twice
-  const goals = useGet<{ goals: Goal[] }>(on ? '/goals' : null);
+  const goals = useGet<{ goals: Goal[] }>(on && withGoals ? '/goals' : null);
   const body = useGet<BodyToday>(on && need.includes('body') ? '/mod/body/today' : null);
   const soul = useGet<SoulSummary>(on && need.includes('soul') ? '/mod/soul/summary' : null);
   const mind = useGet<MindDay>(on && need.includes('mind') ? '/mod/mind/day' : null);
@@ -44,7 +45,7 @@ export function Linked() {
     people: people.data?.people, moods: moods.data?.items,
   }), [key, body.data, soul.data, mind.data, money.data, people.data, moods.data]);
 
-  if (!life && !mine.length && !signals.length) return null;
+  if (!life && !withGoals && !signals.length) return null;
   const name = ASPECT_NAME[key];
 
   return (
@@ -71,6 +72,7 @@ export function Linked() {
         </Section>
       ) : null}
 
+      {withGoals ? (
       <Section title="Goals" action="Set one" onAction={() => openLink(`agenticos://mission/add?aspect=${key}`)}>
         {mine.length ? (
           <Card style={s.list}>
@@ -93,6 +95,7 @@ export function Linked() {
             : <Skeleton height={64} radius={24} />
         )}
       </Section>
+      ) : null}
 
       {signals.length ? (
         <Section title="From your other sections">

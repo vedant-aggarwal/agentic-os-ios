@@ -13,6 +13,7 @@ import { FirstSheet, Projects } from './Projects';
 import { Purpose } from './Purpose';
 import { RecordScreen } from './Record';
 import type { Home as HomeData } from './types';
+import { Linked } from '@/aspects/_linked/Linked';
 
 type Open = 'close' | 'ladder' | 'projects' | 'purpose' | 'record';
 const SHUT: Record<Open, boolean> = { close: false, ladder: false, projects: false, purpose: false, record: false };
@@ -76,6 +77,7 @@ export default function Mission() {
           </>
         }>
         <Home read={home} />
+        {home.data ? <Linked goals={false} /> : null}
       </Page>
     </NavContext>
   );

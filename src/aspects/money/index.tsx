@@ -9,6 +9,7 @@ import { SpendScreen, todayLine } from './Spend';
 import { StatementScreen } from './Statement';
 import type { Home } from './types';
 import { Band, Group, Line } from './ui';
+import { Linked } from '@/aspects/_linked/Linked';
 
 // Money: is the work paying, and where does it go? One screen with three parts. Earn leads: this month's earned money
 // against his target on one line, with what is still owed to him right under it. Then where it went, with the one line
@@ -103,6 +104,8 @@ export default function Money() {
           </Group>
         ) : null}
       </Band>
+
+      <Linked />
     </Page>
   );
 }

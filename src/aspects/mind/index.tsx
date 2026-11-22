@@ -13,6 +13,7 @@ import { DrillScreen, SpeakScreen, takeWord } from './Speak';
 import { TakeFlow, type Run } from './Take';
 import type { Day, HomeView, TakeSpec } from './types';
 import { Sym, usePoll } from './ui';
+import { Linked } from '@/aspects/_linked/Linked';
 
 // The Mind page: learn it, then say it. Home holds today's loop (one thing in, one thing said), this week, and
 // whether the speaking is getting sharper. Speak, Read and Courses open as screens over it.
@@ -80,6 +81,7 @@ export default function Mind() {
                 sub={v.learn.course ? `${v.learn.course.title}, ${v.learn.course.done} of ${v.learn.course.lessons}` : v.learn.courses ? 'Pick a course to work on' : 'Add a course'} />
             </View>
           </Section>
+          <Linked />
         </>
       )}
     </Page>

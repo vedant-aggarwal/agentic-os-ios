@@ -13,6 +13,7 @@ import { PathTrack } from './parts';
 import { PersonScreen } from './Person';
 import { PlanFlow, type Preset } from './PlanFlow';
 import { PlansScreen } from './Plans';
+import { Linked } from '@/aspects/_linked/Linked';
 
 // Friends: is my circle growing? One screen with the next plan as the lead, the people he is getting to know and
 // the next hello in a place he already goes, and his circle with when he last saw each friend.
@@ -114,6 +115,7 @@ export default function Friends() {
           </Section>
 
           {steady ? <DeepenCard v={steady} ideas={deepenIdeas(steady, f.ideas.items ?? [], f.bank.data?.ideas ?? [])} onPlan={(d) => planWith(steady.p.id, d)} /> : null}
+          <Linked />
         </>
       )}
     </Page>

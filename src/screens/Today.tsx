@@ -9,7 +9,6 @@ import { Dock, orbFromBottom } from '@/components/Dock';
 import { Notice } from '@/components/Notice';
 import { NowCard } from '@/components/NowCard';
 import { SignIn } from '@/components/SignIn';
-import { TaskGroup } from '@/components/TaskRow';
 import { PcMicSheet } from '@/components/PcMicSheet';
 import { VoicesSheet } from '@/components/VoicesSheet';
 import { RemoteDesktop } from '@/components/remote/RemoteDesktop';
@@ -20,17 +19,18 @@ import { micCenter, pillCenter, TOP_GAP, TOP_H, TopBar } from '@/components/TopB
 import { api, signOut } from '@/lib/api';
 import { gazeTouch } from '@/lib/gaze';
 import { useToday } from '@/lib/useToday';
+import { useBody } from '@/lib/body';
+import { DayPlan } from '@/today/DayPlan';
 import { useWispr } from '@/lib/wispr';
 import { useKeyboardMic } from '@/lib/kbmic';
 import { Hero, HERO_H } from '@/hero/Hero';
-import { C, F } from '@/theme';
+import { C, F, type AspectKey } from '@/theme';
 
 export default function Today() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const t = useToday();
   const [local, setLocal] = useState<string | null>(null);
-  const [allCarried, setAllCarried] = useState(false);
   const [micOpen, setMicOpen] = useState(false); // opened by tapping the PC mic button
   const [voicesOpen, setVoicesOpen] = useState(false); // the top bar's waveform button
   const [filesOpen, setFilesOpen] = useState(false); // the top bar's To PC button
@@ -41,6 +41,7 @@ export default function Today() {
   const mic = useWispr(!!t.view);
   const kbMic = useKeyboardMic(); // records for the keyboard extension (agenticos://flow)
   const agent = useAgent(!!t.view);
+  const b = useBody(!!t.view); // today's workout, water and protein, under the Body part of the plan
   // A command is being taken or worked on (the Action button may have started it with the app shut): show it.
   const agentLive = agent.heard === 'listening' || agent.busy;
   const { settle } = mic;
@@ -53,6 +54,10 @@ export default function Today() {
   const notBuilt = useCallback((what: string) => setLocal(`${what}: not built yet`), []);
   const { clearNotice } = t;
   const clear = useCallback(() => { setLocal(null); clearNotice(); }, [clearNotice]);
+  // an aspect's page; the aspect pages land with the aspects branch
+  const openAspect = useCallback((a: AspectKey) => notBuilt(`${a[0].toUpperCase()}${a.slice(1)} page`), [notBuilt]);
+  const { addWater, reload: reloadBody } = b;
+  const water = useCallback(async () => { const e = await addWater(); if (e) setLocal(e); }, [addWater]);
 
   if (t.state.status === 'loading') return <View style={s.screen} />;
   if (t.state.status === 'signedOut') return <SignIn onDone={t.reload} />;
@@ -69,7 +74,7 @@ export default function Today() {
 
   const v = t.view;
   const orb = orbFromBottom(insets.bottom);
-  const empty = !v.groups.length && !v.carried;
+  const empty = !v.sections.length && !b.body;
   return (
     // every touch on Today is passed to the smiley, which looks toward the finger
     <View style={s.screen} {...gazeTouch}>
@@ -79,22 +84,12 @@ export default function Today() {
         showsVerticalScrollIndicator={false}
         scrollEventThrottle={100}
         onScroll={(e) => { const on = e.nativeEvent.contentOffset.y < insets.top + HERO_H; if (on !== heroOn) setHeroOn(on); }}
-        refreshControl={<RefreshControl refreshing={t.refreshing} onRefresh={t.refresh} tintColor={C.muted} />}>
+        refreshControl={<RefreshControl refreshing={t.refreshing} onRefresh={() => { t.refresh(); reloadBody(); }} tintColor={C.muted} />}>
         <Hero view={v} top={insets.top} topBar={TOP_GAP + TOP_H} active={heroOn} />
 
         <View style={[s.sheet, { paddingBottom: insets.bottom + 140 }]}>
           <NowCard moment={v.moment} onDone={t.toggle} />
-          {v.groups.map((g) => <TaskGroup key={g.key} group={g} onToggle={t.toggle} />)}
-          {v.carried ? (
-            <View>
-              <TaskGroup group={v.carried} onToggle={t.toggle} limit={allCarried ? undefined : 5} />
-              {v.carried.rows.length > 5 ? (
-                <Pressable accessibilityRole="button" onPress={() => setAllCarried((x) => !x)} style={s.more}>
-                  <Text style={s.moreText}>{allCarried ? 'Show fewer' : `Show all ${v.carried.rows.length}`}</Text>
-                </Pressable>
-              ) : null}
-            </View>
-          ) : null}
+          <DayPlan sections={v.sections} body={b.body} onToggle={t.toggle} onOpen={openAspect} onWater={water} />
           {empty ? <Text style={s.emptyText}>Nothing due today or carried over. Add tasks with agentos on the PC.</Text> : null}
           <Pressable accessibilityRole="button" onPress={async () => { await signOut(); t.reload(); }} style={s.more}>
             <Text style={[s.moreText, { color: C.faint }]}>Sign out</Text>

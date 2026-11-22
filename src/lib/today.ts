@@ -16,7 +16,7 @@ export type Area = { slug: string; name: string };
 
 // ── what the Today screen draws ─────────────────────────────────────────────
 export type Row = {
-  id: string; title: string; sub: string | null; color: string | null;
+  id: string; title: string; sub: string | null; color: string | null; aspect: AspectKey | null;
   done: boolean; right: string; rightStrong: boolean;
 };
 export type Group = { key: string; label: string; count: string; rows: Row[] };
@@ -25,6 +25,8 @@ export type Moment = {
   color: string | null; taskId: string | null; then: string | null;
 };
 export type Family = { key: FamilyKey; done: number; total: number };
+/** One aspect's part of the day: today's plan (done counts against total) and what's carried over. */
+export type Section = { key: AspectKey | 'none'; label: string; color: string | null; done: number; total: number; rows: Row[]; carried: Row[] };
 export type AspectProgress = Partial<Record<AspectKey, { done: number; total: number }>>;
 export type TodayView = {
   dateLabel: string;
@@ -37,6 +39,8 @@ export type TodayView = {
   moment: Moment | null;
   groups: Group[];
   carried: Group | null;
+  /** The day by aspect, in life-wheel order, then tasks with no area. */
+  sections: Section[];
 };
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -91,7 +95,7 @@ export function deriveToday(t: TodayPayload, life: LifePayload, areas: Area[]): 
 
   const row = (x: Task, right: string, rightStrong = false): Row => ({
     id: x.id, title: x.title, sub: x.area ? areaName.get(x.area) ?? x.area : null,
-    color: colorOf(x.area), done: x.status === 'done', right, rightStrong,
+    color: colorOf(x.area), aspect: aspectOf(x.area), done: x.status === 'done', right, rightStrong,
   });
   const timeOf = (x: Task) => (x.scheduled ? hhmm(x.scheduled.start) : 'Today');
   const todayRows = [...dueToday, ...doneToday]
@@ -108,6 +112,21 @@ export function deriveToday(t: TodayPayload, life: LifePayload, areas: Area[]): 
     groups.push({
       key, label: LABEL[key], count: `${items.filter((x) => x.status === 'done').length} of ${items.length}`,
       rows: items.map((x) => row(x, x.status === 'done' ? 'Done' : timeOf(x), x.status !== 'done' && !!x.scheduled)),
+    });
+  }
+
+  const carriedRows = carried.map((x) => row(x, `Since ${shortDate(x.due!)}`));
+  const sections: Section[] = [];
+  for (const key of [...life.aspects.map((a) => a.key), 'none' as const]) {
+    const plan = todayRows.filter((x) => (aspectOf(x.area) ?? 'none') === key);
+    const late = carriedRows.filter((r) => (r.aspect ?? 'none') === key);
+    if (!plan.length && !late.length) continue;
+    sections.push({
+      key, label: key === 'none' ? 'Other' : life.aspects.find((a) => a.key === key)?.name ?? key,
+      color: key === 'none' ? null : ASPECT_COLOR[key],
+      done: plan.filter((x) => x.status === 'done').length, total: plan.length,
+      rows: plan.map((x) => row(x, x.status === 'done' ? 'Done' : timeOf(x), x.status !== 'done' && !!x.scheduled)),
+      carried: late,
     });
   }
 
@@ -143,8 +162,7 @@ export function deriveToday(t: TodayPayload, life: LifePayload, areas: Area[]): 
     total: counted.length,
     moment,
     groups,
-    carried: carried.length
-      ? { key: 'carried', label: 'Carried over', count: String(carried.length), rows: carried.map((x) => row(x, `Since ${shortDate(x.due!)}`)) }
-      : null,
+    carried: carried.length ? { key: 'carried', label: 'Carried over', count: String(carried.length), rows: carriedRows } : null,
+    sections,
   };
 }

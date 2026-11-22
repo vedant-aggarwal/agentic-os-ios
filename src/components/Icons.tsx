@@ -5,13 +5,13 @@ import { ASPECT_COLOR, C } from '@/theme';
 // 16-unit line. Colour follows the aspect; app controls that belong to no aspect stay neutral.
 type P = { size?: number; color?: string };
 
-const rr = (x: number, y: number, w: number, h: number) =>
+export const rr = (x: number, y: number, w: number, h: number) =>
   `M${x + 8} ${y}h${w - 16}a8 8 0 0 1 8 8v${h - 16}a8 8 0 0 1-8 8h-${w - 16}a8 8 0 0 1-8-8v-${h - 16}a8 8 0 0 1 8-8z`;
 const CIRCLE = 'M128 32a96 96 0 1 1-0.01 0z';
 const SCREEN = rr(24, 40, 208, 144);
 const MIC = 'M128 24a40 40 0 0 1 40 40v64a40 40 0 0 1-80 0V64a40 40 0 0 1 40-40z';
 
-function Duo({ size, color, line, fill, tint, soft, stroke = 16, children }: {
+export function Duo({ size, color, line, fill, tint, soft, stroke = 16, children }: {
   size: number; color: string; line: string; fill?: string; tint?: string; soft?: number; stroke?: number; children?: React.ReactNode;
 }) {
   // neutral icons take a lighter fill, as on the board's Type key

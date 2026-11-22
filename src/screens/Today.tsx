@@ -21,6 +21,7 @@ import { api, signOut } from '@/lib/api';
 import { gazeTouch } from '@/lib/gaze';
 import { useToday } from '@/lib/useToday';
 import { useBody } from '@/lib/body';
+import { startContactSync } from '@/lib/contacts';
 import { DayPlan } from '@/today/DayPlan';
 import { useWispr } from '@/lib/wispr';
 import { useKeyboardMic } from '@/lib/kbmic';
@@ -58,6 +59,8 @@ export default function Today() {
   const kbMic = useKeyboardMic(); // records for the keyboard extension (agenticos://flow)
   const agent = useAgent(!!t.view);
   const b = useBody(!!t.view); // today's workout, water and protein, under the Body part of the plan
+  const signedIn = !!t.view;
+  useEffect(() => (signedIn ? startContactSync() : undefined), [signedIn]); // contacts to the PC, at most every 12 h (lib/contacts.ts)
   // A command is being taken or worked on (the Action button may have started it with the app shut): show it.
   const agentLive = agent.heard === 'listening' || agent.busy;
   const { settle } = mic;

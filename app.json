@@ -103,6 +103,12 @@
         }
       ],
       [
+        "expo-contacts",
+        {
+          "contactsPermission": "Agentic OS syncs your contacts to your own PC so Nora can find people by name when you ask her to call or message someone."
+        }
+      ],
+      [
         "expo-screen-orientation",
         {
           "initialOrientation": "PORTRAIT_UP"

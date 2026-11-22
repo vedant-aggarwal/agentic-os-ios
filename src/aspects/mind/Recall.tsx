@@ -133,7 +133,7 @@ export function RecallScreen({ open, onClose }: { open: boolean; onClose: () => 
       </>
     );
   }
-  return <Screen open={open} onClose={onClose} title="Recall">{body}</Screen>;
+  return <Screen open={open} onClose={onClose} title="Recall" immersive>{body}</Screen>;
 }
 
 const s = StyleSheet.create({

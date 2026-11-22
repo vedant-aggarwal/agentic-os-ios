@@ -58,6 +58,12 @@ export function minutes(m: number) {
   return h ? (mm ? `${h} h ${mm} min` : `${h} h`) : `${mm} min`;
 }
 
+/** A take's length in plain words: "66 seconds", "2 minutes". Takes stop at two minutes, so seconds read best. */
+export function secsWords(s: number) {
+  const r = Math.round(s);
+  return r === 120 ? '2 minutes' : r === 1 ? '1 second' : `${r} seconds`;
+}
+
 /** A step in a wait the page is honest about: done, happening now, or still to come. */
 export function Steps({ items }: { items: { label: string; state: 'done' | 'now' | 'next' | 'failed'; note?: string | null }[] }) {
   const a = useAspect();

@@ -113,7 +113,6 @@ function Flow({ spec, steps, open, onClose }: { spec: TakeSpec; steps?: string[]
 
   const topic = (
     <View style={s.topic}>
-      <Text style={[t.label, { color: a.color }]}>{spec.label}</Text>
       <Text style={phase === 'think' ? t.title : t.heading} accessibilityRole="header">{spec.topic}</Text>
       {spec.source ? <Text style={t.small}>{spec.source.kind === 'lesson' ? `From the lesson ${spec.source.title}` : `From ${spec.source.title}`}</Text> : null}
       {steps?.length ? <View style={s.chips}>{steps.map((st, i) => <Chip key={`${st}${i}`} label={`${i + 1} ${st}`} />)}</View> : null}

@@ -13,7 +13,7 @@ import { Sym, minutes, useLast } from './ui';
 export const COURSE = '/mod/mind/course';
 const REASONS = ['I need this one now', 'Lost interest in the current one', 'Got what I needed from it', 'Too hard for now'];
 export const sayLesson = (l: { id: string; title: string }): TakeSpec =>
-  ({ kind: 'learned', topic: `Explain ${l.title} to a friend who hasn't seen it.`, label: 'Say what you learned', source: { kind: 'lesson', id: l.id, title: l.title } });
+  ({ kind: 'learned', topic: `Explain the lesson “${l.title}” to a friend who hasn't seen it.`, label: 'Say what you learned', source: { kind: 'lesson', id: l.id, title: l.title } });
 
 export function CoursesScreen({ open, onClose, onSay }: { open: boolean; onClose: () => void; onSay: (spec: TakeSpec) => void }) {
   const a = useAspect();
@@ -48,6 +48,12 @@ export function CoursesScreen({ open, onClose, onSay }: { open: boolean; onClose
               {act.left ? `${act.left} left${act.minutes_known && act.minutes_left ? `, about ${minutes(act.minutes_left)}` : ''}. ` : ''}
               {act.finish ? `At your pace, done around ${shortDay(act.finish)}.` : act.why ?? ''}
             </Text>
+            {act.practice ? (
+              <View style={[s.gap4, s.pt12]}>
+                <Text style={t.label}>What this course is for</Text>
+                <Text style={t.small} numberOfLines={4}>{act.practice}</Text>
+              </View>
+            ) : null}
           </View>
         ) : (
           <Card>
@@ -70,7 +76,7 @@ export function CoursesScreen({ open, onClose, onSay }: { open: boolean; onClose
           </Section>
         ) : null}
 
-        {act?.next ? <Today lesson={act.next} practice={act.practice} onOpen={() => open1(act.next!.url)} onDone={() => setDoneFor(act.next)} quiet={doneToday.length > 0} /> : act ? (
+        {act?.next ? <Today lesson={act.next} onOpen={() => open1(act.next!.url)} onDone={() => setDoneFor(act.next)} quiet={doneToday.length > 0} /> : act ? (
           <Card tone={a.color}><Text style={t.lead}>Every lesson is done. Pick the next course from the shelf.</Text></Card>
         ) : null}
 
@@ -95,14 +101,14 @@ export function CoursesScreen({ open, onClose, onSay }: { open: boolean; onClose
           <Section title="Libraries">
             <Text style={t.small}>Collections to dip into, not courses to finish.</Text>
             <View>
-              {v.libraries.map((c) => <Row key={c.id} title={c.title} sub={`${c.lessons} lessons${c.done ? `, ${c.done} watched` : ''}`} chevron onPress={() => setSwitchTo(c)} />)}
+              {v.libraries.map((c) => <Row key={c.id} title={c.title} sub={`${c.lessons === 1 ? 'One lesson' : `${c.lessons} lessons`}${c.done ? `, ${c.done} watched` : ''}`} chevron onPress={() => setSwitchTo(c)} />)}
             </View>
           </Section>
         ) : null}
 
         {v.done.length ? (
           <Section title="Finished">
-            <View>{v.done.map((c) => <Row key={c.id} title={c.title} sub={`${c.lessons} lessons`} left={<CheckRing done size={24} />} />)}</View>
+            <View>{v.done.map((c) => <Row key={c.id} title={c.title} sub={`${c.lessons === 1 ? 'One lesson' : `${c.lessons} lessons`}`} left={<CheckRing done size={24} />} />)}</View>
           </Section>
         ) : null}
 
@@ -122,12 +128,12 @@ export function CoursesScreen({ open, onClose, onSay }: { open: boolean; onClose
 }
 
 /** Today's lesson: why it matters, what to watch for, what to make, and when it counts as done. */
-function Today({ lesson: l, practice, onOpen, onDone, quiet }: { lesson: Lesson; practice: string | null; onOpen: () => void; onDone: () => void; quiet: boolean }) {
+function Today({ lesson: l, onOpen, onDone, quiet }: { lesson: Lesson; onOpen: () => void; onDone: () => void; quiet: boolean }) {
   const a = useAspect();
   const parts = [
     { k: 'Why it matters', v: l.why },
     { k: 'Watch for', v: l.watch },
-    { k: 'Then make', v: l.practice ?? practice },
+    { k: 'Then make', v: l.practice },
     { k: 'Done when', v: l.done_when },
   ].filter((x) => x.v) as { k: string; v: string }[];
   return (
@@ -145,9 +151,9 @@ function Today({ lesson: l, practice, onOpen, onDone, quiet }: { lesson: Lesson;
               <Text style={t.body}>{p.v}</Text>
             </View>
           ))}
-          <View style={s.buttons}>
-            {l.url ? <Button label="Open lesson" kind="quiet" onPress={onOpen} icon={<Sym name="open" size={16} />} wrap={s.flex} /> : null}
-            <Button label="Mark done" kind={quiet ? 'soft' : 'accent'} onPress={onDone} icon={<Icon name="check" size={18} color={quiet ? a.color : '#14161C'} />} wrap={s.flex} />
+          <View style={s.gap12}>
+            <Button label="Mark done" kind={quiet ? 'soft' : 'accent'} onPress={onDone} icon={<Icon name="check" size={18} color={quiet ? a.color : '#14161C'} />} />
+            {l.url ? <Button label="Open lesson" kind="quiet" onPress={onOpen} icon={<Sym name="open" size={16} />} /> : null}
           </View>
         </View>
       </Card>
@@ -292,7 +298,6 @@ const s = StyleSheet.create({
   gap16: { gap: 16 },
   gap24: { gap: 24 },
   pt12: { paddingTop: 12 },
-  buttons: { flexDirection: 'row', gap: 12, alignItems: 'center' },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   splitHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
 });

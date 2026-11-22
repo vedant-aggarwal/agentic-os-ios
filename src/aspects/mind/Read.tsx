@@ -13,15 +13,16 @@ import { Sym, useLast, useNow } from './ui';
 
 export const READ = '/mod/mind/read';
 const sayTakeaway = (id: string, text: string, title: string): TakeSpec =>
-  ({ kind: 'learned', topic: `What stuck from ${title}? Say it in a minute.`, label: 'Say what you learned', source: { kind: 'takeaway', id, title } });
+  ({ kind: 'learned', topic: `Say more about what stuck from ${title}.`, label: 'Say what you learned', source: { kind: 'takeaway', id, title } });
 
-/** A book's cover, or a plain block with its first letter when there is none. */
+/** A book's cover over a plain block with its first letter. */
 export function Cover({ book, w = 56 }: { book: { title: string; cover: string | null }; w?: number }) {
   const h = Math.round(w * 1.5);
-  if (book.cover) return <Image source={{ uri: book.cover }} style={[s.cover, { width: w, height: h }]} contentFit="cover" accessibilityIgnoresInvertColors />;
+  // the first letter sits under the picture, so a cover that is slow or missing still shows something
   return (
     <View style={[s.cover, s.coverBlank, { width: w, height: h }]}>
       <Text style={[t.heading, { color: C.muted }]}>{book.title.slice(0, 1).toUpperCase()}</Text>
+      {book.cover ? <Image source={{ uri: book.cover }} style={StyleSheet.absoluteFill} contentFit="cover" transition={150} accessibilityIgnoresInvertColors /> : null}
     </View>
   );
 }
@@ -326,7 +327,7 @@ const s = StyleSheet.create({
   gap24: { gap: 24 },
   buttons: { flexDirection: 'row', gap: 12, alignItems: 'center' },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  cover: { borderRadius: 6, backgroundColor: SURF.card },
+  cover: { borderRadius: 6, backgroundColor: SURF.card, overflow: 'hidden' },
   coverBlank: { alignItems: 'center', justifyContent: 'center' },
   bookHead: { flexDirection: 'row', gap: 16 },
   bookText: { flex: 1, gap: 8 },

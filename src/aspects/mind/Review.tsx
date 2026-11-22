@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import {
-  Button, Card, Chip, Divider, Failed, IconButton, Icon, Screen, Section, Segmented, Skeleton, ago, dayLabel, timer, t, useAspect,
+  Button, Card, Chip, Divider, Failed, IconButton, Icon, Screen, Section, Segmented, Skeleton, dayLabel, timer, t, useAspect,
 } from '@/aspects/kit';
 import { call, fileSource, invalidate, useGet } from '@/lib/mod';
 import { C } from '@/theme';
 import { usePlayer } from './recorder';
 import type { DimKey, Take, TakeSpec } from './types';
-import { Quote, ScoreRow, Steps, Sym, useLast, usePoll } from './ui';
+import { Quote, ScoreRow, Steps, Sym, secsWords, useLast, usePoll } from './ui';
 
 const DIM_NAME: Record<DimKey, string> = { structure: 'Structure', clarity: 'Clarity', focus: 'On topic', words: 'Word choice', economy: 'Economy', fillers: 'Fillers' };
 const ORDER: DimKey[] = ['structure', 'clarity', 'focus', 'words', 'economy', 'fillers'];
@@ -42,7 +42,7 @@ export function TakeState({ take, onRetry, retrying }: { take: Take; onRetry: ()
           { label: 'Writing down what you said', state: heard ? 'done' : failed ? 'failed' : 'now', note: !heard && failed ? take.error : null },
           { label: 'Reviewing', state: take.failed_step === 'review' ? 'failed' : take.status === 'reviewing' ? 'now' : 'next', note: take.failed_step === 'review' ? take.error : null },
         ]} />
-        {failed ? <Button label="Try again" kind="quiet" small onPress={onRetry} busy={retrying} wrap={s.start} />
+        {failed ? <Button label={take.failed_step === 'review' ? 'Review it again' : 'Write it down again'} kind="quiet" small onPress={onRetry} busy={retrying} wrap={s.start} />
           : <Text style={t.small}>Usually under a minute. You can leave: the review will be on Mind when it&apos;s ready.</Text>}
       </View>
     </Card>
@@ -80,7 +80,7 @@ export function ReviewBody({ take }: { take: Take }) {
       <Section title="Said tighter">
         <Segmented options={[{ key: 'tight', label: 'Tighter' }, { key: 'said', label: 'What you said' }] as const} value={view} onChange={setView} />
         <Text style={[t.body, s.read]} selectable>{view === 'tight' ? r.rewrite : take.transcript}</Text>
-        <Text style={t.caption}>{view === 'tight' ? 'Your ideas, fewer words. Nothing added.' : `${take.words ?? ''} words in ${take.secs ? timer(take.secs) : 'this take'}`.trim()}</Text>
+        <Text style={t.caption}>{view === 'tight' ? 'Your ideas, fewer words. Nothing added.' : `${take.words ? `${take.words} words in ` : ''}${take.secs ? secsWords(take.secs) : 'this take'}`}</Text>
       </Section>
 
       <Section title="How it scored">
@@ -153,7 +153,7 @@ export function ReviewScreen({ id, onClose, onAgain }: { id: string | null; onCl
           <View style={s.gap8}>
             <Text style={t.label}>{take.topic_label}</Text>
             <Text style={t.title2}>{take.topic}</Text>
-            <Text style={t.caption}>{`${dayLabel(take.day)}, ${ago(take.at)}${take.secs ? `, ${timer(take.secs)} long` : ''}`}</Text>
+            <Text style={t.caption}>{`${dayLabel(take.day)}${take.secs ? `, ${secsWords(take.secs)}` : ''}`}</Text>
           </View>
           <TakeState take={take} onRetry={retry} retrying={retrying} />
           {take.status === 'reviewed' && take.review ? <ReviewBody take={take} /> : null}

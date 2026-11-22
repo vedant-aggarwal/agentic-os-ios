@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import {
-  Button, Card, Failed, Icon, Row, Screen, Section, Skeleton, Spark, dayLabel, num, t, timer, useAspect,
+  Button, Card, Failed, Icon, Row, Screen, Section, Skeleton, Spark, dayLabel, num, t, useAspect,
 } from '@/aspects/kit';
 import { call, invalidate, useGet } from '@/lib/mod';
 import { C } from '@/theme';
 import type { Drill, SpeakView, TakeLite, TakeSpec } from './types';
-import { ScoreRow, Sym, useLast, usePoll } from './ui';
+import { ScoreRow, Sym, secsWords, useLast, usePoll } from './ui';
 
 export const SPEAK = '/mod/mind/speak';
 
@@ -24,7 +24,7 @@ export function TakeRow({ take, onPress }: { take: TakeLite; onPress: () => void
   const word = takeWord(take);
   const scored = take.status === 'reviewed' && take.overall != null;
   return (
-    <Row title={take.topic} sub={`${dayLabel(take.day)}${take.secs ? `, ${timer(take.secs)}` : ''}`} onPress={onPress} chevron
+    <Row title={take.topic} sub={`${dayLabel(take.day)}${take.secs ? `, ${secsWords(take.secs)}` : ''}`} onPress={onPress} chevron
       label={`${take.topic}, ${scored ? `scored ${word}` : word}`}
       right={<Text style={[scored ? t.strong : t.label, t.num, take.status === 'failed' && { color: C.danger }, scored && { color: a.color }]}>{word}</Text>} />
   );
@@ -63,7 +63,7 @@ export function SpeakScreen({ open, onClose, onTake, onReview, onDrill }: {
             <Section title="Say what you learned">
               <View>
                 {v.learned.map((l) => (
-                  <Row key={l.source.id} title={l.text} sub={l.source.kind === 'lesson' ? 'From a lesson' : `From ${l.source.title}`}
+                  <Row key={l.source.id} title={l.text} sub={l.line ? `You wrote: ${l.line}` : 'From a lesson you finished'}
                     onPress={() => onTake({ kind: 'learned', topic: l.text, label: 'Say what you learned', source: l.source })}
                     right={<Icon name="mic" size={18} color={a.color} />} />
                 ))}
@@ -103,7 +103,7 @@ function Progress({ v }: { v: SpeakView }) {
         <Text style={t.small}>Scores show after your first review. Each one is on the same fixed rubric, so the numbers compare over time.</Text>
       ) : (
         <View style={s.gap16}>
-          <Text style={t.small}>{`Your last ${Math.min(5, p.reviewed)} reviewed takes${p.reviewed > 5 ? ', against the five before' : ''}.`}</Text>
+          <Text style={t.small}>{`Your last ${Math.min(5, p.reviewed)} reviewed takes${p.reviewed > 5 ? `, against the ${p.reviewed >= 10 ? 'five' : p.reviewed === 6 ? 'one' : String(p.reviewed - 5)} before` : ''}.`}</Text>
           {p.dims.map((d) => <ScoreRow key={d.key} name={d.name} value={d.now} before={d.before} />)}
           {fpm.length >= 2 ? (
             <Card>

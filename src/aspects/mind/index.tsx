@@ -141,6 +141,7 @@ function Loop({ v, onTake, onPlace, onReview }: { v: HomeView; onTake: (s: TakeS
           <View style={s.gap4}>
             <Text style={[t.label, said && { color: a.color }]}>{said ? 'Said today' : prompt ? 'Say what you learned' : `Say it, ${topic.label.toLowerCase()}`}</Text>
             <Text style={t.heading}>{prompt ? prompt.text : topic.text}</Text>
+            {prompt?.line ? <Text style={t.small} numberOfLines={2}>{`You wrote: ${prompt.line}`}</Text> : null}
           </View>
           {last ? (
             <Press label={`Your take today, ${takeWord(last)}`} onPress={() => onReview(last.id)} style={s.lastTake}>
@@ -221,7 +222,7 @@ function Sharper({ v, onOpen }: { v: HomeView; onOpen: () => void }) {
   const d = lastT.overall - first.overall;
   return (
     <Section title="Getting sharper?">
-      <Card onPress={onOpen} label={`Overall ${lastT.overall}, ${d >= 0 ? 'up' : 'down'} ${Math.abs(d)} over ${tr.length} takes. Open Speak`}>
+      <Card onPress={onOpen} label={`Your score ${lastT.overall}, ${d >= 0 ? 'up' : 'down'} ${Math.abs(d)} over ${tr.length} takes. See every part`}>
         <View style={s.gap12}>
           <View style={s.sharpHead}>
             <Text style={[t.big, t.num, { color: a.color }]}>{lastT.overall}</Text>

@@ -3,7 +3,7 @@
 export type TopicKind = 'opinion' | 'explain' | 'story' | 'persuade' | 'think';
 export type Source = { kind: 'lesson' | 'takeaway'; id: string; title: string };
 export type Topic = { id: string; text: string; kind: TopicKind; label: string; by: 'bank' | 'ai'; from: Source | null };
-export type Learned = { text: string; source: Source; day: string };
+export type Learned = { text: string; line: string | null; source: Source; day: string };
 
 export type TakeStatus = 'transcribing' | 'reviewing' | 'reviewed' | 'short' | 'failed';
 export type TakeKind = 'impromptu' | 'drill' | 'learned';

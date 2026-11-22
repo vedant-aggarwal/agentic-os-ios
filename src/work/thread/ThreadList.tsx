@@ -6,7 +6,7 @@ import { Sym } from '@/components/Sym';
 import { C, F } from '@/theme';
 import type { Engine, JobFull } from '../types';
 import type { ChangeFile, Row } from './model';
-import { ChangesRow, NoteRow, PermissionRow, PlanRow, StepsRow, TextRow, UserRow } from './rows';
+import { type Answer, ChangesRow, NoteRow, PermissionRow, PlanRow, StepsRow, TextRow, UserRow } from './rows';
 import { IcDown, Press } from './ui';
 
 // The thread, newest at the bottom. An inverted FlatList: only visible rows render, it opens at the latest message,
@@ -22,7 +22,7 @@ type Props = {
   older: 'idle' | 'loading' | 'error';
   onOlder: () => void;
   permBusy: string | null;
-  onAnswer: (requestId: string, optionId: string) => void;
+  onAnswer: Answer;
   onOpenDiff: (turn: number, files: ChangeFile[], index: number) => void;
 };
 

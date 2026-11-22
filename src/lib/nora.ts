@@ -48,6 +48,7 @@ export type NoraHome = {
   items: FeedItem[]; older: FeedItem[]; asks: FeedItem[];
   mood: NoraMood | null;
   calls: { morning: string; night: string };
+  upcoming?: { id: string; title: string; at: string; time: string }[];
 };
 export type LiveCall = {
   id: string; relay: boolean; connected: boolean; muted: boolean; handoff: boolean; seconds: number;

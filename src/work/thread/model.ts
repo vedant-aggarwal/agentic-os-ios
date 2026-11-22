@@ -1,4 +1,4 @@
-import type { Engine, JobEvent, JobFull, JobStatus } from '../types';
+import type { Engine, FormQuestion, JobEvent, JobFull, JobStatus } from '../types';
 
 // Turns a job's events into the rows the thread draws. One turn = his message and everything after it until his next.
 // Inside a turn: his bubble, the plan, one group holding every tool step (and the narration between steps), the answer
@@ -77,6 +77,8 @@ export function buildRows(events: JobEvent[], job: Pick<JobFull, 'status' | 'eng
   const out: Row[] = [];
   const push = (r: Row) => { out.push(r); };
   const running = isRunning(job?.status);
+  // A request only waits while the job is live. One left undecided by a stop or a server restart can't be answered.
+  const asking = !job || running || job.status === 'needs_input';
   const engine: Engine = job?.engine ?? 'claude';
 
   // split into turns at each of his messages (keep-warm pings are not his)
@@ -127,7 +129,7 @@ export function buildRows(events: JobEvent[], job: Pick<JobFull, 'status' | 'eng
           return;
         }
         case 'permission':
-          if (e.decided) return; // answered, cancelled or auto approved: nothing for him to do
+          if (e.decided || !asking) return; // answered, cancelled, auto approved or no longer open: nothing for him to do
           push({ kind: 'permission', key: `k${e.seq}`, ev: e, sig: [e] });
           return;
         case 'changes': {
@@ -158,6 +160,12 @@ function statusNote(e: Ev<'status'>): string | null {
     case 'done': return 'Marked done.';
     default: return null; // needs_input shows as the permission card; a normal turn end says nothing
   }
+}
+
+/** The questions in a question request (the server keeps them under `permission.form`). Empty for other requests. */
+export function formOf(ev: Ev<'permission'>): FormQuestion[] {
+  const form = ev.form ?? ev.permission?.form;
+  return Array.isArray(form) ? form.filter((q) => q && typeof q.question === 'string' && q.question.trim()) : [];
 }
 
 /** "12 s", "2 min", "1 h 5 min". */

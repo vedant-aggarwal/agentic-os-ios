@@ -5,23 +5,25 @@ import {
 } from '@/aspects/kit';
 import { useGet } from '@/lib/mod';
 import { C, type AspectKey } from '@/theme';
-import { draftWithAI, REVIEW, saveScores, sealReview, type SealBody } from './data';
+import { draftWithAI, landInMission, REVIEW, saveScores, sealReview, type SealBody } from './data';
 import { Scorer } from './Score';
 import type { Commitment, DraftItem, DraftMove, ReviewDraft, Verdict } from './types';
-import { NAME, range, ruleSub } from './ui';
+import { NAME, range, ruleSub, weekWords } from './ui';
 
 // The Sunday review: one question a screen, mostly drafted by the PC, about five minutes. It closes the week's
 // goals, keeps what moved and what missed (with why), checks the rules, offers one new rule, scores the wheel when
-// it's due, and picks up to three moves that wait in Mission's This week. Growth makes no goals.
+// it's due, and picks up to three moves. Closing the week lands the moves in Mission, whose route makes each one a
+// week goal (HANDOFFS.md); Growth itself makes no goals.
 
 type StepKey = 'week' | 'moved' | 'missed' | 'rules' | 'rule' | 'score' | 'moves' | 'close';
 const VERDICTS: { key: Verdict; label: string }[] = [{ key: 'done', label: 'Done' }, { key: 'partly', label: 'Partly' }, { key: 'missed', label: 'Not done' }];
 const HELD: [string, boolean | null][] = [['Held', true], ['Broke it', false], ['Didn’t come up', null]];
 const MAX_MOVES = 3;
 
-type Sealed = { moves: string[]; rule: string | null };
+type Landed = { landed: number; held: number; week: string | null };
+type Sealed = { moves: string[]; rule: string | null; landed: Landed | null };
 type Handoff = { reviewed: string | null; moves: { week: string | null; items: { id: string; text: string; state: string }[] } };
-const STATE_WORD: Record<string, string> = { offered: 'Waiting in Mission', accepted: 'Taken on in Mission', declined: 'Let go' };
+const STATE_WORD: Record<string, string> = { offered: 'Waiting in Mission', accepted: 'In Mission’s week', declined: 'Let go' };
 
 export function Review({ open, onClose }: { open: boolean; onClose: () => void }) {
   const g = useGet<ReviewDraft>(open ? REVIEW : null);
@@ -40,13 +42,13 @@ export function Review({ open, onClose }: { open: boolean; onClose: () => void }
           </View>
         )
       ) : just ? (
-        <Done d={d} moves={just.moves} rule={just.rule} onClose={close} />
+        <Done d={d} moves={just.moves} rule={just.rule} landed={just.landed} onClose={close} />
       ) : d.status === 'closed' ? (
         <Card>
           <Empty title="The review opens on Saturday" body={`A week can be closed from Saturday to Tuesday.${d.window.nextOpen ? ` The next one opens ${dayLabel(d.window.nextOpen)}.` : ''}`} />
         </Card>
       ) : d.status === 'sealed' ? (
-        <Done d={d} moves={null} rule={null} onClose={close} />
+        <Done d={d} moves={null} rule={null} landed={null} onClose={close} />
       ) : (
         <Flow key={`${d.week}:${d.drafted_at}`} d={d} onSealed={setJust} redraft={g.refresh} />
       )}
@@ -132,9 +134,10 @@ function Flow({ d, onSealed, redraft }: { d: ReviewDraft; onSealed: (s: Sealed) 
         rule: pickedRule ? { when: pickedRule.when, then: pickedRule.then, from: pickedRule.from } : null,
         moves: chosen.map((m) => ({ text: m.text, aspect: m.aspect, serves: serves[m.id] ?? m.serves ?? null, carry: m.carry, from: m.from })),
       };
-      await sealReview(body);
+      const res = await sealReview(body);
+      const landed = res.already ? null : await landInMission(res.item); // never throws: what Mission can't take stays offered
       haptic.success();
-      onSealed({ moves: chosen.map((m) => m.text), rule: ruleLine });
+      onSealed({ moves: chosen.map((m) => m.text), rule: ruleLine, landed });
     } catch (e) {
       a.notice((e as Error).message);
     } finally { setBusy(false); }
@@ -268,7 +271,7 @@ function Flow({ d, onSealed, redraft }: { d: ReviewDraft; onSealed: (s: Sealed) 
   } else if (step === 'moves') {
     body = (
       <>
-        {head('Up to three moves', `For ${range(d.nextLabel)}. They wait in Mission’s This week, where you take them on. Fewer is fine if the week is full.`)}
+        {head('Up to three moves', `For ${range(d.nextLabel)}. When you close the week they go straight into that week in Mission. Fewer is fine if it is already full.`)}
         {carried.map((m) => (
           <MoveCard key={m.id} m={m} on note="Carried from this week" goals={d.goals} serves={serves[m.id] ?? m.serves}
             onServe={(gId) => setServes({ ...serves, [m.id]: gId })}
@@ -290,7 +293,7 @@ function Flow({ d, onSealed, redraft }: { d: ReviewDraft; onSealed: (s: Sealed) 
             if (chosen.length < MAX_MOVES) setPicks([...picks, id]);
             setDraft('');
           }} />
-        <Text style={t.caption}>{chosen.length} of {MAX_MOVES} picked. Growth makes no goals; you take each move on in Mission.</Text>
+        <Text style={t.caption}>{chosen.length} of {MAX_MOVES} picked. Each one becomes a goal for that week in Mission.</Text>
       </>
     );
   } else {
@@ -426,10 +429,15 @@ function MoveCard({ m, on, disabled, note, goals, serves, onServe, onToggle }: {
 }
 
 /** After the seal: what went where, and the way to Mission. */
-function Done({ d, moves, rule, onClose }: { d: ReviewDraft; moves: string[] | null; rule: string | null; onClose: () => void }) {
+function Done({ d, moves, rule, landed, onClose }: { d: ReviewDraft; moves: string[] | null; rule: string | null; landed: Landed | null; onClose: () => void }) {
   const a = useAspect();
   const h = useGet<Handoff>(moves ? null : '/mod/growth/handoff');
   const kept = h.data?.reviewed === d.week ? h.data.moves.items : null;
+  const wk = landed?.week ? `the week of ${weekWords(landed.week)}` : 'that week';
+  const where = !landed ? 'They wait in Mission.'
+    : !landed.held ? `${landed.landed === 1 ? 'It is' : 'They are'} in Mission for ${wk}.`
+    : !landed.landed ? `${landed.held === 1 ? 'It waits' : 'They wait'} at the top of Mission’s week, for you to keep or let go.`
+    : `${landed.landed} in Mission for ${wk}. ${landed.held} ${landed.held === 1 ? 'waits' : 'wait'} at the top of Mission’s week, for you to keep or let go.`;
   return (
     <View style={s.done}>
       <View style={[s.doneMark, { borderColor: a.color }]}><Icon name="check" size={28} color={a.color} /></View>
@@ -438,7 +446,7 @@ function Done({ d, moves, rule, onClose }: { d: ReviewDraft; moves: string[] | n
       {moves?.length ? (
         <View style={s.sum}>
           {moves.map((m) => <SumLine key={m} text={m} />)}
-          <Text style={t.caption}>{moves.length === 1 ? 'This move waits' : 'These moves wait'} in Mission&apos;s This week. Take {moves.length === 1 ? 'it' : 'them'} on there.</Text>
+          <Text style={t.caption}>{where}</Text>
         </View>
       ) : moves ? <Text style={[t.small, s.centreText]}>No moves for next week.</Text> : kept?.length ? (
         <View style={s.sum}>

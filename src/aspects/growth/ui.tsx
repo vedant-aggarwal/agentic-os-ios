@@ -1,4 +1,4 @@
-import { daysBetween, num, shortDay, today } from '@/aspects/kit';
+import { addDays, daysBetween, num, shortDay, today, weekday } from '@/aspects/kit';
 import type { AspectKey } from '@/theme';
 import type { RuleSum, Section, Trend } from './types';
 
@@ -20,6 +20,14 @@ export function whenSaid(day: string) {
 
 /** The server's week labels use a dash; copy never does: "16 to 22 Nov". */
 export const range = (label: string | null | undefined) => (label ?? '').replace(/\s*[–—-]\s*/g, ' to ');
+
+/** An ISO week key as the day it starts: "2026-W47" is "16 Nov". */
+export function weekWords(key: string) {
+  const [y, w] = key.split('-W').map(Number);
+  const jan4 = `${y}-01-04`;
+  const monday = addDays(jan4, -((weekday(jan4) + 6) % 7));
+  return shortDay(addDays(monday, (w - 1) * 7));
+}
 
 /** A 0 to 10 value as text: 2.7, 6. */
 export const v10 = (v: number | null | undefined) => (v == null ? 'not known' : num(v, 1));

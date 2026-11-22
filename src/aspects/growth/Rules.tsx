@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { addDays, Button, Card, Empty, Failed, Field, haptic, Screen, Section, Sheet, shortDay, Skeleton, SP, t, useAspect, weekday } from '@/aspects/kit';
+import { Button, Card, Empty, Failed, Field, haptic, Screen, Section, Sheet, Skeleton, SP, t, useAspect } from '@/aspects/kit';
 import { useCollection } from '@/lib/mod';
 import { C } from '@/theme';
 import { refreshGrowth } from './data';
 import type { Rule } from './types';
-import { NAME } from './ui';
+import { NAME, weekWords } from './ui';
 
 // Rules he has learned: "when X, I do Y". Each comes from a miss; each later review asks whether it held, and the
 // marks below a rule are those answers. A rule that keeps breaking is a rule to rewrite or retire, not a failure.
@@ -81,14 +81,6 @@ function RuleRow({ r, onPress }: { r: Rule; onPress: () => void }) {
       {from ? <Text numberOfLines={2} style={t.caption}>{from}{r.born?.aspect ? `, ${NAME[r.born.aspect]}` : ''}</Text> : null}
     </Card>
   );
-}
-
-/** An ISO week key as the day it starts: "2026-W47" is "16 Nov". */
-function weekWords(key: string) {
-  const [y, w] = key.split('-W').map(Number);
-  const jan4 = `${y}-01-04`;
-  const monday = addDays(jan4, -((weekday(jan4) + 6) % 7));
-  return shortDay(addDays(monday, (w - 1) * 7));
 }
 
 /** Write, rewrite, retire or delete one rule. */

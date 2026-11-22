@@ -9,7 +9,7 @@ import { NAME, range } from './ui';
 // Every week he closed, newest first, and what it held. Drafts the first app wrote but never closed sit apart.
 
 const VERDICT_WORD = { done: 'Done', partly: 'Partly', missed: 'Not done' } as const;
-const MOVE_WORD: Record<string, string> = { offered: 'Waiting in Mission', accepted: 'Taken on', declined: 'Let go' };
+const MOVE_WORD: Record<string, string> = { offered: 'Waiting in Mission', accepted: 'In Mission’s week', declined: 'Let go' };
 
 export function ReviewsScreen({ open, onClose }: { open: boolean; onClose: () => void }) {
   const reviews = useCollection<ReviewDoc>('growth', 'reviews');

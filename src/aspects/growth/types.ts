@@ -84,9 +84,10 @@ export type ReviewDoc = {
   headline?: string; feel?: { line?: string } | null;
   wins?: { text: string; aspect?: AspectKey }[]; moved?: { text: string; aspect?: AspectKey }[];
   misses?: { text: string; aspect?: AspectKey; why?: string | null; why2?: string | null; detail?: string }[];
-  closed?: { text: string; aspect: AspectKey; verdict: Verdict; carry?: boolean }[];
+  closed?: { text: string; aspect: AspectKey; verdict: Verdict; carry?: boolean; goal?: string | null }[];
   checks?: { rule: string; text: string; held: boolean }[];
   ruleText?: string | null;
-  moves?: { id?: string; text: string; aspect?: AspectKey; state?: string; on?: boolean }[];
+  nextWeek?: string;
+  moves?: { id?: string; text: string; aspect?: AspectKey; serves?: string | null; carry?: string | null; state?: string; goal?: string | null; on?: boolean }[];
   created_at?: string; updated_at?: string; deleted_at?: string | null;
 };

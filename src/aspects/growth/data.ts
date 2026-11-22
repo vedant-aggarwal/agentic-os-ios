@@ -42,6 +42,38 @@ export async function sealReview(body: SealBody) {
   return r;
 }
 
+/**
+ * Right after the seal, what he sealed lands in Mission (HANDOFFS.md): each move becomes a week goal there through
+ * Mission's own route, and each week goal he called partly or not done, and did not carry, is closed as missed.
+ * A move Mission can't take (a full week, a failed call) stays offered; Mission's page shows it with Keep and Not now.
+ */
+export async function landInMission(r: ReviewDoc) {
+  let landed = 0, held = 0;
+  const moves = (r.moves ?? []).filter((m) => m.id && m.on !== false && (m.state ?? 'offered') === 'offered');
+  for (const m of moves) { // one at a time: Mission counts the week's room as each goal goes in
+    try {
+      if (!r.nextWeek) throw new Error('no week');
+      const res = await call<{ goal: string | null }>(`/mod/mission/week/${r.nextWeek}/move`, {
+        id: m.id, review: r.week, text: m.text, aspect: m.aspect ?? null, serves: m.serves ?? null, carry: m.carry ?? null, accept: true, by: 'growth',
+      });
+      if (!res.goal) throw new Error('no goal');
+      await call(`/mod/growth/moves/${encodeURIComponent(m.id!)}`, { state: 'accepted', goal: res.goal });
+      landed++;
+    } catch {
+      held++;
+    }
+  }
+  for (const c of (r.closed ?? []).filter((x) => x.goal && x.verdict !== 'done' && !x.carry)) {
+    const miss = (r.misses ?? []).find((x) => x.text === c.text);
+    const why = c.verdict === 'partly' ? 'Partly done' : miss?.why2 ?? miss?.why ?? null;
+    try { await call('/mod/mission/close', { goal: c.goal, outcome: 'missed', why, by: 'growth' }); } catch { /* Mission's own sync closes it */ }
+  }
+  invalidate('/mod/mission/');
+  invalidate('/goals');
+  refreshGrowth();
+  return { landed, held, week: r.nextWeek ?? null };
+}
+
 /** Ask the PC's model to write this week's draft (spends one Sonnet call; seconds). */
 export async function draftWithAI() {
   const r = await call<{ item: unknown }>('/mod/growth/review/draft', { force: true });

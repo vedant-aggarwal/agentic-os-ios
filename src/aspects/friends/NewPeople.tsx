@@ -104,7 +104,8 @@ export function PlaceSheet({ open, onClose, place, a }: { open: boolean; onClose
 function newSub(v: NewView) {
   const where = v.p.where ? `${v.p.where}, ` : '';
   if (v.st.stage === 'met') return `${where}met ${whenAgo(v.p.met ?? v.st.last?.date ?? '')}`.replace(/^./, (c) => c.toUpperCase());
-  return `${where}${count(v.st.meetings, true)} times, last ${whenAgo(v.st.last?.date ?? '')}`.replace(/^./, (c) => c.toUpperCase());
+  const times = v.st.meetings === 2 ? 'met twice' : `met ${count(v.st.meetings, true)} times`;
+  return `${where}${times}, last ${whenAgo(v.st.last?.date ?? '')}`.replace(/^./, (c) => c.toUpperCase());
 }
 
 /** Everyone he is getting to know, the places where they are, and the places his calendar suggests. */

@@ -555,6 +555,8 @@ function VisualsTab({ reel, pending, onPlan, onBuild, onStop, onNext }: { reel: 
                     {sh.shot}
                     {sh.headline ? ` · “${sh.headline}”` : ''}
                   </Text>
+                  {sh.background ? <Text style={styles.visual}>Behind: {sh.background}</Text> : null}
+                  {sh.ambience ? <Text style={styles.visual}>Air: {sh.ambience}</Text> : null}
                   <Text style={styles.line2}>“{sh.say}…”</Text>
                 </View>
               </View>

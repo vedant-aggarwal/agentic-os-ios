@@ -181,7 +181,7 @@ export type ReelStage = (typeof REEL_STAGES)[number];
 export type Concept = { title: string; hook: string; premise: string; why: string };
 export type Beat = { time: string; beat: string; visual: string; line: string };
 export type VoiceTake = { file: string; seconds: number | null; chars: number; voiceName: string; at: string };
-export type Shot = { id: string; beat: number; say: string; shows: string; shot: string; mood: string; method: 'coded' | 'image' | 'clip'; headline: string; prompt: string; sound: string; start: number; end: number };
+export type Shot = { id: string; beat: number; say: string; shows: string; shot: string; mood: string; method: 'coded' | 'image' | 'clip'; background?: string; ambience?: string; headline: string; prompt: string; sound: string; start: number; end: number };
 export type Visuals = {
   plan?: { scenes: Shot[]; notes: string; design: string; fromVersion: number | null; take: string | null; at: string };
   build?: { status: 'building' | 'done' | 'failed'; startedAt?: string; finishedAt?: string; progress?: string[]; video?: string | null; notes?: string; version?: string };

@@ -40,7 +40,7 @@ type Stats = { fps: number; rtt: number; w: number; h: number };
 
 type Screen = { i: number; label: string; w: number; h: number; primary: boolean };
 // kept for the rest of the app session, so the next session opens the way the last one was left
-const prefs = { input: 'mouse' as Input, quality: 'auto' as Quality, fit: 'fit' as Fit, rotate: 'auto' as Rotate, side: 'r' as 'l' | 'r', y: 0.62, display: 0 };
+const prefs = { input: 'mouse' as Input, quality: 'auto' as Quality, fit: 'fit' as Fit, rotate: 'auto' as Rotate, side: 'r' as 'l' | 'r', y: 0.62, display: 0, sound: true };
 
 const haptic = (k: 'light' | 'medium' | 'select') => {
   if (Platform.OS === 'web') return;
@@ -76,7 +76,8 @@ export function RemoteDesktop({ open, onClose }: { open: boolean; onClose: () =>
   const [hint, setHint] = useState<string | null>(null);
   const [screens, setScreens] = useState<Screen[]>([]);
   const [display, setDisplay] = useState(prefs.display);
-  const [inject] = useState(() => `window.AOS = ${JSON.stringify({ api: API, token: currentToken() ?? '', quality: prefs.quality, input: prefs.input, fit: prefs.fit, display: prefs.display })}; true;`);
+  const [sound, setSound] = useState(prefs.sound);
+  const [inject] = useState(() => `window.AOS = ${JSON.stringify({ api: API, token: currentToken() ?? '', quality: prefs.quality, input: prefs.input, fit: prefs.fit, display: prefs.display, sound: prefs.sound })}; true;`);
 
   // rotation: free (or as chosen) while open, back to portrait on close
   useEffect(() => {
@@ -136,6 +137,11 @@ export function RemoteDesktop({ open, onClose }: { open: boolean; onClose: () =>
     prefs.display = i; setDisplay(i); js(`setDisplay(${i})`);
     const sc = screens.find((x) => x.i === i);
     if (sc) setHint(`${sc.label} screen`);
+  };
+  const toggleSound = () => {
+    const v = !sound;
+    prefs.sound = v; setSound(v); js(`setSound(${v})`);
+    setHint(v ? 'PC sound on' : 'PC sound off');
   };
   const nextDisplay = () => { if (screens.length > 1) pickDisplay(screens[(screens.findIndex((x) => x.i === display) + 1) % screens.length].i); };
 
@@ -212,6 +218,7 @@ export function RemoteDesktop({ open, onClose }: { open: boolean; onClose: () =>
             { key: 'rot', icon: 'rectangle.landscape.rotate', label: rotate === 'landscape' ? 'Portrait' : 'Landscape', on: rotate === 'landscape', onPress: turn },
             { key: 'act', icon: 'bolt.fill', label: 'Actions', onPress: () => setSheet('actions') },
             { key: 'disp', icon: 'slider.horizontal.3', label: 'Display', onPress: () => setSheet('display') },
+            { key: 'snd', icon: sound ? 'speaker.wave.2.fill' : 'speaker.slash.fill', label: sound ? 'PC sound: on' : 'PC sound: off', on: sound, onPress: toggleSound },
             { key: 'fit', icon: 'arrow.down.right.and.arrow.up.left', label: 'Fit screen', onPress: () => js('resetView()') },
             { key: 'end', icon: 'xmark', label: 'End session', danger: true, onPress: close },
           ]} />

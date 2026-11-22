@@ -22,7 +22,7 @@ img{display:none}
 #ring{position:absolute;width:56px;height:56px;margin:-28px 0 0 -28px;border-radius:50%;border:2px solid rgba(255,255,255,.85);pointer-events:none;opacity:0;transform:scale(.4);transition:opacity .15s,transform .25s}
 #ring.on{opacity:1;transform:scale(1)}
 </style></head><body>
-<div id="stage"><video id="v" autoplay playsinline muted></video><img id="i"></div>
+<div id="stage"><video id="v" autoplay playsinline muted></video><img id="i"></div><audio id="au" autoplay playsinline></audio>
 <svg id="cur" viewBox="0 0 22 22"><path d="M3 2 L3 18 L7.2 14.2 L10 20.5 L12.8 19.3 L10.1 13.1 L15.8 13.1 Z" fill="#fff" stroke="#000" stroke-width="1.3" stroke-linejoin="round"/></svg>
 <div id="ring"></div>
 <script>
@@ -31,6 +31,7 @@ var A = window.AOS || {}, H = { Authorization: 'Bearer ' + A.token, 'Content-Typ
 var post = function(m){ try { window.ReactNativeWebView.postMessage(JSON.stringify(m)); } catch(e){} };
 var video = document.getElementById('v'), img = document.getElementById('i'), stage = document.getElementById('stage');
 var curEl = document.getElementById('cur'), ring = document.getElementById('ring');
+var au = document.getElementById('au'), sound = A.sound !== false, hasAudio = false;
 var pc = null, ws = null, gen = 0, mode = 'video', quality = A.quality || 'auto', input = A.input || 'mouse', fit = A.fit || 'fit', mon = A.display || 0;
 function streamName(src){ return src + (mon ? String(mon) : ''); }
 
@@ -71,7 +72,12 @@ async function connect(src, my){
   if (ice.displays) post({ type: 'displays', list: ice.displays });
   var p = pc = new RTCPeerConnection({ iceServers: ice.iceServers || [] });
   p.addTransceiver('video', { direction: 'recvonly' });
-  p.ontrack = function(e){ video.srcObject = e.streams[0] || new MediaStream([e.track]); video.play().catch(function(){}); };
+  hasAudio = false;
+  if (sound) p.addTransceiver('audio', { direction: 'recvonly' }); // the PC's sound (go2rtc starts it only when asked)
+  p.ontrack = function(e){
+    if (e.track.kind === 'audio') { hasAudio = true; au.srcObject = new MediaStream([e.track]); au.muted = !sound; au.play().catch(function(){}); return; }
+    video.srcObject = new MediaStream([e.track]); video.play().catch(function(){});
+  };
   await p.setLocalDescription(await p.createOffer());
   await gathered(p, 2500);
   var r = await fetch(A.api + '/pc/screen/offer', { method: 'POST', headers: H, body: JSON.stringify({ sdp: p.localDescription.sdp, stream: streamName(src) }) });
@@ -110,6 +116,7 @@ async function start(){
 window.start = start;
 window.stop = function(){ gen++; cleanup(); };
 window.setQuality = function(q){ quality = q; start(); };
+window.setSound = function(on){ sound = on; au.muted = !on; if (on && !hasAudio && mode === 'video') start(); else if (on) au.play().catch(function(){}); };
 window.setDisplay = function(i){ mon = i; cur = { x: 0.5, y: 0.5 }; start(); };
 
 // frame rate and round trip, for the session bar

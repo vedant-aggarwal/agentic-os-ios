@@ -1,19 +1,23 @@
 import { requireOptionalNativeModule } from 'expo';
 import { BlurView } from 'expo-blur';
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ClipboardCard } from '@/components/ClipboardCard';
 import { lightTap, useScale } from '@/components/Glass';
 import { useReveal } from '@/components/Reveal';
 import { Sym } from '@/components/Sym';
 import { ApiError } from '@/lib/api';
-import { bestRoute, fetchFromPc, filesAvailable, listInbox, listOutbox, type PcFile, type RouteKind, sendFile, showOnPc } from '@/lib/files';
+import { fetchFromPc, filesAvailable, openDownloaded, type PcFile, type RouteKind, sendFile, showOnPc, watchFolders } from '@/lib/files';
 import { C, F } from '@/theme';
 
 // To PC (the top bar's first button): send photos, videos or files from this phone to the PC (they land in
 // Downloads\From Phone), and pick up whatever is in the PC's Downloads\To Phone. Each transfer goes the nearest way:
 // the same Wi-Fi, else Tailscale, else the internet. The badge says which.
+// Live while open: the PC answers the moment either folder changes. A file dropped into To Phone while the sheet is
+// open shows at once ("Arriving on the PC" while it is still being copied there) and then downloads by itself, with
+// a progress bar; tap it when it is done to open it.
 type FS = typeof import('expo-file-system');
 type Picker = typeof import('expo-image-picker');
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -34,6 +38,12 @@ const when = (iso: string) => {
 let seq = 0;
 const nextKey = () => `j${++seq}-${Date.now()}`;
 const stamp = () => new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+const AUTO_MAX = 500 * 1024 * 1024; // bigger new files wait for a tap
+const saved = new Map<string, string>(); // name|size -> where it is on this phone (this app run)
+const savedKey = (f: PcFile) => `${f.name}|${f.size}`;
+let known: Set<string> | null = null; // To Phone files already seen, so only new arrivals download by themselves
+function markSaved(f: PcFile, uri: string | null) { if (uri === null) saved.delete(savedKey(f)); else saved.set(savedKey(f), uri); }
+function noteSeen(ready: PcFile[]) { known = new Set([...(known ?? []), ...ready.map(savedKey)]); }
 const errText = (e: unknown) => (e instanceof ApiError ? e.message : String((e as Error)?.message ?? "Couldn't reach your PC."));
 
 export function FilesSheet({ open, origin, onClose }: { open: boolean; origin: { x: number; y: number }; onClose: () => void }) {
@@ -45,24 +55,28 @@ export function FilesSheet({ open, origin, onClose }: { open: boolean; origin: {
   const [inbox, setInbox] = useState<PcFile[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
-    try {
-      const [rt, o, i] = await Promise.all([bestRoute(), listOutbox(), listInbox()]);
-      setRoute(rt.kind); setOutbox(o.files); setInbox(i.files.slice(0, 12)); setError(null);
-    } catch (e) { setError(errText(e)); }
-  }, []);
+  const [arrived, setArrived] = useState<PcFile[]>([]); // new in To Phone while open: download them
   useEffect(() => {
     if (!open) return;
-    const id = setTimeout(refresh, 0);
-    return () => clearTimeout(id);
-  }, [open, refresh]);
+    const ctl = new AbortController();
+    void watchFolders(ctl.signal, (c, rt) => {
+      setRoute(rt); setOutbox(c.outbox); setInbox(c.inbox.slice(0, 12)); setError(null);
+      const ready = c.outbox.filter((f) => !f.growing);
+      const seen = known;
+      if (seen) {
+        const fresh = ready.filter((f) => !seen.has(savedKey(f)) && f.size <= AUTO_MAX && !saved.has(savedKey(f)));
+        if (fresh.length) setArrived(fresh);
+      }
+      noteSeen(ready);
+    }, (e) => setError(errText(e)));
+    return () => ctl.abort();
+  }, [open]);
 
   const update = (key: string, j: Partial<Job>) => setJobs((list) => list.map((x) => (x.key === key ? { ...x, ...j } : x)));
   const send = async (items: { uri: string; name: string; size: number }[]) => {
     const fresh = items.map<Job>((it, n) => ({ key: `${nextKey()}-${n}`, name: it.name, dir: 'up', size: it.size, sent: 0, state: 'going', uri: it.uri }));
     setJobs((list) => [...fresh, ...list].slice(0, 30));
     for (const j of fresh) await sendOne(j);
-    void refresh();
   };
   const sendOne = async (j: Job) => {
     update(j.key, { state: 'going', note: undefined, sent: 0 });
@@ -88,13 +102,26 @@ export function FilesSheet({ open, origin, onClose }: { open: boolean; origin: {
       void send(res.result.map((f) => ({ uri: f.uri, name: f.name, size: f.size ?? 0 })));
     } catch (e) { setError(errText(e)); }
   };
-  const download = async (f: PcFile) => {
-    lightTap();
+  const download = async (f: PcFile, openIt = true) => {
+    const have = saved.get(savedKey(f));
+    if (have) { openDownloaded(have).catch((e) => setError(errText(e))); return; }
+    if (have === '') return; // already coming
     const key = nextKey();
+    markSaved(f, ''); // taken: no second download of the same file
     setJobs((list) => [{ key, name: f.name, dir: 'down' as const, size: f.size, sent: 0, state: 'going' as const }, ...list].slice(0, 30));
-    try { const res = await fetchFromPc(f.name); setRoute(res.route); update(key, { state: 'done', sent: f.size, note: 'Saved on this phone' }); }
-    catch (e) { update(key, { state: 'failed', note: errText(e) }); }
+    try {
+      const res = await fetchFromPc(f.name, f.size, (p) => { update(key, { sent: p.got, size: p.size, route: p.route }); setRoute(p.route); }, openIt);
+      markSaved(f, res.uri);
+      update(key, { state: 'done', sent: f.size, uri: res.uri, note: openIt ? 'Saved on this phone' : 'Saved on this phone · tap to open' });
+    } catch (e) { markSaved(f, null); update(key, { state: 'failed', note: errText(e) }); }
   };
+
+  useEffect(() => {
+    if (!arrived.length) return;
+    const id = setTimeout(() => { setArrived([]); for (const f of arrived) void download(f, false); }, 0);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [arrived]);
 
   if (!r.ever) return null;
   const badge = route ? ROUTE[route] : null;
@@ -122,8 +149,11 @@ export function FilesSheet({ open, origin, onClose }: { open: boolean; origin: {
             {!filesAvailable ? <Text style={s.note}>File sharing arrives with the next app build.</Text> : null}
             {error ? <Text style={s.error}>{error}</Text> : null}
 
+            <ClipboardCard open={open} />
+
             {jobs.length ? <Text style={s.section}>Transfers</Text> : null}
-            {jobs.map((j) => <JobRow key={j.key} job={j} onRetry={() => void sendOne(j)} />)}
+            {jobs.map((j) => <JobRow key={j.key} job={j} onRetry={() => void sendOne(j)}
+              onOpen={() => { if (j.uri) { lightTap(); openDownloaded(j.uri).catch((e) => setError(errText(e))); } }} />)}
 
             <View style={s.sectionRow}>
               <Text style={s.section}>On the PC · To Phone</Text>
@@ -134,7 +164,8 @@ export function FilesSheet({ open, origin, onClose }: { open: boolean; origin: {
             {outbox === null ? <ActivityIndicator color={C.muted} /> : outbox.length === 0 ? (
               <Text style={s.note}>Put files in Downloads\To Phone on the PC and they show up here.</Text>
             ) : outbox.map((f) => (
-              <FileRow key={f.name} file={f} icon="arrow.down.circle" onPress={() => void download(f)} />
+              <FileRow key={f.name} file={f} icon={saved.get(savedKey(f)) ? 'checkmark.circle' : 'arrow.down.circle'}
+                onPress={() => { if (f.growing) return; lightTap(); void download(f); }} />
             ))}
 
             {inbox && inbox.length ? <Text style={s.section}>Sent to the PC</Text> : null}
@@ -162,9 +193,11 @@ function BigButton({ icon, label, sub, onPress }: { icon: 'photo.on.rectangle' |
   );
 }
 
-function JobRow({ job, onRetry }: { job: Job; onRetry: () => void }) {
+function JobRow({ job, onRetry, onOpen }: { job: Job; onRetry: () => void; onOpen: () => void }) {
   const f = job.size ? Math.min(job.sent / job.size, 1) : job.state === 'done' ? 1 : 0;
+  const pct = Math.round(f * 100);
   return (
+    <Pressable accessibilityRole="button" disabled={!(job.state === 'done' && job.uri)} onPress={onOpen}>
     <Animated.View entering={FadeIn.duration(160)} layout={LinearTransition.duration(180)} style={s.job}>
       <Sym name={job.dir === 'up' ? 'arrow.up.circle.fill' : 'arrow.down.circle.fill'} size={22}
         color={job.state === 'failed' ? C.danger : job.state === 'done' ? '#3DDC97' : C.muted} fallback={null} />
@@ -177,22 +210,24 @@ function JobRow({ job, onRetry }: { job: Job; onRetry: () => void }) {
           {job.state === 'going' ? `${size(job.sent)} of ${size(job.size)}${job.route ? ` · ${ROUTE[job.route].label}` : ''}` : job.note}
         </Text>
       </View>
+      {job.state === 'going' ? <Text style={s.pct}>{pct}%</Text> : null}
       {job.state === 'failed' && job.dir === 'up' ? (
         <Pressable accessibilityRole="button" hitSlop={8} onPress={() => { lightTap(); onRetry(); }}><Text style={s.link}>Retry</Text></Pressable>
       ) : null}
     </Animated.View>
+    </Pressable>
   );
 }
 
-function FileRow({ file, icon, onPress }: { file: PcFile; icon: 'arrow.down.circle' | 'magnifyingglass'; onPress: () => void }) {
+function FileRow({ file, icon, onPress }: { file: PcFile; icon: 'arrow.down.circle' | 'checkmark.circle' | 'magnifyingglass'; onPress: () => void }) {
   return (
     <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [s.job, pressed && { backgroundColor: 'rgba(255,255,255,0.1)' }]}>
       <Sym name="doc" size={20} color={C.muted} fallback={null} />
       <View style={{ flex: 1, gap: 2 }}>
         <Text style={s.fileName} numberOfLines={1}>{file.name}</Text>
-        <Text style={s.fileMeta}>{size(file.size)} · {when(file.modified)}</Text>
+        <Text style={s.fileMeta}>{file.growing ? `Arriving on the PC · ${size(file.size)}` : `${size(file.size)} · ${when(file.modified)}`}</Text>
       </View>
-      <Sym name={icon} size={20} color={C.text} fallback={null} />
+      {file.growing ? <ActivityIndicator color={C.muted} /> : <Sym name={icon} size={20} color={C.text} fallback={null} />}
     </Pressable>
   );
 }
@@ -225,4 +260,5 @@ const s = StyleSheet.create({
   fileMeta: { fontFamily: F.medium, fontSize: 12, lineHeight: 16, color: C.faint, fontVariant: ['tabular-nums'] },
   bar: { height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.14)', overflow: 'hidden' },
   barFill: { height: 4, backgroundColor: '#766BE6' },
+  pct: { fontFamily: F.semibold, fontSize: 13, lineHeight: 18, color: C.text, fontVariant: ['tabular-nums'], minWidth: 40, textAlign: 'right' },
 });

@@ -18,9 +18,17 @@
         "NSCameraUsageDescription": "Agentic OS uses the camera when you turn your phone into your PC's webcam.",
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
-        }
+        },
+        "NSAlarmKitUsageDescription": "Agentic OS rings the alarms you set, and the ones your PC sets for you, even when the phone is on silent.",
+        "UIBackgroundModes": [
+          "audio",
+          "voip",
+          "remote-notification"
+        ],
+        "NSSupportsLiveActivities": true
       },
       "entitlements": {
+        "aps-environment": "production",
         "keychain-access-groups": [
           "$(AppIdentifierPrefix)com.norrita.agenticos",
           "$(AppIdentifierPrefix)com.norrita.agenticos.shared"
@@ -59,6 +67,13 @@
       "expo-secure-store",
       "expo-sqlite",
       "@bacons/apple-targets",
+      [
+        "expo-notifications",
+        {
+          "enableBackgroundRemoteNotifications": true
+        }
+      ],
+      "./modules/alarms/app.plugin.js",
       [
         "expo-audio",
         {

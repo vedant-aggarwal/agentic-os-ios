@@ -1,5 +1,6 @@
 import ExpoModulesCore
 import Security
+import WidgetKit
 
 /// Shares the sign-in with the app's extensions (the Action button control in targets/controls). Items go to the
 /// keychain group "<team>.<bundle id>.shared", listed in both the app's and the extension's entitlements.
@@ -14,7 +15,14 @@ public final class SharedAuthModule: Module {
       guard let group = Self.sharedGroup() else { return false }
       let ok1 = Self.write("token", token, group)
       let ok2 = Self.write("api", token == nil ? nil : api, group)
+      // The home screen widgets read the same sign-in (targets/controls/TodayWidgets.swift): redraw them with it.
+      WidgetCenter.shared.reloadAllTimelines()
       return ok1 && ok2
+    }
+
+    /// Asks the home and lock screen widgets to fetch the day again (src/lib/widgets.ts).
+    Function("reloadWidgets") {
+      WidgetCenter.shared.reloadAllTimelines()
     }
   }
 

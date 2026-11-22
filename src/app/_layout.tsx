@@ -4,8 +4,12 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { startAlarms } from '@/lib/alarms';
+import { startCalls } from '@/lib/calls';
 import '@/lib/log'; // sends phone-side errors to the PC log
 import { missingNative } from '@/lib/native';
+import { startPush } from '@/lib/push';
+import { startWidgets } from '@/lib/widgets';
 import { C } from '@/theme';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -20,6 +24,12 @@ const WorkSheets = missingNative().length
 export default function RootLayout() {
   const [loaded, error] = useFonts({ Geist_400Regular, Geist_500Medium, Geist_600SemiBold });
   useEffect(() => { if (loaded || error) SplashScreen.hideAsync().catch(() => {}); }, [loaded, error]);
+  // Notification taps, Nora's calls on the system call screen, alarms' Open button and the home screen widgets.
+  // Each is a no-op on the web and on a build without its native module.
+  useEffect(() => {
+    const stops = [startPush(), startCalls(), startAlarms(), startWidgets()];
+    return () => stops.forEach((stop) => stop());
+  }, []);
   if (!loaded && !error) return null;
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: C.scene }}>

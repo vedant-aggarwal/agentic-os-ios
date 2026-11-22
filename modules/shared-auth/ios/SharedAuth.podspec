@@ -13,7 +13,7 @@ Pod::Spec.new do |s|
   s.dependency 'ExpoModulesCore'
 
   s.source_files = "**/*.{h,m,swift}"
-  s.frameworks = 'Security'
+  s.frameworks = 'Security', 'WidgetKit'
   s.pod_target_xcconfig = {
     'DEFINES_MODULE' => 'YES'
   }

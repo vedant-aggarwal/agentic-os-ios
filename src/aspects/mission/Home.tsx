@@ -6,7 +6,7 @@ import {
 import { ApiError, call, invalidate, useGet, type Read } from '@/lib/mod';
 import { C } from '@/theme';
 import {
-  act, ASPECT_LABEL, cap, count, daysLeftLabel, HANDOFF, M, message, NUMBER_WORDS, progressOf, refresh, sourceLine, useReadingSync, useSources,
+  act, ASPECT_LABEL, cap, count, daysLeftLabel, HANDOFF, M, message, NUMBER_WORDS, pctKnown, progressOf, refresh, sourceLine, useReadingSync, useSources,
   type Handoff, type HandoffMove, type Sources,
 } from './data';
 import { useNav } from './nav';
@@ -118,7 +118,7 @@ export function GoalLine({ g, s }: { g: Goal; s: Sources }) {
       </View>
       <GoalBar progress={p} time={g.time} color={colorOf(g.aspect, a.color)} />
       <Text numberOfLines={2} style={[t.caption, t.num]}>
-        {g.source.kind === 'none' ? 'No number yet' : `${Math.round(p * 100)}%, ${lower(sourceLine(g, s))}`}
+        {g.source.kind === 'none' ? 'No number yet' : pctKnown(g, s) ? `${Math.round(p * 100)}%, ${lower(sourceLine(g, s))}` : sourceLine(g, s)}
         {g.end && g.status === 'active' ? `. ${daysLeftLabel(g.end)}` : ''}
       </Text>
     </Press>
@@ -324,7 +324,7 @@ function useClosedSync(h: HomeData | null, hand: Handoff | null) {
     for (const c of hand.closed) {
       if (c.verdict === 'done' || !open.has(c.goal) || sent.current.has(c.goal) || (c.carry && waiting.has(c.goal))) continue;
       sent.current.add(c.goal);
-      void call(`${M}/close`, { goal: c.goal, outcome: 'missed', why: c.verdict === 'partly' ? 'Partly done' : null, by: 'growth' }).then(refresh).catch(() => {});
+      void call(`${M}/close`, { goal: c.goal, outcome: 'missed', partly: c.verdict === 'partly', by: 'growth' }).then(refresh).catch(() => {});
     }
   }, [h, hand]);
 }

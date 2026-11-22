@@ -62,30 +62,29 @@ export const when = (day: string) => {
 };
 
 // ── where a goal's number comes from ─────────────────────────────────────────────────────────────────────────
-type MoneySummary = { date: string; income: { earned: number; goal: number; month: number } };
-type Fund = { id: string; name: string; target?: number | null; saved?: number; balance?: number; in?: number; goal?: string | null; deleted_at?: string | null };
+type MoneySummary = { date: string; income: { earned: number; goal: number; goalSet?: boolean; month: number } };
+/** A savings jar as Money reports it (GET /mod/money/jars): `saved` is settled, `goal` is the Mission goal it serves. */
+export type Jar = { id: string; name: string; target: number | null; saved: number; goal: string | null; due?: string | null };
 type BodyToday = { weight: { now: number | null; date: string | null; goal: { goal: number; by: string } | null } | null };
-export type Sources = { money: MoneySummary | null; funds: Fund[] | null; body: BodyToday | null; error: string | null };
-
-export const fundIn = (f: Fund) => (typeof f.saved === 'number' ? f.saved : typeof f.balance === 'number' ? f.balance : typeof f.in === 'number' ? f.in : null);
+export type Sources = { money: MoneySummary | null; jars: Jar[] | null; body: BodyToday | null; error: string | null };
 
 /** Reads Money and Body only when a goal is measured by them. */
 export function useSources(goals: Goal[]): Sources {
   const kinds = new Set(goals.map((g) => g.source.kind));
   const money = useGet<MoneySummary>(kinds.has('income') ? '/mod/money/summary' : null);
-  const funds = useGet<{ items: Fund[] }>(kinds.has('jar') ? '/mod/money/funds' : null);
+  const jars = useGet<{ jars: Jar[] }>(kinds.has('jar') ? '/mod/money/jars' : null);
   const body = useGet<BodyToday>(kinds.has('weight') ? '/mod/body/today' : null);
-  return { money: money.data, funds: funds.data?.items?.filter((f) => !f.deleted_at) ?? null, body: body.data, error: money.error ?? funds.error ?? body.error };
+  return { money: money.data, jars: jars.data?.jars ?? null, body: body.data, error: money.error ?? jars.error ?? body.error };
 }
 
 /** The number a goal shows, read live from where it lives; null until that place answers. */
 export function liveReading(g: Goal, s: Sources): Omit<Reading, 'at' | 'pct'> | null {
   const k = g.source.kind;
-  if (k === 'income' && s.money) return { value: s.money.income.earned, of: g.source.target ?? s.money.income.goal ?? null, from: 0, unit: 'rupees', date: s.money.date };
-  if (k === 'jar' && s.funds) {
-    const f = s.funds.find((x) => x.id === g.source.jar);
-    const v = f ? fundIn(f) : null;
-    return f && v != null ? { value: v, of: g.source.target ?? f.target ?? null, from: 0, unit: 'rupees', date: today() } : null;
+  if (k === 'income' && s.money) return { value: s.money.income.earned, of: g.source.target ?? (s.money.income.goalSet ? s.money.income.goal : null), from: 0, unit: 'rupees', date: s.money.date };
+  if (k === 'jar' && s.jars) {
+    // Money computes the jar live, so the number is true as of today
+    const f = s.jars.find((x) => x.id === g.source.jar);
+    return f ? { value: f.saved, of: g.source.target ?? f.target ?? null, from: 0, unit: 'rupees', date: today() } : null;
   }
   if (k === 'weight' && s.body?.weight?.now != null && s.body.weight.date)
     return { value: s.body.weight.now, of: g.source.target ?? s.body.weight.goal?.goal ?? null, from: g.source.from ?? s.body.weight.now, unit: 'kg', date: s.body.weight.date };
@@ -116,7 +115,7 @@ export function sourceLine(g: Goal, s: Sources): string {
   const k = g.source.kind;
   const live = liveReading(g, s);
   const r = live ?? g.source.reading ?? null;
-  if (k === 'income') return r ? `${fmt(r.value, 'rupees')} of ${r.of != null ? fmt(r.of, 'rupees') : 'no target'} earned this month, from Money` : 'Income this month, from Money';
+  if (k === 'income') return r ? (r.of != null ? `${fmt(r.value, 'rupees')} of ${fmt(r.of, 'rupees')} earned this month, from Money` : `${fmt(r.value, 'rupees')} earned this month, from Money, with no target set`) : 'Income this month, from Money';
   if (k === 'jar') return r ? `${fmt(r.value, 'rupees')} in the jar${r.of != null ? ` of ${fmt(r.of, 'rupees')}` : ''}, from Money` : 'A savings jar, from Money';
   if (k === 'weight') return r ? `${fmt(r.value, 'kg')} ${when(r.date)}${r.of != null ? `, aiming for ${fmt(r.of, 'kg')}` : ''}` : 'Weight, from Body';
   if (k === 'manual') return 'Set by hand';
@@ -136,6 +135,12 @@ export function progressOf(g: Goal, s: Sources) {
   return g.status === 'done' ? 1 : g.progress / 100;
 }
 export const hasNumber = (g: Goal) => g.source.kind !== 'none';
+/** A Money or Body reading with nothing to aim at has no percentage: the page shows the number alone, never a made up 0%. */
+export function pctKnown(g: Goal, s: Sources) {
+  if (!['income', 'jar', 'weight'].includes(g.source.kind)) return g.source.kind !== 'none';
+  const r = liveReading(g, s) ?? g.source.reading ?? null;
+  return !!r && r.of != null;
+}
 
 export const refLabel = (r: GoalRef | null) => (r ? r.title : null);
 

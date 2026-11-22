@@ -7,12 +7,12 @@ import { call, useCollection, useGet } from '@/lib/mod';
 import { C, type AspectKey } from '@/theme';
 import { CloseChoice } from './CloseFlow';
 import {
-  act, ASPECT_KEYS, ASPECT_LABEL, count, daysLeftLabel, endedAgo, fmt, fundIn, HORIZON_GOAL, M, message, OUTCOME_WORD, progressOf, refresh,
-  sourceLine, useReadingSync, useSources,
+  act, ASPECT_KEYS, ASPECT_LABEL, count, daysLeftLabel, endedAgo, fmt, HORIZON_GOAL, M, liveReading, message, OUTCOME_WORD, pctKnown, progressOf, refresh,
+  sourceLine, useReadingSync, useSources, type Jar, type Sources,
 } from './data';
 import { useNav } from './nav';
 import { colorOf, Dot, GoalBar, Link, s as ps, Tag, Tile } from './parts';
-import type { Commitment, GoalDetail, Measure, Milestone } from './types';
+import type { Commitment, Goal, GoalDetail, Measure, Milestone } from './types';
 
 /** One goal: its progress and where the number comes from, its milestones, what it serves and what serves it. */
 export function GoalScreen({ id, open, onClose }: { id: string; open: boolean; onClose: () => void }) {
@@ -52,7 +52,7 @@ export function GoalScreen({ id, open, onClose }: { id: string; open: boolean; o
               </>
             ) : (
               <>
-                <Text style={[t.big, t.num, { color: tone }]}>{Math.round(progressOf(g, src) * 100)}%</Text>
+                <Text style={[t.big, t.num, { color: tone }]}>{pctKnown(g, src) ? `${Math.round(progressOf(g, src) * 100)}%` : bigReading(g, src)}</Text>
                 <GoalBar progress={progressOf(g, src)} time={g.time} color={tone} />
                 <Text style={t.small}>{sourceLine(g, src)}{g.time != null && g.time > 0.01 && g.status === 'active' ? `. ${Math.round(Math.min(1, g.time) * 100)}% of its time has gone.` : '.'}</Text>
                 <Link label="Change how it's measured" onPress={() => nav.measure(g.id)} />
@@ -200,9 +200,14 @@ function EditSheet({ open, d, onClose, onSaved }: { open: boolean; d: GoalDetail
   );
 }
 
+/** With no target there is no percentage: the big figure is the reading itself. */
+function bigReading(g: Goal, s: Sources) {
+  const r = liveReading(g, s) ?? g.source.reading ?? null;
+  return r ? fmt(r.value, r.unit) : 'No number yet';
+}
+
 // ── measure ──────────────────────────────────────────────────────────────────────────────────────────────────
 type Kind = 'auto' | 'manual' | 'income' | 'jar' | 'weight';
-type Fund = { id: string; name: string; target?: number | null; saved?: number; balance?: number; in?: number; deleted_at?: string | null };
 
 /** Where a goal's number comes from: counted for him, set by hand, or read from Money or Body with its date. */
 export function MeasureSheet({ goal, onClose }: { goal: string | null; onClose: () => void }) {
@@ -229,7 +234,7 @@ function MeasureBody({ goal, onClose }: { goal: string; onClose: () => void }) {
   const [from, setFrom] = useState('');
   const [jar, setJar] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const funds = useGet<{ items: Fund[] }>(k === 'jar' ? '/mod/money/funds' : null);
+  const jars = useGet<{ jars: Jar[] }>(k === 'jar' ? '/mod/money/jars' : null);
   const body = useGet<{ weight: { now: number | null; goal: { goal: number } | null } | null }>(k === 'weight' ? '/mod/body/today' : null);
   if (!d) return r.error ? <Failed message={r.error} onRetry={r.refresh} /> : <Skeleton height={200} radius={24} />;
 
@@ -242,14 +247,16 @@ function MeasureBody({ goal, onClose }: { goal: string; onClose: () => void }) {
       if (k === 'auto') { await measures.put({ ...base, source: 'auto' }); await call(`${M}/goal/${goal}`, { progressMode: 'auto' }); }
       if (k === 'manual') { await measures.put({ ...base, source: 'manual' }); await call(`${M}/goal/${goal}`, { progress: value }); }
       if (k === 'income') await measures.put({ ...base, source: 'income', unit: 'rupees', target: n(target) ?? same?.target ?? null });
-      if (k === 'jar') await measures.put({ ...base, source: 'jar', unit: 'rupees', jar: jar ?? same?.jar ?? null, target: null });
+      if (k === 'jar') await measures.put({ ...base, source: 'jar', unit: 'rupees', jar: pickJar, target: null });
       if (k === 'weight') await measures.put({ ...base, source: 'weight', unit: 'kg', target: n(target) ?? same?.target ?? null, from: n(from) ?? same?.from ?? body.data?.weight?.now ?? null });
       refresh();
       haptic.light();
       onClose();
     } catch (e) { a.notice(message(e)); } finally { setBusy(false); }
   };
-  const items = funds.data?.items.filter((f) => !f.deleted_at) ?? null;
+  // a jar Money already ties to this goal comes first and is the default pick
+  const items = jars.data ? [...jars.data.jars].sort((x, y) => Number(y.goal === goal) - Number(x.goal === goal)) : null;
+  const pickJar = jar ?? same?.jar ?? items?.find((f) => f.goal === goal)?.id ?? null;
   return (
     <>
       <View style={st.tiles}>
@@ -262,13 +269,12 @@ function MeasureBody({ goal, onClose }: { goal: string; onClose: () => void }) {
       {k === 'manual' ? <Stepper label="progress" value={value} onChange={setPct} step={5} min={0} max={100} format={(v) => `${v}%`} /> : null}
       {k === 'income' ? <Field label="Target for the month" value={target} onChangeText={setTarget} keyboardType="number-pad" suffix="₹" placeholder={same?.target ? String(same.target) : 'Money’s own target'} /> : null}
       {k === 'jar' ? (
-        items == null ? (funds.error ? <Text style={t.small}>{funds.error}</Text> : <Skeleton height={36} />)
+        items == null ? (jars.error ? <Text style={t.small}>{jars.error}</Text> : <Skeleton height={36} />)
           : items.length ? (
             <View style={st.chips}>
-              {items.map((f) => {
-                const v = fundIn(f);
-                return <Chip key={f.id} label={v != null ? `${f.name}, ${fmt(v, 'rupees')}` : f.name} selected={(jar ?? same?.jar) === f.id} onPress={() => setJar(f.id)} />;
-              })}
+              {items.map((f) => (
+                <Chip key={f.id} label={`${f.name}, ${fmt(f.saved, 'rupees')}${f.goal === goal ? ', serves this goal' : ''}`} selected={pickJar === f.id} onPress={() => setJar(f.id)} />
+              ))}
             </View>
           ) : <Text style={t.small}>No savings jars in Money yet. Make one there and it shows here.</Text>
       ) : null}
@@ -279,7 +285,7 @@ function MeasureBody({ goal, onClose }: { goal: string; onClose: () => void }) {
         </View>
       ) : null}
       <Text style={t.caption}>{k === 'auto' ? 'Done tasks and finished goals under it move it. With neither, milestones do.' : k === 'manual' ? 'Only you move this one.' : 'Read each time you open Mission, with the date it was true.'}</Text>
-      <Button label="Save" onPress={save} busy={busy} disabled={k === 'jar' && !(jar ?? same?.jar)} />
+      <Button label="Save" onPress={save} busy={busy} disabled={k === 'jar' && !pickJar} />
     </>
   );
 }

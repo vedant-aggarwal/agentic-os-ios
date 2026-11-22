@@ -13,11 +13,13 @@ export function RecordScreen({ open, onClose }: { open: boolean; onClose: () => 
   const nav = useNav();
   const r = useGet<RecordView>(open ? `${M}/record` : null);
   const d = r.data;
+  // closings written here, plus goals marked done straight in the core store (Growth's review does this), newest first
+  const closed = d ? [...d.closed, ...d.done].sort((x, y) => String(y.at).localeCompare(String(x.at))) : [];
   return (
     <Screen open={open} onClose={onClose} title="The record">
       {!d && r.error ? <Failed message={r.error} onRetry={r.refresh} /> : !d ? (
         <View style={st.gap}><Skeleton height={72} /><Skeleton height={140} radius={24} /><Skeleton height={56} /></View>
-      ) : !d.totals.set && !d.closed.length ? (
+      ) : !d.totals.set && !closed.length ? (
         <Empty title="Nothing on the record yet" body="Goals you set and close show here, week by week, with what happened to each." />
       ) : (
         <>
@@ -54,9 +56,9 @@ export function RecordScreen({ open, onClose }: { open: boolean; onClose: () => 
               </View>
             ))}
           </Section>
-          {d.closed.length ? (
-            <Section title={`Closed, ${count(d.closed.length, 'goal')}`}>
-              {d.closed.map((c) => (
+          {closed.length ? (
+            <Section title={`Closed, ${count(closed.length, 'goal')}`}>
+              {closed.map((c) => (
                 <Row key={c.id} title={c.title} left={<Dot aspect={c.aspect} />} onPress={() => nav.goal(c.goal)} chevron
                   sub={[`${OUTCOME_WORD[c.outcome]}, ${c.horizon === 'week' ? `week of ${c.label}` : c.label}`, c.why, c.by === 'growth' ? 'From your weekly review' : null, shortDay(c.at.slice(0, 10))].filter(Boolean).join('. ')} />
               ))}

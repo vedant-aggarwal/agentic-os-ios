@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { API, currentToken } from './api';
+import { API, currentToken, STAGE } from './api';
 
 // Command mode: the PC agent's live transcript (server: WebSocket /api/v1/pc/agent, pc-agent.ts).
 // In: a snapshot on connect, then reset / state / item / listening / nothing. Out: say, stop.
@@ -20,7 +20,7 @@ export function useAgent(active: boolean) {
   const ws = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    if (!active) return;
+    if (!active || STAGE) return; // a stage server has no PC agent; retrying its socket never lets the page go quiet
     let alive = true, retry: ReturnType<typeof setTimeout> | null = null;
     const open = () => {
       const sock = new WebSocket(`${URL_WS}?token=${encodeURIComponent(currentToken() ?? '')}`);

@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Empty, Failed, Icon, IconButton, Page, today, useAspect } from '@/aspects/kit';
+import { Empty, Failed, Icon, IconButton, Page, today, useAspect, useEntry } from '@/aspects/kit';
+import { openLink } from '@/lib/links';
 import { newId, useCollection, useGet } from '@/lib/mod';
 import { errText, HOME, momentDraft, moments, readTime, refresh, weeks } from './data';
 import { DateScreen } from './DatePlan';
@@ -150,6 +151,16 @@ export default function Family() {
   const attach = (c: Card, focus: 'photo' | 'line') => {
     if (c.week.done) openSheet({ kind: 'memory', memory: { kind: 'attach', moment: c.week.done.moment, people: [c.id], focus } });
   };
+  // family/<part>: person/<id>, date/<id>, memories[/<person id>], add. Plain family is home.
+  useEntry((e) => {
+    const [p, id] = e.parts;
+    setPersonOpen(false); setDateOpen(false); setMemOpen(false); closeSheet();
+    setView((v) => ({ ...v, open: false }));
+    if (p === 'person' && id) openPerson(id);
+    else if (p === 'date' && id) openDate(id);
+    else if (p === 'memories') { setMemPerson(id ?? null); setMemOpen(true); }
+    else if (p === 'add') openSheet({ kind: 'add' });
+  });
   const refreshAll = () => { void home.refresh(); void cal.refresh(); void goalsR.refresh(); void jarsR.refresh(); void ideas.refresh(); };
 
   const add = <IconButton label="Add" size={36} onPress={() => openSheet({ kind: 'add' })}><Icon name="plus" size={16} /></IconButton>;
@@ -168,7 +179,7 @@ export default function Family() {
         onAddLine={() => { if (person) attach(person, 'line'); }}
         onMove={(asp) => { if (person) move(person, asp); }} />
       <DateScreen open={dateOpen} onClose={() => setDateOpen(false)} id={dateId} goals={goals} jars={jars} goalsAt={goalsAt} jarsAt={jarsAt} notice={a.notice}
-        onMemory={(p) => addMemory({ people: p.people, date: p.date, title: p.title })} onOpenMemory={openMemory} openAspect={a.openAspect} />
+        onMemory={(p) => addMemory({ people: p.people, date: p.date, title: p.title })} onOpenMemory={openMemory} />
       <MemoriesScreen open={memOpen} onClose={() => setMemOpen(false)} person={memPerson} onPerson={setMemPerson} onOpen={openMemory}
         onAdd={() => addMemory(memPerson ? { people: [memPerson] } : {})} />
 
@@ -230,7 +241,7 @@ export default function Family() {
         onBirthday={(pid) => openSheet({ kind: 'date', date: { kind: 'birthday', people: [pid] } })}
         onMemory={(p) => addMemory({ people: p.people, date: p.date, title: p.title })} />
       <MemoryStrip home={data} nameOf={nameOf} onOpen={openMemory} onAdd={() => addMemory()} onSeeAll={() => { setMemPerson(null); setMemOpen(true); }} />
-      <ForThem goals={goals} jars={jars} goalsAt={goalsAt} jarsAt={jarsAt} onMission={() => a.openAspect('mission')} onMoney={() => a.openAspect('money')} />
+      <ForThem goals={goals} jars={jars} goalsAt={goalsAt} jarsAt={jarsAt} onMission={(id) => openLink(`mission/goal/${encodeURIComponent(id)}`)} onMoney={() => openLink('money/save')} />
     </Page>
   );
 }

@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import {
   Button, Card, CheckRing, Divider, Empty, Failed, haptic, Icon, Press, Row, Skeleton, SURF, shortDay, t, tint, useAspect,
 } from '@/aspects/kit';
+import { openLink } from '@/lib/links';
 import { ApiError, call, invalidate, useGet, type Read } from '@/lib/mod';
 import { C } from '@/theme';
 import {
@@ -191,11 +192,10 @@ function LastDays({ week }: { week: WeekBlock }) {
 }
 
 function ReviewLine() {
-  const a = useAspect();
   return (
     <View style={st.review}>
       <Text style={t.small}>Your weekly review is waiting in Growth. It closes the week and suggests what comes next.</Text>
-      <Link label="Open Growth" onPress={() => a.openAspect('growth')} />
+      <Link label="Open the review" onPress={() => openLink('growth/review')} />
     </View>
   );
 }

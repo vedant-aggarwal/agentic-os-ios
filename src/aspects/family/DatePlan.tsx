@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { Bar, Button, Card, CheckRing, Failed, Field, Press, R, Row, Screen, Section, shortDay, Skeleton, SP, t, useAspect } from '@/aspects/kit';
+import { openLink } from '@/lib/links';
 import { newId, useCollection, useGet } from '@/lib/mod';
 import { C } from '@/theme';
 import { askNora, errText, goalWords, inDays, jarWords, longDay, names, refresh, useAi, whenDay, yearsWords } from './data';
@@ -12,10 +13,10 @@ import { G, LinkRow, Photo } from './ui';
 
 const KIND_WORD: Record<Step['kind'], string> = { book: 'To book', buy: 'To buy', involve: 'Who to involve', do: 'To do' };
 
-export function DateScreen({ open, onClose, id, goals, jars, goalsAt, jarsAt, onMemory, onOpenMemory, notice, openAspect }: {
+export function DateScreen({ open, onClose, id, goals, jars, goalsAt, jarsAt, onMemory, onOpenMemory, notice }: {
   open: boolean; onClose: () => void; id: string | null; goals: Goal[]; jars: Jar[]; goalsAt: number; jarsAt: number;
   onMemory: (p: { people: string[]; date: string; title: string }) => void; onOpenMemory: (m: MomentBrief) => void;
-  notice: (t: string) => void; openAspect: (k: 'mission' | 'money') => void;
+  notice: (t: string) => void;
 }) {
   const { color } = useAspect();
   const v = useGet<DateView>(id && open ? `/mod/family/date/${encodeURIComponent(id)}` : null);
@@ -145,14 +146,14 @@ export function DateScreen({ open, onClose, id, goals, jars, goalsAt, jarsAt, on
             <Section title="Building up to it">
               <Card style={s.links}>
                 {linkedGoals.map((g) => (
-                  <Press key={g.id} label={`${g.title}. Open in Mission`} onPress={() => openAspect('mission')} style={s.linkItem}>
+                  <Press key={g.id} label={`${g.title}. Open in Mission`} onPress={() => openLink(`mission/goal/${encodeURIComponent(g.id)}`)} style={s.linkItem}>
                     <Text style={t.strong}>{g.title}</Text>
                     {g.progress != null && g.progress > 0 ? <Bar progress={g.progress / 100} height={4} /> : null}
                     <Text style={[t.caption, t.num]}>{[goalWords(g, goalsAt), 'Mission'].filter(Boolean).join(', ')}</Text>
                   </Press>
                 ))}
                 {linkedJars.map((j) => (
-                  <Press key={j.id} label={`${j.name}. Open in Money`} onPress={() => openAspect('money')} style={s.linkItem}>
+                  <Press key={j.id} label={`${j.name}. Open in Money`} onPress={() => openLink('money/save')} style={s.linkItem}>
                     <Text style={t.strong}>{j.name}</Text>
                     {j.pct != null ? <Bar progress={j.pct} height={4} /> : null}
                     <Text style={[t.caption, t.num]}>{`${jarWords(j, jarsAt)}, Money`}</Text>

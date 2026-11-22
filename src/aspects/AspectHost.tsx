@@ -7,7 +7,7 @@ import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { lightTap } from '@/components/Glass';
 import { useReveal } from '@/components/Reveal';
 import { ASPECT_COLOR, C, F, type AspectKey } from '@/theme';
-import { ASPECT_NAME, AspectContext, type AspectCtx } from './context';
+import { ASPECT_NAME, AspectContext, type AspectCtx, type AspectEntry } from './context';
 import { PAGES } from './registry';
 
 /** Space an aspect page keeps clear at the bottom while the dock shows: the bar, the raised orb and its ring. */
@@ -20,13 +20,24 @@ export const initialAspect: AspectKey | null = (() => {
   return k && k in ASPECT_COLOR ? (k as AspectKey) : null;
 })();
 
+/** Dev-only, web-only: `?link=soul/journal` opens that link on load, the way a notification tap would. */
+export const initialLink: string | null = (() => {
+  if (!__DEV__ || Platform.OS !== 'web' || typeof location === 'undefined') return null;
+  return new URLSearchParams(location.search).get('link') || null;
+})();
+
+/** A link on its way to an aspect page (src/lib/aspectLinks.ts makes it from agenticos://<aspect>/<part>). */
+export type HostEntry = AspectEntry & { aspect: AspectKey };
+
 /**
  * The one place aspect pages live. The page grows out of the orb as a widening circle (the same motion as the top
  * bar's pages) and closes back into it. The dock stays above it, so the orb's dial can jump straight to another
  * aspect and Home returns to Today. The last page opened stays mounted, hidden, so it comes back as it was left.
  */
-export function AspectHost({ aspect, origin, dock, onClose, onOpen, onNotice, onImmersive }: {
+export function AspectHost({ aspect, origin, dock, entry, onEntryDone, onClose, onOpen, onNotice, onImmersive }: {
   aspect: AspectKey | null; origin: { x: number; y: number }; dock: number;
+  /** The link to hand the page once it shows; `onEntryDone` clears it when the page has opened what it names. */
+  entry: HostEntry | null; onEntryDone: (stamp: number) => void;
   onClose: () => void; onOpen: (key: AspectKey) => void; onNotice: (text: string) => void; onImmersive: (on: boolean) => void;
 }) {
   const insets = useSafeAreaInsets();
@@ -60,6 +71,7 @@ export function AspectHost({ aspect, origin, dock, onClose, onOpen, onNotice, on
   const ctx: AspectCtx = {
     aspect: shown, color, open: aspect === shown, close: onClose, insets, width, height, dock,
     notice: onNotice, setImmersive: onImmersive, openAspect: onOpen, onBack,
+    entry: entry && entry.aspect === shown ? entry : null, doneEntry: onEntryDone,
   };
   return (
     <Animated.View style={[r.shell, !r.mounted && s.hidden]} pointerEvents={aspect ? 'auto' : 'none'}>

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import {
-  Button, Card, Chip, haptic, Icon, lastDays, Page, Press, Section, Skeleton, t, today, useAspect,
+  Button, Card, Chip, haptic, Icon, lastDays, Page, Press, Section, Skeleton, t, today, useAspect, useEntry,
 } from '@/aspects/kit';
 import { useCollection } from '@/lib/mod';
 import { C, F } from '@/theme';
@@ -30,6 +30,15 @@ export default function Soul() {
   const [slip, setSlip] = useState<{ open: boolean; from: { key: string; steps: string[] } | null }>({ open: false, from: null });
   const [editor, setEditor] = useState<{ open: boolean; entry: Entry | null; seed: Seed | null }>({ open: false, entry: null, seed: null });
   const [sitStart, setSitStart] = useState<{ mins: number; n: number } | null>(null);
+
+  // soul/<part>: clean (also soul/blocker, the lock question's push: the plans for risky hours are there), journal,
+  // write (a new entry), meditate, moment (the rough moment).
+  useEntry((e) => {
+    const p = e.parts[0];
+    setScreen(p === 'clean' || p === 'blocker' ? 'clean' : p === 'journal' || p === 'write' ? 'journal' : p === 'meditate' ? 'meditate' : null);
+    setMoment(p === 'moment');
+    if (p === 'write') setEditor({ open: true, entry: null, seed: {} });
+  });
 
   const d = now.data;
   useEffect(() => { rememberKit(d); }, [d]);

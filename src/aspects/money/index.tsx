@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { Button, Failed, Icon, Page, R, Row, rupees, shortDay, Skeleton, SP, t, useAspect } from '@/aspects/kit';
+import { Button, Failed, Icon, Page, R, Row, rupees, shortDay, Skeleton, SP, t, useAspect, useEntry } from '@/aspects/kit';
 import { useHome } from './data';
 import { EarnLead, EarnScreen, MoneyInSheet, OwedRow, TargetSheet } from './Earn';
 import { LogLine } from './log';
@@ -27,6 +27,14 @@ export default function Money() {
   const { refresh } = home;
   // fresh figures each time the page opens (it stays mounted while closed)
   useEffect(() => { if (a.open) void refresh(); }, [a.open]); // eslint-disable-line react-hooks/exhaustive-deps
+  // money/<part>: earn, spend (money/flow, the weekly and repeat charge pushes), save (also money/jars),
+  // statement[/<id>] (an import to review).
+  useEntry((e) => {
+    const [p, id] = e.parts;
+    setPart(p === 'earn' ? 'earn' : p === 'spend' || p === 'flow' ? 'spend' : p === 'save' || p === 'jars' ? 'save' : null);
+    setStatement(p === 'statement' ? { id: id ?? null } : null);
+    setMoneyIn(false); setTarget(false); setNewJar(false);
+  });
   const closePart = useCallback(() => setPart(null), []);
   const closeStatement = useCallback(() => setStatement(null), []);
   const d = home.data;

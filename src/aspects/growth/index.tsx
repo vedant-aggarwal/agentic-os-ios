@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import {
-  Button, Card, Chip, dayLabel, Empty, Failed, Field, Icon, num, Page, Press, R, Row, Section, Sheet, shortDay, Skeleton, SP, t, useAspect,
+  Button, Card, Chip, dayLabel, Empty, Failed, Field, Icon, num, Page, Press, R, Row, Section, Sheet, shortDay, Skeleton, SP, t, useAspect, useEntry,
 } from '@/aspects/kit';
 import { useGet } from '@/lib/mod';
+import { ASPECT_KEYS } from '@/lib/aspectLinks';
 import { C, type AspectKey } from '@/theme';
 import { answerRead, HOME } from './data';
 import { OverTime } from './OverTime';
@@ -30,6 +31,16 @@ export default function Growth() {
   const d = home.data;
   const size = Math.min(a.width - SP[32], 360);
   const close = () => setOpen(null);
+  // growth/<part>: score, review, rules, reviews, time[/<aspect>] (over time, on one section), wheel/<aspect> (that
+  // section picked on the wheel). growth/journal goes to Soul's journal (src/lib/aspectLinks.ts).
+  useEntry((e) => {
+    const [p, k] = e.parts;
+    const key = ASPECT_KEYS.find((x) => x === k) ?? null;
+    setOpen(p === 'score' || p === 'review' || p === 'rules' || p === 'reviews' || p === 'time' ? p : null);
+    if (p === 'time') setTimeSec(key);
+    setSel(p === 'wheel' ? key : null);
+    setNewRule(false);
+  });
 
   const footer = (
     <>
@@ -243,7 +254,7 @@ function ReadCard({ read }: { read: MorningRead }) {
     <Card style={s.read}>
       <View style={s.readHead}>
         <Text style={t.section}>Overnight read</Text>
-        <Text style={t.caption}>{read.ran ? `A model’s reading of yesterday, made at ${read.ran}` : 'A model’s reading of yesterday'}</Text>
+        <Text style={t.caption}>{read.ran ? `Nora’s reading of yesterday, made at ${read.ran}` : 'Nora’s reading of yesterday'}</Text>
       </View>
       <Text style={t.lead}>{read.headline}</Text>
       {c ? <Text style={t.strong}>{c.title}</Text> : null}

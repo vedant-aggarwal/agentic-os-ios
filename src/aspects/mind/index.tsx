@@ -1,7 +1,7 @@
 import { useRef, useState, type ReactNode } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import {
-  Button, Card, CheckRing, Failed, Icon, Page, Press, Row, Section, Skeleton, Spark, SURF, num, t, tint, useAspect, weekLetter,
+  Button, Card, CheckRing, Failed, Icon, Page, Press, Row, Section, Skeleton, Spark, SURF, num, t, tint, useAspect, useEntry, weekLetter,
 } from '@/aspects/kit';
 import { useGet } from '@/lib/mod';
 import { C } from '@/theme';
@@ -32,6 +32,15 @@ export default function Mind() {
   const n = useRef(0);
   const take = (spec: TakeSpec, steps?: string[]) => { n.current += 1; setRun({ spec, n: n.current, steps }); };
   usePoll(() => { void g.refresh(); }, 4000, a.open && !!v?.pending.length);
+  // mind/<part>: speak, read, courses, recall, drill/<id>, review/<id>. mind/checkin (the evening push) has no
+  // screen on the phone yet and lands on home with the rest.
+  useEntry((e) => {
+    const [p, id] = e.parts;
+    setPlace(p === 'speak' || p === 'read' || p === 'courses' ? p : null);
+    setRecall(p === 'recall');
+    setDrill(p === 'drill' && id ? id : null);
+    setReview(p === 'review' && id ? id : null);
+  });
 
   return (
     <Page subtitle="Learn it, then say it" onRefresh={() => { void g.refresh(); }} refreshing={g.busy && !!v}

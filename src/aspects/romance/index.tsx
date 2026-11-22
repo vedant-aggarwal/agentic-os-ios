@@ -2,8 +2,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, ReduceMotion } from 'react-native-reanimated';
 import {
-  Button, Card, CheckRing, dayLabel, Divider, Empty, Failed, Glyph, haptic, Icon, Page, Press, Row, Section, Skeleton, t, timer, today, useAspect,
+  Button, Card, CheckRing, dayLabel, Divider, Empty, Failed, Glyph, haptic, Icon, Page, Press, Row, Section, Skeleton, t, timer, today, useAspect, useEntry,
 } from '@/aspects/kit';
+import { openLink } from '@/lib/links';
 import { C } from '@/theme';
 import { DebriefScreen, DebriefsScreen, statusWords } from './Debrief';
 import { undebriefed, useDebriefs, useOutings, usePeople, usePrefs, usePrimer, weekOf } from './data';
@@ -43,6 +44,15 @@ export default function Romance() {
   const [target, setTarget] = useState(false);
   const [added, setAdded] = useState<number | null>(null); // when "Add one" was last tapped, for its Undo
 
+  // romance/<part>: people, person/<id>, debriefs, primer (getting ready to go out), out (the outing on now).
+  useEntry((e) => {
+    const [p, id] = e.parts;
+    setPeopleOpen(p === 'people');
+    setPerson(p === 'person' && id ? id : null);
+    setDebriefsOpen(p === 'debriefs');
+    setPrimerOpen(p === 'primer');
+    setOutOpen(p === 'out');
+  });
   const closePrimer = useCallback(() => setPrimerOpen(false), []);
   const closeOut = useCallback(() => setOutOpen(false), []);
   const closeEnded = useCallback(() => setEnded(null), []);
@@ -142,7 +152,7 @@ export default function Romance() {
         {primer.data ? (
           <Card style={s.gap8}>
             <Text style={t.lead}>{primer.data.try.text}</Text>
-            <Text style={t.caption}>{primer.data.try.from === 'ladder' ? 'A first step. After your first debrief, this comes from what you said.' : `From your debrief${primer.data.try.day ? ` ${whenIn(primer.data.try.day)}` : ''}${primer.data.try.by === 'ai' ? ', read by AI' : ''}`}</Text>
+            <Text style={t.caption}>{primer.data.try.from === 'ladder' ? 'A first step. After your first debrief, this comes from what you said.' : `From your debrief${primer.data.try.day ? ` ${whenIn(primer.data.try.day)}` : ''}${primer.data.try.by === 'ai' ? ', read by Nora' : ''}`}</Text>
           </Card>
         ) : primer.error ? <Failed message={primer.error} onRetry={primer.refresh} /> : <Skeleton height={96} radius={24} />}
       </Section>
@@ -219,10 +229,10 @@ export default function Romance() {
       </>) : null}
 
       <Section title="Getting ready" gap={0}>
-        <Row title="Face" sub="In Body" chevron onPress={() => a.openAspect('body')}
+        <Row title="Face" sub="In Body" chevron onPress={() => openLink('body/face')}
           left={<Glyph sf="face.smiling" d="M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18zM9 10h.01M15 10h.01M8.5 14.5a5 5 0 0 0 7 0" size={20} color={C.muted} />} />
         <Divider />
-        <Row title="Speak" sub="In Mind" chevron onPress={() => a.openAspect('mind')}
+        <Row title="Speak" sub="In Mind" chevron onPress={() => openLink('mind/speak')}
           left={<Glyph sf="waveform" d="M4 12h2M8 8v8M12 5v14M16 8v8M20 12h-2" size={20} color={C.muted} />} />
       </Section>
     </Page>

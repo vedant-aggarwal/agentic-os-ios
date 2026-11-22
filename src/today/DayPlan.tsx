@@ -5,7 +5,7 @@ import Animated, { ReduceMotion, useAnimatedStyle, withSpring, withTiming } from
 import { Check, Plus } from '@/components/Icons';
 import type { BodyToday } from '@/lib/body';
 import type { Row, Section } from '@/lib/today';
-import { ASPECT_COLOR, C, F, SPRING, type AspectKey } from '@/theme';
+import { ASPECT_COLOR, C, F, SPRING } from '@/theme';
 import { GymCard } from './GymCard';
 import { Pictogram } from './Pictogram';
 
@@ -16,11 +16,15 @@ type Props = {
   sections: Section[];
   body: BodyToday | null;
   onToggle: (id: string) => void;
-  onOpen: (aspect: AspectKey) => void;
+  /** Opens a section page on one of its parts: 'body', 'body/gym' (src/lib/links.ts lists them). */
+  onOpen: (link: string) => void;
   onWater: () => void;
 };
 
-/** The day's plan, one part per aspect in life-wheel order. Body leads with the workout, water and protein. */
+/**
+ * The day's plan, one part per aspect in life-wheel order. Body leads with the workout, water and protein. Each part
+ * opens its section where the same thing lives: the head opens the page, the gym card Gym, water and protein Diet.
+ */
 export function DayPlan({ sections, body, onToggle, onOpen, onWater }: Props) {
   const parts = sections.slice();
   if (body && !parts.some((x) => x.key === 'body')) {
@@ -31,13 +35,13 @@ export function DayPlan({ sections, body, onToggle, onOpen, onWater }: Props) {
     <View style={s.wrap}>
       {parts.map((sec) => (
         <View key={sec.key} style={s.section}>
-          <Head sec={sec} onOpen={sec.key === 'none' ? undefined : () => onOpen(sec.key as AspectKey)} />
+          <Head sec={sec} onOpen={sec.key === 'none' ? undefined : () => onOpen(sec.key)} />
           {sec.key === 'body' && body ? (
             <>
-              <GymCard body={body} onOpen={() => onOpen('body')} />
+              <GymCard body={body} onOpen={() => onOpen('body/gym')} />
               <View style={s.tiles}>
-                {body.food.water_target ? <WaterTile n={body.food.water} of={body.food.water_target} onAdd={onWater} /> : null}
-                {body.food.protein_target ? <ProteinTile n={body.food.protein} of={body.food.protein_target} onOpen={() => onOpen('body')} /> : null}
+                {body.food.water_target ? <WaterTile n={body.food.water} of={body.food.water_target} onAdd={onWater} onOpen={() => onOpen('body/diet')} /> : null}
+                {body.food.protein_target ? <ProteinTile n={body.food.protein} of={body.food.protein_target} onOpen={() => onOpen('body/diet/meal')} /> : null}
               </View>
             </>
           ) : null}
@@ -110,11 +114,16 @@ function TaskLine({ row, first, onToggle }: { row: Row; first: boolean; onToggle
   );
 }
 
-function WaterTile({ n, of, onAdd }: { n: number; of: number; onAdd: () => void }) {
+/** Water: the plus adds a glass here; the rest of the tile opens Diet, where the same glasses are. */
+function WaterTile({ n, of, onAdd, onOpen }: { n: number; of: number; onAdd: () => void; onOpen: () => void }) {
   const pips = Math.min(of, 16), lines = pips > 8 ? 2 : 1, per = Math.ceil(pips / lines);
   const full = Math.min(pips, Math.round((n / of) * pips));
   return (
-    <View style={s.tile}>
+    <Pressable accessibilityRole="button" accessibilityLabel={`Water ${n} of ${of} glasses. Open Diet`} onPress={onOpen}
+      // VoiceOver reads the tile as one button, so the plus is also offered as its action
+      accessibilityActions={[{ name: 'add', label: 'Add a glass of water' }]}
+      onAccessibilityAction={(e) => { if (e.nativeEvent.actionName === 'add') onAdd(); }}
+      style={({ pressed }) => [s.tile, pressed && { transform: [{ scale: 0.97 }] }]}>
       <View style={s.tileTop}>
         <Text style={s.tileLabel}>Water</Text>
         <Pressable accessibilityRole="button" accessibilityLabel="Add a glass of water" hitSlop={8}
@@ -134,7 +143,7 @@ function WaterTile({ n, of, onAdd }: { n: number; of: number; onAdd: () => void 
           </View>
         ))}
       </View>
-    </View>
+    </Pressable>
   );
 }
 

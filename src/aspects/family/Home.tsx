@@ -165,7 +165,7 @@ export function MemoryStrip({ home, onSeeAll, onOpen, onAdd, nameOf }: {
 
 /** What he is building for them, read from Mission and Money. Nothing shows when there is nothing. */
 export function ForThem({ goals, jars, goalsAt, jarsAt, onMission, onMoney }: {
-  goals: Goal[]; jars: Jar[]; goalsAt: number; jarsAt: number; onMission: () => void; onMoney: () => void;
+  goals: Goal[]; jars: Jar[]; goalsAt: number; jarsAt: number; onMission: (goal: string) => void; onMoney: () => void;
 }) {
   if (!goals.length && !jars.length) return null;
   return (
@@ -174,7 +174,7 @@ export function ForThem({ goals, jars, goalsAt, jarsAt, onMission, onMoney }: {
         {goals.map((g, i) => (
           <View key={g.id} style={s.forItem}>
             {i > 0 ? <Divider /> : null}
-            <Press label={`${g.title}. Open in Mission`} onPress={onMission} style={s.forPress}>
+            <Press label={`${g.title}. Open in Mission`} onPress={() => onMission(g.id)} style={s.forPress}>
               <View style={s.forHead}>
                 <Text numberOfLines={2} style={[t.strong, s.flex]}>{g.title}</Text>
                 <Text style={t.caption}>Mission</Text>

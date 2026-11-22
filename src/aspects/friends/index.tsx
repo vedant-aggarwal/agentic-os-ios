@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { Button, Empty, Failed, Icon, Page, Section, Skeleton, SP, useAspect } from '@/aspects/kit';
+import { Button, Empty, Failed, Icon, Page, Section, Skeleton, SP, useAspect, useEntry } from '@/aspects/kit';
 import { invalidate } from '@/lib/mod';
 import { makeActions } from './actions';
 import { DeepenCard, FriendRow, LogDetail, UsualRow } from './Circle';
@@ -38,6 +38,17 @@ export default function Friends() {
   };
   const planWith = (id: string, idea?: DeepenIdea | null) => makePlan({ person: id, idea: idea ?? null });
   const log = (p: Person, kind: Kind, act?: string) => setLogged({ person: p.id, moment: a.log(p, kind, act ? { act } : {}) });
+  // friends/<part>: person/<id>, plans, new (people he is getting to know), plan[?person=<id>] (make a plan), add.
+  useEntry((e) => {
+    const [p, id] = e.parts;
+    setPersonOpen(p === 'person' && !!id);
+    if (p === 'person' && id) setPerson(id);
+    setPlansOpen(p === 'plans');
+    setNewOpen(p === 'new');
+    setAddOpen(p === 'add');
+    if (p === 'plan') makePlan(e.query.person ? { person: e.query.person } : {});
+    else setFlow((x) => ({ ...x, open: false }));
+  });
   const refresh = async () => {
     setRefreshing(true);
     invalidate('/mod/friends/');

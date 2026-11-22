@@ -4,8 +4,21 @@
 // launched the app) waits and is handed over when the listener registers.
 //
 // Targets in use:
-//   <aspect>/<part>      body, mind, soul, mission, money, growth, family, romance, friends; part is the page's own
-//                        (body/looks, growth/review, money/statement/<id>, soul/clean, soul/journal, ...)
+//   <aspect>/<part>      a section page on one of its parts. Today opens the page and hands it the part (useEntry in
+//                        src/aspects/context.ts); a bare <aspect> is the page's home. (*) marks links the PC sends.
+//     body               gym, diet, face, voice; looks (*, the PM protocol push: Face); diet/meal (log a meal);
+//                        gym/weigh (log weight)
+//     mind               speak, read, courses, recall, drill/<id>, review/<id>; checkin (*, no screen yet: home)
+//     soul               clean (*), journal (*), blocker (*, the lock question: Clean, where the plans are),
+//                        write (a new entry), meditate, moment (the rough moment)
+//     mission            (* bare: home, with the week); goal/<id>, ladder, projects, purpose, record, close, add
+//     money              earn, spend, flow (*, = spend), save, jars (= save), statement[/<id>] (*)
+//     growth             score, review (*), rules, reviews, time[/<aspect>], wheel/<aspect>;
+//                        journal (*, Growth's streak push: goes to soul/journal)
+//     family             person/<id>, date/<id>, memories[/<person id>], add
+//     friends            person/<id>, plans, new, plan[?person=<id>], add
+//     romance            people, person/<id>, debriefs, primer, out
+//     life/score         (*) the life module's wheel push: growth/score (src/lib/aspectLinks.ts holds the aliases)
 //   job/<id>             a job's thread in the Projects hub (handled by +native-intent as a route)
 //   nora[/chat|/call]    Nora: chat, or a call (?id=<call id> to join one that is ringing)
 //   today                Today

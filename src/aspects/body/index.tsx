@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { invalidate, useCollection } from '@/lib/mod';
-import { Page, useAspect } from '@/aspects/kit';
+import { Page, useAspect, useEntry } from '@/aspects/kit';
 import { B, PART_NAME, useHome, type FullSession, type Part } from './api';
 import { DietScreen } from './diet/Diet';
 import { LogMeal, TargetsSheet } from './diet/Log';
@@ -43,6 +43,16 @@ export default function Body() {
   }, [items, put, notice]);
 
   const closeFlow = useCallback(() => { setFlow(null); invalidate(`${B}/`); }, []);
+
+  // body/<part>: gym, diet, face, voice (body/looks is Face, the PM protocol's push). body/diet/meal opens the meal log
+  // on Diet, body/gym/weigh the weight. A full-screen flow or sheet that was open gives way to the link.
+  useEntry((e) => {
+    const [p, then] = e.parts;
+    const want = p === 'looks' ? 'face' : (Object.keys(PART_NAME) as Part[]).find((k) => k === p) ?? null;
+    if (flow) closeFlow();
+    setSheet(want === 'diet' && then === 'meal' ? { kind: 'meal' } : want === 'gym' && then === 'weigh' ? { kind: 'weigh' } : null);
+    setPart(want);
+  });
   const nav = useMemo<BodyNav>(() => ({ part, openPart: setPart, flow, openFlow: setFlow, sheet, openSheet: setSheet, startWorkout }), [part, flow, sheet, startWorkout]);
 
   return (

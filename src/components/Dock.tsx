@@ -3,15 +3,17 @@ import * as Haptics from 'expo-haptics';
 import { useEffect, useRef, useState } from 'react';
 import { type GestureResponderEvent, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import Animated, {
-  Easing, ReduceMotion, useAnimatedProps, useAnimatedStyle, useReducedMotion, useSharedValue, withDelay, withRepeat, withSpring, withTiming,
-  type SharedValue,
+  ReduceMotion, useAnimatedProps, useAnimatedStyle, useSharedValue, withDelay, withSpring, type SharedValue,
 } from 'react-native-reanimated';
-import Svg, { Circle, Defs, G, LinearGradient, Path, RadialGradient, Stop, Text as SvgText } from 'react-native-svg';
+import Svg, { Defs, G, LinearGradient, Path, Stop, Text as SvgText } from 'react-native-svg';
 import { Glass, tap, useScale } from '@/components/Glass';
 import { Home, Nora, Scan, Work } from '@/components/Icons';
 import { Sym } from '@/components/Sym';
 import { router } from 'expo-router';
 import { useWorkOrb } from '@/work/useWorkOrb';
+import { NoraOver, NoraUnder } from '@/nora/NoraHost';
+import { Ball, useTurn } from '@/nora/Sphere';
+import { noraUi, useNora } from '@/nora/state';
 import type { AspectProgress } from '@/lib/today';
 import { ASPECT_COLOR, C, F, FAMILY_LABEL, type AspectKey, type FamilyKey } from '@/theme';
 
@@ -19,6 +21,7 @@ import { ASPECT_COLOR, C, F, FAMILY_LABEL, type AspectKey, type FamilyKey } from
 // 64 pt orbs (Home, Work). Scan and Nora's chat sit in the pill as clear 48 pt buttons, the 72 pt orb raised
 // 16 pt above the pill's centre with the nine-section ring over its top. One gap G sets every space in the
 // row: side orb to pill, pill edge to icon, icon to orb. Tap the orb to talk; hold it and the ring opens into the dial.
+// Home, chat and calls are Nora's (src/nora): the dock mounts them, Home under the bar, chat and calls over it.
 const BAR_H = 64;
 const SIDE = BAR_H; // the floating orbs either side of the pill, as tall as it
 const ICON = 24; // the glyph inside each 48 pt button
@@ -26,7 +29,6 @@ const ORB = 100; // canvas incl. ring and its glow
 const ORB_R = 36; // the ball
 const ARC_R = 46;
 const ORB_TOP = BAR_H / 2 - 16 - ORB / 2; // orb centre 16 above the pill's centre
-const TURN = 12000; // one turn of the sphere, ms
 const TAP = 280; // let go sooner than this, without sliding or choosing, and it was a tap: talk to Nora
 const SWIPE = 8; // pt of travel that turns a press into a swipe
 
@@ -288,79 +290,6 @@ function DialLayer({ cx, cy, open, pick, aspects }: {
   );
 }
 
-// ---- the sphere ----
-// Light comes from up-left and toward the viewer. The sphere spins about that same axis, so the
-// surface turns around the light while the highlight drifts with it.
-const AX = (() => { const v = [-0.26, -0.34, 0.9], n = Math.hypot(...v); return v.map((c) => c / n); })();
-const E1 = (() => { const n = Math.hypot(AX[1], AX[0]); return [AX[1] / n, -AX[0] / n, 0]; })();
-const E2 = [AX[1] * E1[2] - AX[2] * E1[1], AX[2] * E1[0] - AX[0] * E1[2], AX[0] * E1[1] - AX[1] * E1[0]];
-
-/** Where a surface point at `lat` (radians from the pole) and `phase` sits at time t, in unit-sphere coords. */
-function surface(lat: number, phase: number, t: number) {
-  'worklet';
-  const th = phase + t * Math.PI * 2, s = Math.sin(lat), c = Math.cos(lat), ct = Math.cos(th), st = Math.sin(th);
-  return [
-    c * AX[0] + s * (ct * E1[0] + st * E2[0]),
-    c * AX[1] + s * (ct * E1[1] + st * E2[1]),
-    c * AX[2] + s * (ct * E1[2] + st * E2[2]),
-  ];
-}
-
-// Colour on the sphere's surface: warm near the pole, rose and plum further round.
-const PATCHES = [
-  { lat: 0.7, phase: 0, size: 30, color: '#FFE2AE', o: 0.55 },
-  { lat: 1.2, phase: 2.2, size: 34, color: '#FF4F86', o: 0.55 },
-  { lat: 1.0, phase: 4.3, size: 28, color: '#FFB067', o: 0.5 },
-  { lat: 1.45, phase: 1.1, size: 38, color: '#7A1F5C', o: 0.5 },
-  { lat: 0.4, phase: 3.4, size: 18, color: '#FFD49A', o: 0.35 },
-];
-
-/** A patch of colour riding the surface, foreshortened toward the limb and hidden round the back. */
-function Patch({ t, i }: { t: SharedValue<number>; i: number }) {
-  const p = PATCHES[i];
-  const style = useAnimatedStyle(() => {
-    const [x, y, z] = surface(p.lat, p.phase, t.value);
-    return {
-      opacity: p.o * Math.min(Math.max(z * 2.5, 0), 1),
-      transform: [
-        { translateX: x * ORB_R }, { translateY: y * ORB_R },
-        { rotate: `${Math.atan2(y, x)}rad` }, { scaleX: Math.max(z, 0.08) },
-      ],
-    };
-  });
-  return (
-    <Animated.View pointerEvents="none" style={[s.abs, { width: p.size, height: p.size, left: ORB_R - p.size / 2, top: ORB_R - p.size / 2 }, style]}>
-      <Svg width={p.size} height={p.size}>
-        <Defs>
-          <RadialGradient id={`patch${i}`} cx="0.5" cy="0.5" r="0.5">
-            <Stop offset="0" stopColor={p.color} stopOpacity={1} /><Stop offset="1" stopColor={p.color} stopOpacity={0} />
-          </RadialGradient>
-        </Defs>
-        <Circle cx={p.size / 2} cy={p.size / 2} r={p.size / 2} fill={`url(#patch${i})`} />
-      </Svg>
-    </Animated.View>
-  );
-}
-
-function Ball({ t }: { t: SharedValue<number> }) {
-  const D = ORB_R * 2;
-  return (
-    <View style={s.clip}>
-      {/* lighting: bright toward the light, falling to plum on the far side */}
-      <Svg width={D} height={D} style={StyleSheet.absoluteFill}>
-        <Defs>
-          <RadialGradient id="orb" cx="0.36" cy="0.32" r="0.72">
-            <Stop offset="0" stopColor="#FFE3B0" /><Stop offset="0.32" stopColor="#FFA15C" />
-            <Stop offset="0.72" stopColor="#F0457A" /><Stop offset="1" stopColor="#6E1A55" />
-          </RadialGradient>
-        </Defs>
-        <Circle cx={ORB_R} cy={ORB_R} r={ORB_R} fill="url(#orb)" />
-      </Svg>
-      {PATCHES.map((p, i) => <Patch key={p.color} t={t} i={i} />)}
-    </View>
-  );
-}
-
 // ---- controls ----
 function Round({ label, onPress, children }: { label: string; onPress: () => void; children: React.ReactNode }) {
   const p = useScale(0.92);
@@ -371,18 +300,6 @@ function Round({ label, onPress, children }: { label: string; onPress: () => voi
       )}
     </Pressable>
   );
-}
-
-/** The sphere's clock, 0..1 per turn. Holds still under Reduce Motion. */
-function useTurn() {
-  const reduce = useReducedMotion();
-  const t = useSharedValue(0.12);
-  useEffect(() => {
-    if (reduce) return;
-    t.set(0);
-    t.set(withRepeat(withTiming(1, { duration: TURN, easing: Easing.linear }), -1, false));
-  }, [reduce, t]);
-  return t;
 }
 
 /** A floating orb beside the pill: the same glass, detached, a true circle, holding one page. */
@@ -434,7 +351,12 @@ export function Dock({ bottom, width, aspects, onNotBuilt, onAspect, onHome, hid
   const lift = Math.max(bottom, 12) + 12;
   const cx = width / 2, cy = height - lift - BAR_H + 16; // the orb's centre on screen
   const orb = useScale(0.93);
-  const t = useTurn();
+  const ui = useNora();
+  const t = useTurn(!ui.call && !ui.chat); // still while a call or chat covers it
+  // where Nora's pages grow from: the Home orb, the chat button, the orb itself
+  const left = (width - total) / 2, rowY = height - lift - BAR_H / 2;
+  const homeAt = { x: left + SIDE / 2, y: rowY };
+  const chatAt = { x: left + SIDE + G + w - Math.max(0, G - (48 - ICON) / 2) - 24, y: rowY };
   const open = useSharedValue(0); // the dial
   const ringFade = useAnimatedStyle(() => ({ opacity: open.value > 0.001 ? 0 : 1 })); // the wedges take over
   const [pick, setPick] = useState(-1);
@@ -487,25 +409,27 @@ export function Dock({ bottom, width, aspects, onNotBuilt, onAspect, onHome, hid
     release();
     if (chosen >= 0) {
       tap(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light));
+      noraUi.closeHome(); // the aspect page opens under the dock, where Home sits
       onAspect(WHEEL[chosen]);
-    } else if (quick) onNotBuilt('Talking to Nora');
+    } else if (quick) noraUi.call(); // a call, or chat with the mic on where this build has no call audio
   };
 
   return (
     <>
+      <NoraUnder home={homeAt} />
       <DialLayer cx={cx} cy={cy} open={open} pick={pick} aspects={aspects} />
       <Animated.View pointerEvents={hidden ? 'none' : 'box-none'} style={[s.wrap, { width: total, bottom: lift }, awayStyle]}>
-        <SideOrb label={onHome ? 'Home: back to Today' : 'Home: what Nora has ready for you'} side="left"
-          onPress={() => (onHome ? onHome() : onNotBuilt('Home'))}><Sym name="house.fill" size={22} fallback={<Home />} /></SideOrb>
+        <SideOrb label={onHome ? 'Home: back to Today' : ui.home ? 'Close Home' : 'Home: what Nora has ready for you'} side="left"
+          onPress={() => (onHome ? onHome() : noraUi.toggleHome())}><Sym name="house.fill" size={22} fallback={<Home />} /></SideOrb>
         <View style={[s.bar, { width: w, paddingHorizontal: Math.max(0, G - (48 - ICON) / 2) }]}>
           <Glass radius={BAR_H / 2} />
           <Round label="Scan" onPress={() => onNotBuilt('Scan')}><Sym name="viewfinder" size={22} fallback={<Scan />} /></Round>
-          <Round label="Chat with Nora" onPress={() => onNotBuilt('Nora chat')}><Sym name="sparkle" size={22} fallback={<Nora />} /></Round>
+          <Round label="Chat with Nora" onPress={() => noraUi.openChat()}><Sym name="sparkle" size={22} fallback={<Nora />} /></Round>
         </View>
         <WorkOrb fan={fan} />
         <View accessible accessibilityRole="button" accessibilityLabel="Nora"
           accessibilityHint="Tap to talk. Hold and slide to open an aspect."
-          onAccessibilityTap={() => onNotBuilt('Talking to Nora')}
+          onAccessibilityTap={() => noraUi.call()}
           style={s.orbWrap}
           onStartShouldSetResponder={() => true}
           onResponderTerminationRequest={() => false}
@@ -520,6 +444,7 @@ export function Dock({ bottom, width, aspects, onNotBuilt, onAspect, onHome, hid
         </View>
       </Animated.View>
       {fan.overlay}
+      <NoraOver chat={chatAt} orb={{ x: cx, y: cy }} />
     </>
   );
 }

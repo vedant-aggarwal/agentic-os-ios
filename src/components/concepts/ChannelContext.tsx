@@ -4,7 +4,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Chevron } from '../Icons';
 import { Press } from '../Press';
 import { compact, useHome, useProfiles, useReels, type Post } from '@/lib/api';
-import { STAGE_INFO, nextStage } from '@/lib/reels';
+import { STAGE_INFO, nextStage, workingLabel } from '@/lib/reels';
 import { C, F } from '@/theme';
 
 /** What the channel promises, what has worked there (tap a post for its page) and the reels in production. */
@@ -71,7 +71,7 @@ export function ChannelContext({ channelId }: { channelId: string }) {
                 <Press key={r.id} style={styles.row} scale={0.98} onPress={() => router.push(`/reel/${r.id}`)} accessibilityLabel={`Open reel ${r.title}`}>
                   <View style={{ flex: 1 }}>
                     <Text numberOfLines={1} style={[styles.postTitle, { marginTop: 0 }]}>{r.title}</Text>
-                    <Text style={styles.sub}>{r.working ? `Building ${r.working}…` : next ? `Next: ${STAGE_INFO[next].name}` : 'Done'}</Text>
+                    <Text style={styles.sub}>{r.working ? workingLabel(r.working) : next ? `Next: ${STAGE_INFO[next].name}` : 'Done'}</Text>
                   </View>
                   <Chevron size={14} color={C.faint} dir="right" />
                 </Press>

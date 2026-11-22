@@ -174,11 +174,28 @@ export function streak(ch: Channel, today: string) {
 
 // ---------- Reels: the new production system, stored by app/server.mjs under app/data ----------
 
-export const REEL_STAGES = ['idea', 'structure', 'script', 'voice', 'visuals', 'edit', 'ready'] as const;
+// The structure is the script: one step, beat by beat, with every spoken line.
+export const REEL_STAGES = ['idea', 'script', 'voice', 'visuals', 'edit', 'ready'] as const;
 export type ReelStage = (typeof REEL_STAGES)[number];
 
 export type Concept = { title: string; hook: string; premise: string; why: string };
 export type Beat = { time: string; beat: string; visual: string; line: string };
+export type VoiceTake = { file: string; seconds: number | null; chars: number; voiceName: string; at: string };
+export type Voice = {
+  text?: string;
+  notes?: string;
+  language?: string;
+  voiceId?: string;
+  voiceName?: string;
+  model?: string;
+  /** Which script version the voice script was written from. */
+  fromVersion?: number | null;
+  credits?: { left: number; limit: number; resets: string | null } | null;
+  audio?: VoiceTake;
+  takes?: VoiceTake[];
+  error?: string | null;
+  at?: string;
+};
 
 export type Reel = {
   id: string;
@@ -192,14 +209,17 @@ export type Reel = {
   sources?: string[];
   direction?: { id: string; name: string; other: string | null } | null;
   structure?: { lengthSeconds: number; beats: Beat[] } | null;
-  /** A step the server is building right now, e.g. 'structure'. */
+  /** What the server is doing right now: 'script' (writing it), 'voice' (the voice script) or 'take' (recording). */
   working?: string | null;
   error?: string | null;
   idea: string;
   /** The furthest step finished. */
   stage: ReelStage;
-  /** Earlier versions, newest first, for undo. */
-  previous?: { at: string }[];
+  /** Script versions kept on the PC; `version` is the one on screen (0 = oldest). */
+  versionCount?: number;
+  version?: number;
+  versionsMeta?: { at: string; by: 'build' | 'edit' | 'kai' }[];
+  voice?: Voice | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -280,7 +300,36 @@ export async function refreshReels() {
 
 export async function rebuildStructure(id: string) {
   await act('reels.restructure', { id });
-  if (reelsMemo) setReels(reelsMemo.map((r) => (r.id === id ? { ...r, working: 'structure', error: null } : r)));
+  if (reelsMemo) setReels(reelsMemo.map((r) => (r.id === id ? { ...r, working: 'script', error: null } : r)));
+}
+
+const putReel = (reel: Reel) => {
+  if (reelsMemo) setReels(reelsMemo.map((r) => (r.id === reel.id ? reel : r)));
+  return reel;
+};
+
+/** Put one saved script version on screen. */
+export async function selectVersion(id: string, index: number) {
+  return putReel((await act<{ reel: Reel }>('reels.version', { id, index })).reel);
+}
+
+/** Have the voice director write the ElevenLabs take text for the version on screen (free, about a minute). */
+export async function startVoiceScript(id: string) {
+  return putReel((await act<{ reel: Reel }>('reels.voice_script', { id })).reel);
+}
+
+export async function saveVoiceText(id: string, text: string) {
+  return putReel((await act<{ reel: Reel }>('reels.voice_text', { id, text })).reel);
+}
+
+/** Record the take with ElevenLabs. Spends credits (about one per character). */
+export async function recordVoiceTake(id: string) {
+  return putReel((await act<{ reel: Reel }>('reels.voice_take', { id })).reel);
+}
+
+/** A playable URL for a take (the token rides in the query because players can't send headers). */
+export function audioUrl(file: string) {
+  return `${BASE}/api/audio/${encodeURIComponent(file)}${TOKEN ? `?token=${encodeURIComponent(TOKEN)}` : ''}`;
 }
 
 // Directions and profiles change rarely: fetch once per app session.

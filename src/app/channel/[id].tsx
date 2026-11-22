@@ -12,7 +12,7 @@ import { ErrorBox, Loading } from '@/components/States';
 import { isLive } from '@/components/Tile';
 import { addDays, compact, refreshReels, slotsFor, useHome, useReels, weekOf, weekStart, type Channel, type SlotState } from '@/lib/api';
 import { slotFor, type Slot } from '@/lib/lineup';
-import { nextStage, STAGE_INFO } from '@/lib/reels';
+import { nextStage, STAGE_INFO, workingLabel } from '@/lib/reels';
 import { C, F } from '@/theme';
 
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
@@ -231,7 +231,7 @@ function InProduction({ channelId }: { channelId: string }) {
             <View style={{ flex: 1 }}>
               <Text numberOfLines={1} style={styles.reelTitle}>{r.title}</Text>
               <Text style={styles.body}>
-                {r.working ? `Building ${r.working}…` : r.error ? 'Needs a retry' : next ? `Next: ${STAGE_INFO[next].name}` : 'Done'}
+                {r.working ? workingLabel(r.working) : r.error ? 'Needs a retry' : next ? `Next: ${STAGE_INFO[next].name}` : 'Done'}
               </Text>
             </View>
             <Chevron size={16} dir="right" color={C.muted} />

@@ -4,24 +4,28 @@ import { call, invalidate } from '@/lib/mod';
 // Plan ideas from Claude, asked for when he picks a person. The PC answers at once with today's stored ideas when
 // it has them, otherwise it asks Claude (a few seconds) and stores the answer. The wait lives here, outside any
 // screen, so he can leave the plan and come back to it still waiting, or already answered.
+//
+// The state is one immutable object replaced on every change and returned as the store's snapshot, so a render
+// always reads it through useSyncExternalStore (the React Compiler would otherwise keep an old answer per person).
 
-const pending = new Set<string>();
-const errors = new Map<string, string>();
+type Ask = { busy: boolean; error: string | null };
+let state: Record<string, Ask> = {};
 const subs = new Set<() => void>();
-let version = 0;
-const emit = () => { version++; for (const fn of subs) fn(); };
+const set = (person: string, ask: Ask) => { state = { ...state, [person]: ask }; for (const fn of subs) fn(); };
+const subscribe = (fn: () => void) => { subs.add(fn); return () => { subs.delete(fn); }; };
+const snapshot = () => state;
+const IDLE: Ask = { busy: false, error: null };
 
 export function askIdeas(person: string, force = false) {
-  if (pending.has(person)) return;
-  pending.add(person);
-  errors.delete(person);
-  emit();
+  if (state[person]?.busy) return;
+  set(person, { busy: true, error: null });
   call('/mod/friends/ideas', { person, force })
-    .catch((e: Error) => { errors.set(person, e.message || 'No ideas this time.'); })
-    .finally(() => { pending.delete(person); invalidate(`/mod/friends/ideas?person=${encodeURIComponent(person)}`); emit(); });
+    .then(() => set(person, IDLE))
+    .catch((e: Error) => set(person, { busy: false, error: e.message || 'No ideas this time.' }))
+    .finally(() => invalidate(`/mod/friends/ideas?person=${encodeURIComponent(person)}`));
 }
 
-export function useIdeasState(person: string | null) {
-  useSyncExternalStore((fn) => { subs.add(fn); return () => { subs.delete(fn); }; }, () => version, () => version);
-  return { busy: person ? pending.has(person) : false, error: person ? errors.get(person) ?? null : null };
+export function useIdeasState(person: string | null): Ask {
+  const all = useSyncExternalStore(subscribe, snapshot, snapshot);
+  return (person ? all[person] : null) ?? IDLE;
 }

@@ -109,6 +109,7 @@ export function PlanFlow({ open, onClose, preset, m, f, a, week, bank, notice }:
           {who ? (
             <Section title="What">
               <View style={s.gap8}>
+                {nv ? <Text style={t.caption}>Small and close to where you met works best for a first plan.</Text> : null}
                 {preset.idea && what && !ordered.some((o) => o.key === what.key) && !aiPicks.some((o) => o.key === what.key) ? (
                   <IdeaRow pick={what} selected onPress={() => {}} />
                 ) : null}
@@ -172,7 +173,6 @@ export function PlanFlow({ open, onClose, preset, m, f, a, week, bank, notice }:
               ) : null}
             </Section>
           ) : null}
-          {nv && !what ? <Text style={t.caption}>Small and close to where you met works best for a first plan.</Text> : null}
         </>
       )}
     </Screen>

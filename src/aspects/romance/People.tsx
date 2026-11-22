@@ -353,7 +353,7 @@ export function LookingSheet({ open, onClose }: { open: boolean; onClose: () => 
   return (
     <Sheet open={open} onClose={onClose} title="What I'm looking for">
       <Text style={t.small}>In your own words. Write it once and come back to it when you are deciding whether to follow up. Only you see it.</Text>
-      <Field value={text} onChangeText={setText} placeholder="Someone I can talk to for hours, who" multiline autoFocus maxLength={2000} />
+      <Field value={text} onChangeText={setText} placeholder="Someone I can talk to for hours" multiline autoFocus maxLength={2000} />
       <Button label="Save" kind="accent" onPress={save} />
     </Sheet>
   );

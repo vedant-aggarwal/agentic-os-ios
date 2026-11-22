@@ -33,9 +33,12 @@ public final class VolumeButtonsModule: Module {
   private func begin() {
     guard observation == nil else { return }
     let session = AVAudioSession.sharedInstance()
-    // Ambient and mixing: other audio keeps playing, the ring/silent switch is respected.
-    try? session.setCategory(.ambient, options: [.mixWithOthers])
-    try? session.setActive(true)
+    // Ambient and mixing: other audio keeps playing, the ring/silent switch is respected. But never while the mic is
+    // in use (a GPT take, or the keyboard's warm mic): switching to ambient would cut the recording off.
+    if !Self.recording(session) {
+      try? session.setCategory(.ambient, options: [.mixWithOthers])
+      try? session.setActive(true)
+    }
 
     let view = MPVolumeView(frame: CGRect(x: -200, y: -200, width: 100, height: 40))
     view.alpha = 0.01
@@ -77,8 +80,14 @@ public final class VolumeButtonsModule: Module {
     // the slider needs a moment to apply the restored level before its view goes
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
       view?.removeFromSuperview()
-      try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+      // leave the session alone while something is recording (it keeps going in the background)
+      let session = AVAudioSession.sharedInstance()
+      if !Self.recording(session) { try? session.setActive(false, options: [.notifyOthersOnDeactivation]) }
     }
+  }
+
+  private static func recording(_ session: AVAudioSession) -> Bool {
+    session.category == .playAndRecord || session.category == .record
   }
 
   private func setLevel(_ level: Float) {

@@ -113,18 +113,18 @@ export function PlanFlow({ open, onClose, preset, m, f, a, week, bank, notice }:
                 {preset.idea && what && !ordered.some((o) => o.key === what.key) && !aiPicks.some((o) => o.key === what.key) ? (
                   <IdeaRow pick={what} selected onPress={() => {}} />
                 ) : null}
+                {!aiBusy && answer ? (
+                  <View style={s.aiNote}>
+                    <Text style={[t.caption, s.flex]}>{answer.date === today() ? 'Ideas from Claude, today' : `Ideas from Claude, ${whenAgo(answer.date)}`}</Text>
+                    <Press label="Ask for fresh ideas" onPress={() => ask(true)} hitSlop={10}><Text style={[t.label, { color }]}>Fresh ideas</Text></Press>
+                  </View>
+                ) : null}
                 {aiPicks.map((p) => <IdeaRow key={p.key} pick={p} selected={what?.key === p.key} onPress={() => { setWhat(p); setDay(null); }} />)}
                 {aiBusy ? <View style={s.aiWait}><Loading /><Text style={[t.small, s.center]}>Thinking of ideas for you two. Pick one below meanwhile.</Text></View> : null}
                 {!aiBusy && aiError && !aiPicks.length ? (
                   <View style={s.aiNote}>
                     <Text style={[t.small, s.flex]}>Ideas from Claude are not available right now.</Text>
                     <Press label="Try again for ideas" onPress={() => ask(true)} hitSlop={10}><Text style={[t.label, { color }]}>Try again</Text></Press>
-                  </View>
-                ) : null}
-                {!aiBusy && answer ? (
-                  <View style={s.aiNote}>
-                    <Text style={[t.caption, s.flex]}>{answer.date === today() ? 'Ideas from Claude, today' : `Ideas from Claude, ${whenAgo(answer.date)}`}</Text>
-                    <Press label="Ask for fresh ideas" onPress={() => ask(true)} hitSlop={10}><Text style={[t.label, { color }]}>Fresh ideas</Text></Press>
                   </View>
                 ) : null}
                 {shown.map((p) => <IdeaRow key={p.key} pick={p} selected={what?.key === p.key} onPress={() => { setWhat(p); setDay(null); }} tag={p.idea == null ? 'Yours' : undefined} />)}

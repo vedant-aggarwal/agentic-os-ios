@@ -149,8 +149,6 @@ export function FilesSheet({ open, origin, onClose }: { open: boolean; origin: {
             {!filesAvailable ? <Text style={s.note}>File sharing arrives with the next app build.</Text> : null}
             {error ? <Text style={s.error}>{error}</Text> : null}
 
-            <ClipboardCard open={open} />
-
             {jobs.length ? <Text style={s.section}>Transfers</Text> : null}
             {jobs.map((j) => <JobRow key={j.key} job={j} onRetry={() => void sendOne(j)}
               onOpen={() => { if (j.uri) { lightTap(); openDownloaded(j.uri).catch((e) => setError(errText(e))); } }} />)}
@@ -172,6 +170,8 @@ export function FilesSheet({ open, origin, onClose }: { open: boolean; origin: {
             {inbox?.map((f) => (
               <FileRow key={f.name} file={f} icon="magnifyingglass" onPress={() => { lightTap(); showOnPc('inbox', f.name).catch((e) => setError(errText(e))); }} />
             ))}
+
+            <ClipboardCard open={open} />
           </ScrollView>
         </Animated.View>
       </Animated.View>

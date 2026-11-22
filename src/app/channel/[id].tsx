@@ -67,12 +67,14 @@ export default function ChannelScreen() {
       ) : !ch ? (
         <>
           <Hero slot={slot} />
+          <DraftIdeas slot={slot} />
           <InProduction channelId={slot.channelId} />
         </>
       ) : !ch.perDay ? (
         // Not posting yet: still show what is being made, and let a schedule be set from here.
         <>
           <Hero slot={slot} ch={ch} today={today} live={live} />
+          <DraftIdeas slot={slot} />
           <InProduction channelId={slot.channelId} />
           <View style={styles.card}>
             <Text style={styles.cardTitle}>No posting schedule yet</Text>
@@ -87,6 +89,7 @@ export default function ChannelScreen() {
         <>
           <Hero slot={slot} ch={ch} today={today} live={live} />
           <Today ch={ch} today={today} color={color} onOpen={() => setDay(today)} />
+          <DraftIdeas slot={slot} />
           <InProduction channelId={slot.channelId} />
           <Press style={styles.schedRow} scale={0.98} onPress={() => setEditing(true)} accessibilityLabel="Edit the posting schedule">
             <View style={{ flex: 1 }}>
@@ -194,6 +197,26 @@ function Hero({ slot, ch, today, live = true }: { slot: Slot; ch?: Channel; toda
 }
 
 // Reels started for this channel that aren't ready yet, newest first. Hidden when there are none.
+/** This channel's own idea drafting: opens the Concept Generator already set to this channel. */
+function DraftIdeas({ slot }: { slot: Slot }) {
+  return (
+    <Press
+      style={styles.draft}
+      scale={0.98}
+      onPress={() => router.push({ pathname: '/new', params: { channel: slot.channelId, from: 'channel' } })}
+      accessibilityLabel={`Draft new ideas for ${slot.name}`}
+    >
+      <View style={{ flex: 1 }}>
+        <Text style={styles.draftTitle}>Draft new ideas</Text>
+        <Text style={styles.draftBody}>Concepts for {slot.name}, shaped with Kai</Text>
+      </View>
+      <View style={styles.draftPlus}>
+        <Text style={styles.draftPlusText}>+</Text>
+      </View>
+    </Press>
+  );
+}
+
 function InProduction({ channelId }: { channelId: string }) {
   const { reels } = useReels();
   const mine = (reels || []).filter((r) => r.channelId === channelId && r.stage !== 'ready');
@@ -336,6 +359,11 @@ function Legend({ swatch, text }: { swatch: object; text: string }) {
 }
 
 const styles = StyleSheet.create({
+  draft: { marginTop: 12, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 18, paddingVertical: 16, borderRadius: 22, backgroundColor: C.ink },
+  draftTitle: { fontFamily: F.b, fontSize: 16, color: '#fff' },
+  draftBody: { marginTop: 2, fontFamily: F.m, fontSize: 13, color: 'rgba(255,255,255,0.7)' },
+  draftPlus: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center' },
+  draftPlusText: { fontFamily: F.b, fontSize: 22, lineHeight: 26, color: '#fff' },
   bar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', height: 44 },
   round: { width: 44, height: 44, borderRadius: 22, backgroundColor: C.card, alignItems: 'center', justifyContent: 'center' },
   platform: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },

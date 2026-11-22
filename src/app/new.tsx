@@ -61,7 +61,7 @@ const EMPTY: Board = { raw: '', strength: 2, directionId: null, other: '', versi
  * crumples and flies into that channel's tile on the home grid.
  */
 export default function ConceptGenerator() {
-  const params = useLocalSearchParams<{ channel?: string; idea?: string }>();
+  const params = useLocalSearchParams<{ channel?: string; idea?: string; from?: string }>();
   const insets = useSafeAreaInsets();
   const { width: W, height: H } = useWindowDimensions();
   const TOP = insets.top + 10;
@@ -174,9 +174,11 @@ export default function ConceptGenerator() {
 
   /** Crumple the page into a ball and throw it into the channel's tile (or the + button when the tile isn't on screen). */
   const flyAway = async (id: string) => {
-    const rect = await measureTile(id);
+    // Opened from the channel page: the ball drops onto that page's "In production" card instead of a grid tile.
+    const fromChannel = params.from === 'channel';
+    const rect = fromChannel ? null : await measureTile(id);
     const cx = rect ? rect.x + rect.width / 2 : W / 2;
-    const cy = rect ? rect.y + rect.height / 2 : H - Math.max(insets.bottom, 16) - 20;
+    const cy = rect ? rect.y + rect.height / 2 : fromChannel ? insets.top + 250 : H - Math.max(insets.bottom, 16) - 20;
     setTarget({ dx: cx - W / 2, dy: cy - (TOP + SHEET / 2), size: 34 });
     setFlying(true);
     Keyboard.dismiss();
@@ -191,7 +193,7 @@ export default function ConceptGenerator() {
       if (native) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       router.canGoBack() ? router.back() : router.replace('/');
       // Let the tile catch it, then open that channel so the new reels are right there.
-      setTimeout(() => router.push(`/channel/${id}` as never), 420);
+      if (!fromChannel) setTimeout(() => router.push(`/channel/${id}` as never), 420);
     });
   };
 

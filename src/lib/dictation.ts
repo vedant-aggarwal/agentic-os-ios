@@ -22,11 +22,13 @@ export function useDictation(onText: (text: string, final: boolean) => void) {
   const [state, setState] = useState<DictationState>('idle');
   const [error, setError] = useState<string | null>(null);
   const ws = useRef<WebSocket | null>(null);
-  const run = useRef<{ ready: boolean; stopWanted: boolean; queue: string[] } | null>(null);
+  const run = useRef<{ ready: boolean; stopWanted: boolean; queue: string[]; chunks: number } | null>(null);
   const cb = useRef(onText);
   cb.current = onText;
 
+  const watch = useRef<ReturnType<typeof setTimeout>[]>([]);
   const end = useCallback(() => {
+    watch.current.splice(0).forEach(clearTimeout);
     cap.current.stop();
     try { ws.current?.close(); } catch {}
     ws.current = null;
@@ -38,7 +40,7 @@ export function useDictation(onText: (text: string, final: boolean) => void) {
     if (ws.current) return;
     setError(null);
     setState('connecting');
-    const r = { ready: false, stopWanted: false, queue: [] as string[] };
+    const r = { ready: false, stopWanted: false, queue: [] as string[], chunks: 0 };
     run.current = r;
     const sock = new WebSocket(socketUrl('/api/dictate'));
     ws.current = sock;
@@ -50,9 +52,19 @@ export function useDictation(onText: (text: string, final: boolean) => void) {
       sock.send(JSON.stringify({ type: 'start', sampleRate: rate }));
     };
     const sendAudio = (b64: string) => {
+      r.chunks++;
       if (r.ready && sock.readyState === 1) sock.send(JSON.stringify({ type: 'audio', audio: b64 }));
       else if (r.queue.length < 300) r.queue.push(b64); // up to ~30 s held while Codex connects
     };
+    // Say why instead of hanging silently: no answer from the PC, or a mic that records nothing.
+    const fail = (msg: string) => {
+      if (run.current !== r) return;
+      try { if (sock.readyState === 1) sock.send(JSON.stringify({ type: 'diag', note: msg, chunks: r.chunks })); } catch {}
+      setError(msg);
+      cb.current('', true);
+      end();
+    };
+    watch.current.push(setTimeout(() => { if (!r.ready) fail('The PC did not answer. Check the Content OS server is running.'); }, 12000));
     sock.onopen = sendStart;
     sock.onmessage = (ev) => {
       let m: { type: string; text?: string; message?: string };
@@ -71,6 +83,7 @@ export function useDictation(onText: (text: string, final: boolean) => void) {
     try {
       const actual = await cap.current.start(sendAudio);
       if (!rate) rate = actual;
+      watch.current.push(setTimeout(() => { if (!r.chunks) fail('The microphone is not sending any sound. Close the app fully and try again.'); }, 3000));
       if (run.current === r) setState((s) => (s === 'connecting' ? 'live' : s));
       sendStart();
     } catch (e) {
@@ -87,7 +100,7 @@ export function useDictation(onText: (text: string, final: boolean) => void) {
     cap.current.stop();
     if (!sock || !r) return end();
     setState('finishing');
-    if (r.ready && sock.readyState === 1) sock.send(JSON.stringify({ type: 'stop' }));
+    if (r.ready && sock.readyState === 1) sock.send(JSON.stringify({ type: 'stop', chunks: r.chunks }));
     else r.stopWanted = true; // sent as soon as Codex is listening and the held audio has gone out
   }, [end]);
 

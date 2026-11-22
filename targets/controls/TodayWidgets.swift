@@ -262,7 +262,10 @@ struct DayProvider: TimelineProvider {
       completion(DayEntry(date: Date(), load: DayStore.cached().map { .ready($0) } ?? .sample))
       return
     }
-    Task { completion(DayEntry(date: Date(), load: await DayStore.load())) }
+    Task {
+      let load = await DayStore.load()
+      completion(DayEntry(date: Date(), load: load))
+    }
   }
 
   func getTimeline(in context: Context, completion: @escaping (Timeline<DayEntry>) -> Void) {

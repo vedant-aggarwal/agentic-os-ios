@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Empty, Failed, Icon, IconButton, Page, today, useAspect } from '@/aspects/kit';
 import { newId, useCollection, useGet } from '@/lib/mod';
-import { errText, HOME, momentDraft, moments, refresh, weeks } from './data';
+import { errText, HOME, momentDraft, moments, readTime, refresh, weeks } from './data';
 import { DateScreen } from './DatePlan';
 import { ComingUp, ForThem, HomeSkeleton, MemoryStrip, PersonCard, Together } from './Home';
 import { MemoriesScreen } from './Memories';
@@ -18,7 +18,6 @@ type Ov = { done: Record<string, Week['done']>; pick: Record<string, Cand>; chip
 const NONE: Ov = { done: {}, pick: {}, chips: {} };
 type SheetKind = 'add' | 'memory' | 'mention' | 'date' | 'own' | 'person';
 type SheetState = { kind: SheetKind; open: boolean; key: number; memory?: MemoryPreset; person?: string; date?: { kind?: DateDoc['kind']; people?: string[] } };
-type Fund = { id: string; name: string; target?: number | null; aspect?: string | null; due?: string | null; goal?: string | null };
 
 export default function Family() {
   const a = useAspect();
@@ -28,7 +27,8 @@ export default function Family() {
   const cal = useGet<{ items: CalItem[] }>('/mod/people/calendar?back=0&ahead=60');
   const goalsR = useGet<{ goals: Goal[] }>('/goals');
   const jarsR = useGet<{ jars: Jar[] }>('/mod/money/jars');
-  const fundsR = useGet<{ items: Fund[] }>(jarsR.error ? '/mod/money/funds' : null);
+  const goalsAt = readTime(goalsR.data);
+  const jarsAt = readTime(jarsR.data);
 
   // what a tap changed shows at once; the next answer from the PC replaces it
   const [ov, setOv] = useState<{ for: Home | null; o: Ov }>({ for: null, o: NONE });
@@ -62,10 +62,9 @@ export default function Family() {
   const ids = new Set(people.map((p) => p.id));
   const calItems = (cal.data?.items ?? []).filter((e) => e.kind === 'event' && e.date >= today() && e.people.some((p) => ids.has(p)));
   const goals = (goalsR.data?.goals ?? []).filter((g) => g.status === 'active' && (g.aspects ?? []).includes('family'));
-  const jars: Jar[] = jarsR.data?.jars
-    ? jarsR.data.jars.filter((j) => j.aspect === 'family')
-    : (fundsR.data?.items ?? []).filter((f) => f.aspect === 'family')
-        .map((f) => ({ id: f.id, name: f.name, target: f.target ?? null, saved: null, pct: null, due: f.due ?? null, aspect: 'family', goal: f.goal ?? null }));
+  // jars carry no aspect: the ones to show serve a family goal (HANDOFFS.md)
+  const goalIds = new Set(goals.map((g) => g.id));
+  const jars: Jar[] = (jarsR.data?.jars ?? []).filter((j) => j.goal != null && goalIds.has(j.goal));
   const person = cards.find((c) => c.id === personId) ?? null;
 
   // ── this week's small thing ──
@@ -168,7 +167,7 @@ export default function Family() {
         onAddPhoto={() => { if (person) attach(person, 'photo'); }}
         onAddLine={() => { if (person) attach(person, 'line'); }}
         onMove={(asp) => { if (person) move(person, asp); }} />
-      <DateScreen open={dateOpen} onClose={() => setDateOpen(false)} id={dateId} goals={goals} jars={jars} notice={a.notice}
+      <DateScreen open={dateOpen} onClose={() => setDateOpen(false)} id={dateId} goals={goals} jars={jars} goalsAt={goalsAt} jarsAt={jarsAt} notice={a.notice}
         onMemory={(p) => addMemory({ people: p.people, date: p.date, title: p.title })} onOpenMemory={openMemory} openAspect={a.openAspect} />
       <MemoriesScreen open={memOpen} onClose={() => setMemOpen(false)} person={memPerson} onPerson={setMemPerson} onOpen={openMemory}
         onAdd={() => addMemory(memPerson ? { people: [memPerson] } : {})} />
@@ -231,7 +230,7 @@ export default function Family() {
         onBirthday={(pid) => openSheet({ kind: 'date', date: { kind: 'birthday', people: [pid] } })}
         onMemory={(p) => addMemory({ people: p.people, date: p.date, title: p.title })} />
       <MemoryStrip home={data} nameOf={nameOf} onOpen={openMemory} onAdd={() => addMemory()} onSeeAll={() => { setMemPerson(null); setMemOpen(true); }} />
-      <ForThem goals={goals} jars={jars} onMission={() => a.openAspect('mission')} onMoney={() => a.openAspect('money')} />
+      <ForThem goals={goals} jars={jars} goalsAt={goalsAt} jarsAt={jarsAt} onMission={() => a.openAspect('mission')} onMoney={() => a.openAspect('money')} />
     </Page>
   );
 }

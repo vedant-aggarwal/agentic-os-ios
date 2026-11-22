@@ -1,7 +1,7 @@
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Bar, Card, Chip, Divider, Icon, Press, R, Row, rupees, Section, shortDay, Skeleton, SP, SURF, t, useAspect } from '@/aspects/kit';
+import { Bar, Card, Chip, Divider, Icon, Press, R, Row, Section, Skeleton, SP, SURF, t, useAspect } from '@/aspects/kit';
 import { C } from '@/theme';
-import { dayShort, inDays, names, whenDay, yearsWords } from './data';
+import { dayShort, goalWords, inDays, jarWords, names, whenDay, yearsWords } from './data';
 import type { CalItem, Card as PersonCardData, Chip as ChipData, DateItem, Goal, Home, Jar, MomentBrief } from './types';
 import { DateTile, G, LinkRow, MemoryTile, Monogram, Photo, ThingRow, whyOf } from './ui';
 
@@ -164,7 +164,9 @@ export function MemoryStrip({ home, onSeeAll, onOpen, onAdd, nameOf }: {
 }
 
 /** What he is building for them, read from Mission and Money. Nothing shows when there is nothing. */
-export function ForThem({ goals, jars, onMission, onMoney }: { goals: Goal[]; jars: Jar[]; onMission: () => void; onMoney: () => void }) {
+export function ForThem({ goals, jars, goalsAt, jarsAt, onMission, onMoney }: {
+  goals: Goal[]; jars: Jar[]; goalsAt: number; jarsAt: number; onMission: () => void; onMoney: () => void;
+}) {
   if (!goals.length && !jars.length) return null;
   return (
     <Section title="For them">
@@ -178,7 +180,7 @@ export function ForThem({ goals, jars, onMission, onMoney }: { goals: Goal[]; ja
                 <Text style={t.caption}>Mission</Text>
               </View>
               {g.progress != null && g.progress > 0 ? <Bar progress={g.progress / 100} height={4} /> : null}
-              {g.due ? <Text style={t.small}>By {shortDay(g.due)}</Text> : null}
+              {goalWords(g, goalsAt) ? <Text style={[t.small, t.num]}>{goalWords(g, goalsAt)}</Text> : null}
             </Press>
           </View>
         ))}
@@ -191,9 +193,7 @@ export function ForThem({ goals, jars, onMission, onMoney }: { goals: Goal[]; ja
                 <Text style={t.caption}>Money</Text>
               </View>
               {j.pct != null ? <Bar progress={j.pct} height={4} /> : null}
-              <Text style={[t.small, t.num]}>
-                {j.saved != null && j.target ? `${rupees(j.saved)} of ${rupees(j.target)}` : j.target ? `Target ${rupees(j.target)}` : j.saved != null ? `${rupees(j.saved)} put aside` : 'A jar in Money'}
-              </Text>
+              <Text style={[t.small, t.num]}>{jarWords(j, jarsAt)}</Text>
             </Press>
           </View>
         ))}

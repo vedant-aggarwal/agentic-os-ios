@@ -75,5 +75,6 @@ export type WeekDoc = {
   created_at?: string; updated_at?: string; deleted_at?: string | null;
 };
 export type Goal = { id: string; title: string; aspects: string[] | null; status: string; progress: number | null; due: string | null; horizon: string; label: string };
-export type Jar = { id: string; name: string; target: number | null; saved: number | null; pct: number | null; due: string | null; aspect: string | null; goal: string | null };
+/** Money's `GET /mod/money/jars` (HANDOFFS.md): Family shows the jars whose goal is a family goal. */
+export type Jar = { id: string; name: string; target: number | null; saved: number; pct: number | null; due: string | null; monthly: number | null; goal: string | null };
 export type CalItem = { id: string; title: string; date: string; start: string; end: string; allDay: boolean; people: string[]; kind: string };

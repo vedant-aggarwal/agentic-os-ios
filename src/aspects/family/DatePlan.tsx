@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
-import { Bar, Button, Card, CheckRing, Failed, Field, Press, R, Row, rupees, Screen, Section, shortDay, Skeleton, SP, t, useAspect } from '@/aspects/kit';
+import { Bar, Button, Card, CheckRing, Failed, Field, Press, R, Row, Screen, Section, shortDay, Skeleton, SP, t, useAspect } from '@/aspects/kit';
 import { newId, useCollection, useGet } from '@/lib/mod';
 import { C } from '@/theme';
-import { askNora, errText, inDays, longDay, names, refresh, useAi, whenDay, yearsWords } from './data';
+import { askNora, errText, goalWords, inDays, jarWords, longDay, names, refresh, useAi, whenDay, yearsWords } from './data';
 import type { DateView, Goal, Jar, MomentBrief, NoraPlan, PlanDoc, Step } from './types';
 import { G, LinkRow, Photo } from './ui';
 
@@ -12,8 +12,8 @@ import { G, LinkRow, Photo } from './ui';
 
 const KIND_WORD: Record<Step['kind'], string> = { book: 'To book', buy: 'To buy', involve: 'Who to involve', do: 'To do' };
 
-export function DateScreen({ open, onClose, id, goals, jars, onMemory, onOpenMemory, notice, openAspect }: {
-  open: boolean; onClose: () => void; id: string | null; goals: Goal[]; jars: Jar[];
+export function DateScreen({ open, onClose, id, goals, jars, goalsAt, jarsAt, onMemory, onOpenMemory, notice, openAspect }: {
+  open: boolean; onClose: () => void; id: string | null; goals: Goal[]; jars: Jar[]; goalsAt: number; jarsAt: number;
   onMemory: (p: { people: string[]; date: string; title: string }) => void; onOpenMemory: (m: MomentBrief) => void;
   notice: (t: string) => void; openAspect: (k: 'mission' | 'money') => void;
 }) {
@@ -50,7 +50,7 @@ export function DateScreen({ open, onClose, id, goals, jars, onMemory, onOpenMem
   };
   const anniversary = data?.date.kind === 'anniversary';
   const linkedGoals = anniversary ? goals.filter((g) => /anniversary/i.test(g.title)) : [];
-  const linkedJars = anniversary ? jars.filter((j) => /anniversary/i.test(j.name) || (j.goal && linkedGoals.some((g) => g.id === j.goal))) : [];
+  const linkedJars = jars.filter((j) => linkedGoals.some((g) => g.id === j.goal));
 
   return (
     <Screen open={open} onClose={onClose} title={data?.date.title ?? 'A date'}>
@@ -148,14 +148,14 @@ export function DateScreen({ open, onClose, id, goals, jars, onMemory, onOpenMem
                   <Press key={g.id} label={`${g.title}. Open in Mission`} onPress={() => openAspect('mission')} style={s.linkItem}>
                     <Text style={t.strong}>{g.title}</Text>
                     {g.progress != null && g.progress > 0 ? <Bar progress={g.progress / 100} height={4} /> : null}
-                    <Text style={t.caption}>Mission</Text>
+                    <Text style={[t.caption, t.num]}>{[goalWords(g, goalsAt), 'Mission'].filter(Boolean).join(', ')}</Text>
                   </Press>
                 ))}
                 {linkedJars.map((j) => (
                   <Press key={j.id} label={`${j.name}. Open in Money`} onPress={() => openAspect('money')} style={s.linkItem}>
                     <Text style={t.strong}>{j.name}</Text>
                     {j.pct != null ? <Bar progress={j.pct} height={4} /> : null}
-                    <Text style={[t.caption, t.num]}>{j.saved != null && j.target ? `${rupees(j.saved)} of ${rupees(j.target)}, Money` : 'Money'}</Text>
+                    <Text style={[t.caption, t.num]}>{`${jarWords(j, jarsAt)}, Money`}</Text>
                   </Press>
                 ))}
               </Card>

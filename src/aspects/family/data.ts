@@ -1,10 +1,10 @@
 import { requireOptionalNativeModule } from 'expo';
 import { useSyncExternalStore } from 'react';
 import { Platform } from 'react-native';
-import { addDays, clock, daysBetween, dayLabel, shortDay, today } from '@/aspects/kit';
+import { addDays, clock, dayOf, daysBetween, dayLabel, rupees, shortDay, today } from '@/aspects/kit';
 import { api } from '@/lib/api';
 import { call, collection, fileSource, invalidate, newId, upload } from '@/lib/mod';
-import type { MomentDoc, WeekDoc } from './types';
+import type { Goal, Jar, MomentDoc, WeekDoc } from './types';
 
 // Family's writes and small helpers. People's records (moments, ideas, dates, plans, persons) go through People's
 // collections; Family's own (week records, photos) through Family's. Computed reads are refreshed after each write.
@@ -118,6 +118,27 @@ export function names(list: string[]) {
 }
 /** A day as a heading line: "Sun 6 Dec". */
 export const longDay = (day: string) => dayLabel(day).replace(/^(Today|Tomorrow|Yesterday)$/, (w) => `${w}, ${shortDay(day)}`);
+// ── other pages' numbers: always with the time they were read, never kept as Family's own ─────────────────────
+const readAt = new WeakMap<object, number>();
+/** When this answer arrived: stamped the first time the page sees it, so a refresh (a new answer) moves it on. */
+export function readTime(data: object | null | undefined) {
+  if (!data) return 0;
+  let at = readAt.get(data);
+  if (at == null) { at = Date.now(); readAt.set(data, at); }
+  return at;
+}
+/** "as of 16:20 today", "as of 21 Nov". */
+export const asOf = (at: number) => (dayOf(at) === today() ? `as of ${clock(at)} today` : `as of ${dayShort(dayOf(at))}`);
+/** A jar's line: "₹6,000 of ₹15,000, as of 16:20 today". */
+export const jarWords = (j: Jar, at: number) =>
+  `${j.target ? `${rupees(j.saved)} of ${rupees(j.target)}` : `${rupees(j.saved)} put aside`}, ${asOf(at)}`;
+/** A goal's line, the progress dated: "40% done, by 6 Dec, as of 16:20 today"; null when there is nothing to say. */
+export function goalWords(g: Goal, at: number) {
+  const done = g.progress != null && g.progress > 0 ? `${Math.round(g.progress)}% done` : null;
+  const parts = [done, g.due ? `by ${shortDay(g.due)}` : null].filter(Boolean);
+  if (!parts.length) return null;
+  return done ? `${parts.join(', ')}, ${asOf(at)}` : parts.join(', ').replace(/^b/, 'B');
+}
 export const errText = (e: unknown) => (e as Error)?.message || 'Something went wrong.';
 export const yesterday = () => addDays(today(), -1);
 const MO = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];

@@ -4,14 +4,17 @@
     "slug": "agentic-os",
     "version": "4.1.0",
     "orientation": "default",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/app-icon-light.png",
     "scheme": "agenticos",
     "userInterfaceStyle": "dark",
     "ios": {
       "bundleIdentifier": "com.norrita.agenticos",
       "buildNumber": "100",
       "supportsTablet": false,
-      "icon": "./assets/expo.icon",
+      "icon": {
+        "light": "./assets/images/app-icon-light.png",
+        "dark": "./assets/images/app-icon-dark.png"
+      },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSLocalNetworkUsageDescription": "Agentic OS connects straight to your PC on this Wi-Fi so the trackpad has no lag.",
@@ -38,10 +41,9 @@
     "android": {
       "package": "com.norrita.agenticos",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "backgroundColor": "#357DCE",
+        "foregroundImage": "./assets/images/app-icon-light.png",
+        "backgroundImage": "./assets/images/app-icon-light.png"
       },
       "predictiveBackGestureEnabled": false
     },
@@ -74,6 +76,15 @@
         }
       ],
       "./modules/alarms/app.plugin.js",
+      [
+        "./modules/app-icon/app.plugin.js",
+        {
+          "icons": {
+            "AppIconLight": "./assets/images/app-icon-light.png",
+            "AppIconDark": "./assets/images/app-icon-dark.png"
+          }
+        }
+      ],
       [
         "expo-audio",
         {

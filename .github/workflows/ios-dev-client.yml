@@ -102,6 +102,24 @@ jobs:
           found=$( { find "$APP" -iname '*DevLauncher*'; strings "$BIN" | grep 'EXDevLauncher' | head -3; } 2>/dev/null | head -5 || true )
           echo "$found"
           [ -n "$found" ] || { echo "Dev launcher missing from the archive"; exit 1; }
+      - name: Check the app icons in the archive
+        run: |
+          # AppIcon (light, with a dark appearance) and the alternates AppIconLight / AppIconDark (modules/app-icon).
+          # Reports only: the upload goes ahead either way.
+          APP=$(ls -d "$RUNNER_TEMP"/AgenticOS.xcarchive/Products/Applications/*.app | head -1)
+          plutil -extract CFBundleIcons json -o - "$APP/Info.plist" || echo "No CFBundleIcons in Info.plist"
+          echo; ls "$APP" | grep -i appicon || true
+          xcrun --sdk iphoneos assetutil --info "$APP/Assets.car" > "$RUNNER_TEMP/assets.json" || true
+          python3 - "$RUNNER_TEMP/assets.json" <<'PY' || true
+          import json, sys
+          rows = [r for r in json.load(open(sys.argv[1])) if 'AppIcon' in str(r.get('Name', ''))]
+          for r in rows:
+              print(r.get('Name'), '|', r.get('AssetType'), '|', r.get('Appearance', 'any'), '|', r.get('PixelWidth', ''), '|', r.get('RenditionName', ''))
+          names = {r.get('Name') for r in rows}
+          dark = any(r.get('Name') == 'AppIcon' and 'dark' in str(r.get('Appearance', '')).lower() for r in rows)
+          missing = [n for n in ('AppIcon', 'AppIconLight', 'AppIconDark') if n not in names] + ([] if dark else ['the dark appearance of AppIcon'])
+          print('App icons missing from Assets.car:', ', '.join(missing) or 'none')
+          PY
       - name: Export and upload to App Store Connect
         env:
           TEAM: ${{ secrets.APPLE_TEAM_ID }}

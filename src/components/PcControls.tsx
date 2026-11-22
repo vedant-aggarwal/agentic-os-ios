@@ -4,14 +4,15 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, Vi
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { lightTap } from '@/components/Glass';
 import { MediaPanel } from '@/components/MediaRemote';
+import { CameraPanel } from '@/components/PhoneCam';
 import { PowerPanel } from '@/components/PcPower';
 import { Sym } from '@/components/Sym';
 import { usePointer } from '@/lib/pointer';
 import { C, F } from '@/theme';
 
 // PC controls without opening the remote screen: hold the top bar's Remote PC button. Two tabs: the media remote and
-// power. The same panels are in the remote session's menu.
-export type PcTab = 'media' | 'power';
+// power, and the phone camera as the PC webcam. Media and power are also in the remote session's menu.
+export type PcTab = 'media' | 'power' | 'camera';
 
 export function PcControls({ tab, onTab, onClose }: { tab: PcTab | null; onTab: (t: PcTab) => void; onClose: () => void }) {
   const insets = useSafeAreaInsets();
@@ -28,10 +29,10 @@ export function PcControls({ tab, onTab, onClose }: { tab: PcTab | null; onTab: 
         <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(12,13,18,0.72)' }]} />
         <View style={s.head}>
           <View style={s.tabs}>
-            {(['media', 'power'] as const).map((k) => (
+            {(['media', 'camera', 'power'] as const).map((k) => (
               <Pressable key={k} accessibilityRole="tab" accessibilityState={{ selected: t === k }} onPress={() => { lightTap(); onTab(k); }}
                 style={[s.tab, t === k && s.tabOn]}>
-                <Text style={[s.tabText, t === k && { color: '#111' }]}>{k === 'media' ? 'Media remote' : 'Power'}</Text>
+                <Text style={[s.tabText, t === k && { color: '#111' }]}>{k === 'media' ? 'Media' : k === 'camera' ? 'Camera' : 'Power'}</Text>
               </Pressable>
             ))}
           </View>
@@ -40,7 +41,7 @@ export function PcControls({ tab, onTab, onClose }: { tab: PcTab | null; onTab: 
           </Pressable>
         </View>
         <ScrollView contentContainerStyle={{ paddingBottom: 4 }}>
-          {t === 'media' ? <MediaPanel open={tab === 'media'} onKey={(k) => pc.key(k)} /> : <PowerPanel />}
+          {t === 'media' ? <MediaPanel open={tab === 'media'} onKey={(k) => pc.key(k)} /> : t === 'camera' ? <CameraPanel open={tab === 'camera'} /> : <PowerPanel />}
         </ScrollView>
       </View>
     </Modal>

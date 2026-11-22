@@ -14,6 +14,7 @@ import { PcMicSheet } from '@/components/PcMicSheet';
 import { VoicesSheet } from '@/components/VoicesSheet';
 import { RemoteDesktop } from '@/components/remote/RemoteDesktop';
 import { FilesSheet } from '@/components/FilesSheet';
+import { PcControls, type PcTab } from '@/components/PcControls';
 import { useAgent } from '@/lib/agent';
 import { micCenter, pillCenter, TOP_GAP, TOP_H, TopBar } from '@/components/TopBar';
 import { api, signOut } from '@/lib/api';
@@ -34,6 +35,7 @@ export default function Today() {
   const [voicesOpen, setVoicesOpen] = useState(false); // the top bar's waveform button
   const [filesOpen, setFilesOpen] = useState(false); // the top bar's To PC button
   const [remoteOpen, setRemoteOpen] = useState(false); // the top bar's Remote PC button: the PC's screen, full screen
+  const [pcTab, setPcTab] = useState<PcTab | null>(null); // hold Remote PC: media remote and power
   const [heroOn, setHeroOn] = useState(true); // the 3D hero renders only while some of it is on screen
   // volume buttons drive Wispr on the PC while Today is up
   const mic = useWispr(!!t.view);
@@ -105,7 +107,7 @@ export default function Today() {
       {/* the same blur under the top bar, dense at the screen's top edge */}
       <EdgeBlur edge="top" height={insets.top + TOP_GAP + TOP_H + 28} strength={30} curve={2} />
       <TopBar top={insets.top} width={width} live={live} onMic={() => { setClosedLive(false); setMicOpen(true); }}
-        onRemote={() => setRemoteOpen(true)}
+        onRemote={() => setRemoteOpen(true)} onRemoteHold={() => setPcTab('media')}
         onVoices={() => setVoicesOpen(true)} onFiles={() => setFilesOpen(true)} onNotBuilt={notBuilt} />
       <EdgeBlur height={insets.bottom + 150} strength={35} curve={2.6} />
       <EdgeGlow height={insets.bottom + 200} orb={orb} />
@@ -121,6 +123,7 @@ export default function Today() {
       <FilesSheet open={filesOpen} origin={pillCenter(0, insets.top, width)} onClose={() => setFilesOpen(false)} />
       <VoicesSheet open={voicesOpen} origin={pillCenter(3, insets.top, width)} onClose={() => setVoicesOpen(false)} />
       <RemoteDesktop open={remoteOpen} onClose={() => setRemoteOpen(false)} />
+      <PcControls tab={pcTab} onTab={setPcTab} onClose={() => setPcTab(null)} />
     </View>
   );
 }

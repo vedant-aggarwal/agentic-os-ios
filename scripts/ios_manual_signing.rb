@@ -1,6 +1,6 @@
 # After `expo prebuild`: manual App Store signing on the app target and its app extensions, every build configuration.
 # Only those targets are touched, so Pods never get a provisioning profile they don't support.
-# Env: TEAM, BUNDLE_ID, PROFILE_APP, PROFILE_EXT, PROFILE_KBD (written by scripts/ios_signing.py setup).
+# Env: TEAM, BUNDLE_ID, PROFILE_APP, PROFILE_EXT, PROFILE_KBD, PROFILE_SHR (written by scripts/ios_signing.py setup).
 require 'xcodeproj'
 
 path = Dir['ios/*.xcodeproj'].reject { |p| p.include?('Pods') }.first or abort('No Xcode project under ios/')
@@ -35,6 +35,8 @@ exts.each do |t|
   # (targets/controls, <app>.controls)
   if t.name =~ /keyboard/i
     sign.call(t, ENV.fetch('PROFILE_KBD'), "#{ENV.fetch('BUNDLE_ID')}.keyboard")
+  elsif t.name =~ /share/i # targets/share, <app>.share: "Open on PC" in the share sheet
+    sign.call(t, ENV.fetch('PROFILE_SHR'), "#{ENV.fetch('BUNDLE_ID')}.share")
   else
     sign.call(t, ENV.fetch('PROFILE_EXT'), "#{ENV.fetch('BUNDLE_ID')}.controls")
   end

@@ -26,11 +26,12 @@ export function pillCenter(i: number, top: number, width: number) {
 }
 export const micCenter = (top: number, width: number) => pillCenter(1, top, width);
 
-function PillButton({ label, onPress, children }: { label: string; onPress: () => void; children: React.ReactNode }) {
+function PillButton({ label, onPress, onLongPress, children }: { label: string; onPress: () => void; onLongPress?: () => void; children: React.ReactNode }) {
   const p = useScale(0.86);
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={label} hitSlop={4}
-      onPress={() => { lightTap(); onPress(); }} onPressIn={() => p.set(p.to)} onPressOut={() => p.set(1)}>
+      onPress={() => { lightTap(); onPress(); }} onPressIn={() => p.set(p.to)} onPressOut={() => p.set(1)}
+      onLongPress={onLongPress ? () => { lightTap(); onLongPress(); } : undefined} delayLongPress={350}>
       {({ pressed }) => (
         <Animated.View style={[s.btn, p.style, pressed && s.btnPressed]}>{children}</Animated.View>
       )}
@@ -54,8 +55,8 @@ function RoundButton({ label, onPress, children }: { label: string; onPress: () 
   );
 }
 
-export function TopBar({ top, width, live, onFiles, onMic, onRemote, onVoices, onNotBuilt }: {
-  top: number; width: number; live: boolean; onFiles: () => void; onMic: () => void; onRemote: () => void; onVoices: () => void; onNotBuilt: (what: string) => void;
+export function TopBar({ top, width, live, onFiles, onMic, onRemote, onRemoteHold, onVoices, onNotBuilt }: {
+  top: number; width: number; live: boolean; onFiles: () => void; onMic: () => void; onRemote: () => void; onRemoteHold?: () => void; onVoices: () => void; onNotBuilt: (what: string) => void;
 }) {
   const pill = width - 32 - 2 * (TOP_H + G);
   return (
@@ -67,7 +68,7 @@ export function TopBar({ top, width, live, onFiles, onMic, onRemote, onVoices, o
           <Sym name="mic.fill" size={OPTICAL.mic} fallback={<PcMic size={GLYPH} />} />
           {live ? <View style={s.liveDot} /> : null}
         </PillButton>
-        <PillButton label="Remote PC" onPress={onRemote}><Sym name="cursorarrow.rays" size={OPTICAL.cursor} fallback={<Remote size={GLYPH} />} /></PillButton>
+        <PillButton label="Remote PC (hold for media remote and power)" onPress={onRemote} onLongPress={onRemoteHold}><Sym name="cursorarrow.rays" size={OPTICAL.cursor} fallback={<Remote size={GLYPH} />} /></PillButton>
         <PillButton label="Voices" onPress={onVoices}><Sym name="waveform" size={OPTICAL.wave} fallback={<Voices size={GLYPH} />} /></PillButton>
       </View>
       <RoundButton label="Log mood" onPress={() => onNotBuilt('Mood')}><Smiley size={30} /></RoundButton>

@@ -25,6 +25,7 @@ import { useWispr } from '@/lib/wispr';
 import { useKeyboardMic } from '@/lib/kbmic';
 import { Hero, HERO_H } from '@/hero/Hero';
 import { AspectHost, dockClearance, initialAspect, initialLink, type HostEntry } from '@/aspects/AspectHost';
+import { LifeContext } from '@/aspects/_linked/life';
 import { sectionEntry, SECTION_TARGETS } from '@/lib/aspectLinks';
 import { onLink, openLink } from '@/lib/links';
 import { invalidate } from '@/lib/mod';
@@ -133,8 +134,11 @@ export default function Today() {
         onRemote={() => setRemoteOpen(true)} onRemoteHold={() => setPcTab('media')}
         onVoices={() => setVoicesOpen(true)} onFiles={() => setFilesOpen(true)} onNotBuilt={notBuilt} />
       {/* an aspect page grows out of the orb, over Today and its top bar; the dock stays above it */}
-      <AspectHost aspect={aspect} origin={{ x: width / 2, y: height - orb }} dock={immersive ? insets.bottom : dockClearance(insets.bottom)}
-        entry={entry} onEntryDone={doneEntry} onClose={closeAspect} onOpen={openAspect} onNotice={setLocal} onImmersive={setImmersive} />
+      {/* the pages read today's rows and tick them through Today, so a tick shows on both at once */}
+      <LifeContext value={{ sections: v.sections, areaAspects: t.state.life.areaAspects, toggle }}>
+        <AspectHost aspect={aspect} origin={{ x: width / 2, y: height - orb }} dock={immersive ? insets.bottom : dockClearance(insets.bottom)}
+          entry={entry} onEntryDone={doneEntry} onClose={closeAspect} onOpen={openAspect} onNotice={setLocal} onImmersive={setImmersive} />
+      </LifeContext>
       <EdgeBlur height={insets.bottom + 150} strength={35} curve={2.6} />
       <EdgeGlow height={insets.bottom + 200} orb={orb} />
       <Notice text={kbMic.state === 'recording' ? 'Listening for the keyboard. Swipe back to your app and talk.' : kbMic.error ?? local ?? t.notice} bottom={insets.bottom + 112} onClear={clear} />

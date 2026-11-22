@@ -44,14 +44,15 @@ export default function Romance() {
   const [target, setTarget] = useState(false);
   const [added, setAdded] = useState<number | null>(null); // when "Add one" was last tapped, for its Undo
 
-  // romance/<part>: people, person/<id>, debriefs, primer (getting ready to go out), out (the outing on now).
+  // romance/<part>: people, person/<id>, debriefs, primer (getting ready to go out), out (the outing on now; with
+  // none on, the primer that starts one).
   useEntry((e) => {
     const [p, id] = e.parts;
     setPeopleOpen(p === 'people');
     setPerson(p === 'person' && id ? id : null);
     setDebriefsOpen(p === 'debriefs');
-    setPrimerOpen(p === 'primer');
-    setOutOpen(p === 'out');
+    setPrimerOpen(p === 'primer' || (p === 'out' && !live));
+    setOutOpen(p === 'out' && !!live);
   });
   const closePrimer = useCallback(() => setPrimerOpen(false), []);
   const closeOut = useCallback(() => setOutOpen(false), []);

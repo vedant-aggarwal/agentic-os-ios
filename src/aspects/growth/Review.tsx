@@ -375,7 +375,7 @@ function MissCard({ m, whys, tree, onChange }: { m: Miss; whys: string[]; tree: 
     <Card style={[s.card, !m.keep && s.off]}>
       <Text style={t.strong}>{m.text}</Text>
       <View style={s.missMeta}>
-        <Text style={[t.caption, s.flex]}>{[NAME[m.aspect], m.detail].filter(Boolean).join(', ')}</Text>
+        <Text style={[t.caption, s.flex]}>{m.detail ? `${NAME[m.aspect]}: ${m.detail.charAt(0).toUpperCase()}${m.detail.slice(1)}` : NAME[m.aspect]}</Text>
         <Press label={m.keep ? `Not a miss: ${m.text}` : `Count it again: ${m.text}`} onPress={() => onChange({ ...m, keep: !m.keep })} style={s.notMiss}>
           <Text style={t.label}>{m.keep ? 'Not a miss' : 'Count it'}</Text>
         </Press>

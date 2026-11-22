@@ -11,7 +11,8 @@
 //     mind               speak, read, courses, recall, drill/<id>, review/<id>; checkin (*, no screen yet: home)
 //     soul               clean (*), journal (*), blocker (*, the lock question: Clean, where the plans are),
 //                        write (a new entry), meditate, moment (the rough moment)
-//     mission            (* bare: home, with the week); goal/<id>, ladder, projects, purpose, record, close, add
+//     mission            (* bare: home, with the week); goal/<id>, ladder, projects, purpose, record, close,
+//                        add[?aspect=<key>] (that section picked)
 //     money              earn, spend, flow (*, = spend), save, jars (= save), statement[/<id>] (*)
 //     growth             score, review (*), rules, reviews, time[/<aspect>], wheel/<aspect>;
 //                        journal (*, Growth's streak push: goes to soul/journal)

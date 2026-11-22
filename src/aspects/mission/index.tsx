@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Icon, IconButton, Page, useEntry } from '@/aspects/kit';
+import { ASPECT_KEYS } from '@/lib/aspectLinks';
 import { useGet } from '@/lib/mod';
 import { AddGoal } from './AddGoal';
 import { CloseFlow } from './CloseFlow';
@@ -43,14 +44,17 @@ export default function Mission() {
     measure: (g) => setMeasure(g),
   }), [show]);
 
-  // mission/<part>: goal/<id>, ladder, projects, purpose, record, close (closing the week), add. Plain mission (the
-  // "This week isn't set yet" push) is home, where the week is.
+  // mission/<part>: goal/<id>, ladder, projects, purpose, record, close (closing the week), add[?aspect=<key>] (with
+  // that section picked). Plain mission (the "This week isn't set yet" push) is home, where the week is.
   useEntry((e) => {
     const [p, id] = e.parts;
     setOpen({ ...SHUT, ...(p === 'ladder' || p === 'projects' || p === 'purpose' || p === 'record' || p === 'close' ? { [p]: true } : {}) });
     for (const g of goals) popGoal(g.n);
     if (p === 'goal' && id) nav.goal(id);
-    if (p === 'add') nav.add({});
+    if (p === 'add') {
+      const k = ASPECT_KEYS.find((x) => x === e.query.aspect);
+      nav.add(k ? { aspects: [k] } : {});
+    }
   });
 
   const plan = home.data?.plan ?? home.data?.week ?? null;

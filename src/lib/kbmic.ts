@@ -1,9 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { api } from './api';
 import { useGptRecorder } from './gpt';
+import { plog } from './log';
 
 // The keyboard's mic. A keyboard extension can't record, so the app records for it: the keyboard opens
-// agenticos://flow?id=<take id> (src/app/flow.tsx), this starts a GPT take with that id, and the user swipes back.
+// agenticos://flow?id=<take id> (caught in src/app/+native-intent.tsx, no navigation), this starts a GPT take with that id, and the user swipes back.
 // The keyboard follows the take on the PC (live text), and its stop button reaches here through the PC (the take's
 // next upload says stop). After a take the mic stays open for a few minutes ("warm"), waiting on the PC for the next
 // request, so the keyboard can start again without leaving the app it is in.
@@ -39,13 +40,13 @@ export function useKeyboardMic() {
         await r.start({
           id,
           onRemoteStop: () => {
-            latest.current.finish('none').catch((e) => setError(String(e?.message ?? e))).finally(() => setState(warm ? 'warm' : 'idle'));
+            latest.current.finish('none').catch((e) => { plog('kb finish', id, e); setError(String(e?.message ?? e)); }).finally(() => setState(warm ? 'warm' : 'idle'));
           },
         });
         warm = true;
         setState('recording');
         void poll();
-      } catch (e) { setError(String((e as Error)?.message ?? e)); }
+      } catch (e) { plog('kb start', id, e); setError(String((e as Error)?.message ?? e)); }
     };
     /** While the mic is warm, wait on the PC for the keyboard's next request. */
     const poll = async () => {
@@ -56,7 +57,7 @@ export function useKeyboardMic() {
           try {
             const r = await api<{ id?: string }>('/pc/kbmic/next?wait=25');
             if (r.id && warm) await begin(r.id);
-          } catch { await new Promise((ok) => setTimeout(ok, 3000)); }
+          } catch (e) { plog('kb poll', e); await new Promise((ok) => setTimeout(ok, 3000)); }
         }
       } finally { polling = false; }
     };

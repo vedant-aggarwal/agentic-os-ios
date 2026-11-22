@@ -4,6 +4,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import '@/lib/log'; // sends phone-side errors to the PC log
 import { C } from '@/theme';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});

@@ -1,6 +1,7 @@
 import { requireOptionalNativeModule } from 'expo';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { API, ApiError, currentToken } from './api';
+import { plog } from './log';
 
 // GPT dictation, streamed. The phone's mic writes a WAV file on the phone (Documents/takes, valid at every moment, so
 // a crash keeps everything said), and once a second the new part of that file goes to the PC (PUT at its byte
@@ -28,12 +29,19 @@ const PIECE = 256 * 1024;   // most bytes per upload (8 s of audio)
 const TICK = 1000;          // send what's new this often
 const KEEP_DAYS = 7;        // the phone keeps its own copy this long after the PC has it
 
+/** fetch that gives up after `ms` (a stuck request must never freeze a take). */
+function timed(url: string, init: RequestInit, ms: number) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), ms);
+  return fetch(url, { ...init, signal: ctl.signal }).finally(() => clearTimeout(t));
+}
+
 const auth = (): Record<string, string> => { const t = currentToken(); return t ? { Authorization: `Bearer ${t}` } : {}; };
-async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${API}${path}`, {
+async function call<T>(method: string, path: string, body?: unknown, ms = 30_000): Promise<T> {
+  const res = await timed(`${API}${path}`, {
     method, headers: { ...auth(), ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
     body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+  }, ms);
   const out = await res.json().catch(() => null);
   if (!res.ok) throw new ApiError(res.status, out?.error ?? `The PC said HTTP ${res.status}.`);
   return out as T;
@@ -90,9 +98,9 @@ async function pushAll(s: Sender) {
     let bytes = await s.h.readBytes(PIECE);
     if (bytes.length & 1) bytes = bytes.subarray(0, bytes.length - 1); // whole samples only
     if (!bytes.length) return;
-    const res = await fetch(`${API}/pc/take/${s.t.id}/pcm?at=${s.t.sent}`, {
+    const res = await timed(`${API}/pc/take/${s.t.id}/pcm?at=${s.t.sent}`, {
       method: 'PUT', body: bytes, headers: { ...auth(), 'Content-Type': 'application/octet-stream' },
-    });
+    }, 20_000);
     const out = await res.json().catch(() => null);
     if (!res.ok && res.status !== 409) throw new ApiError(res.status, out?.error ?? `Upload failed (HTTP ${res.status}).`);
     s.t.sent = Number(out?.have ?? s.t.sent); // on 409 the PC says where it is; carry on from there
@@ -116,6 +124,11 @@ function closeFile(s: Sender) { try { s.h?.close(); } catch {} s.h = null; }
 
 /** Takes the PC never fully got: send the rest and save them there (not typed: that moment has passed). */
 let recovering = false;
+
+// One mic at a time across the app: several screens hold a recorder (PC mic, keyboard, Voices). A recorder that is
+// open but idle (the keyboard's warm mic) is closed when another one starts; a busy one blocks it.
+type MicOwner = { me: object; busy: () => boolean; close: () => void };
+let openMic: MicOwner | null = null;
 async function recover(skip?: string) {
   if (!gptAvailable || recovering) return;
   recovering = true;
@@ -144,16 +157,18 @@ export function useGptRecorder() {
   const cool = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onCold = useRef<(() => void) | null>(null);
   const warmFor = useRef(0); // ms to keep the mic open after a take (the keyboard's warm mic); 0 closes it at once
+  const [me] = useState(() => ({}));
+  const closeRef = useRef<() => void>(() => {});
 
   useEffect(() => { void recover(); }, []);
-  useEffect(() => () => { if (timer.current) clearInterval(timer.current); if (cool.current) clearTimeout(cool.current); try { stream?.stop(); } catch {} }, [stream]);
+  useEffect(() => () => { if (timer.current) clearInterval(timer.current); if (cool.current) clearTimeout(cool.current); if (openMic?.me === me) openMic = null; try { stream?.stop(); } catch {} }, [stream, me]);
 
   /** Show the PC's text as it comes, until the take is done or another one starts. */
   const follow = useCallback(async (s: Sender) => {
     let v: number | undefined;
     while (cur.current === s && s.created) {
       try {
-        const t = await call<{ v: number; text: string; status: string }>('GET', `/pc/take/${s.t.id}${v == null ? '' : `?v=${v}&wait=20`}`);
+        const t = await call<{ v: number; text: string; status: string }>('GET', `/pc/take/${s.t.id}${v == null ? '' : `?v=${v}&wait=20`}`, undefined, 35_000);
         if (cur.current !== s) return;
         v = t.v; setLive(t.text);
         if (t.status === 'done') return;
@@ -170,16 +185,21 @@ export function useGptRecorder() {
     if (!d.exists) d.create({ intermediates: true, idempotent: true });
     const id = opts.id ?? `t_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
     if (cool.current) { clearTimeout(cool.current); cool.current = null; }
+    if (openMic && openMic.me !== me) {
+      if (openMic.busy()) throw new Error('The mic is busy with another recording.');
+      openMic.close();
+    }
     if (!streaming.current) {
       const perm = await audio.requestRecordingPermissionsAsync();
       if (!perm.granted) throw new Error('Allow the microphone for Agentic OS in Settings.');
       await audio.setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true, allowsBackgroundRecording: true, shouldPlayInBackground: true });
       await stream.start();
       streaming.current = true;
+      openMic = { me, busy: () => !!cur.current, close: () => closeRef.current() };
     }
     let uri: string;
     try { ({ uri } = await stream.startFileRecordingAsync({ uri: new fs.File(d, `${id}.wav`).uri, format: 'wav' })); }
-    catch (e) { try { stream.stop(); } catch {} streaming.current = false; throw e; }
+    catch (e) { plog('mic file', e); try { stream.stop(); } catch {} streaming.current = false; if (openMic?.me === me) openMic = null; throw e; }
     const s: Sender = { t: { id, uri, rate: stream.sampleRate || RATE, createdAt: new Date().toISOString(), sent: 0, finished: false }, h: null, created: false, busy: null };
     remember(s.t);
     cur.current = s;
@@ -190,19 +210,21 @@ export function useGptRecorder() {
         setOffline(false);
         if (!following && s.created) { following = true; void follow(s); }
         if (s.stop && !stopped && cur.current === s) { stopped = true; opts.onRemoteStop?.(); }
-      }, () => setOffline(true));
+      }, (e) => { setOffline(true); plog('take upload', s.t.id, s.t.sent, e); });
     }, TICK);
-  }, [stream, follow]);
+  }, [stream, follow, me]);
 
   /** Close the mic now. */
   const close = useCallback(() => {
     if (cool.current) { clearTimeout(cool.current); cool.current = null; }
     if (!streaming.current || cur.current) return;
     streaming.current = false;
+    if (openMic?.me === me) openMic = null;
     try { stream?.stop(); } catch {}
     audio?.setAudioModeAsync({ allowsRecording: false }).catch(() => {});
     onCold.current?.();
-  }, [stream]);
+  }, [stream, me]);
+  useEffect(() => { closeRef.current = close; }, [close]);
 
   /** Stop recording this take; the mic closes, or stays open for `warmFor` so the next take starts at once. */
   const stop = useCallback(async () => {
@@ -211,9 +233,10 @@ export function useGptRecorder() {
     const keep = warmFor.current;
     if (keep > 0) { if (cool.current) clearTimeout(cool.current); cool.current = setTimeout(close, keep); return; }
     streaming.current = false;
+    if (openMic?.me === me) openMic = null;
     try { stream?.stop(); } catch {}
     audio?.setAudioModeAsync({ allowsRecording: false }).catch(() => {});
-  }, [stream, close]);
+  }, [stream, close, me]);
 
   /** Stop and deliver: resolves with what the PC heard. */
   const finish = useCallback(async (to: DictateTo): Promise<DictateResult> => {
@@ -224,12 +247,13 @@ export function useGptRecorder() {
     await stop();
     try {
       await pushHard(s);
-      const r = await call<{ text: string; enter: boolean; error?: string }>('POST', `/pc/take/${s.t.id}/finish`, { bytes: s.t.sent, to });
+      const r = await call<{ text: string; enter: boolean; error?: string }>('POST', `/pc/take/${s.t.id}/finish`, { bytes: s.t.sent, to }, 120_000);
       s.t.finished = true; remember(s.t);
       setLive(r.text);
       if (!r.text && r.error) throw new ApiError(502, r.error);
       return { text: r.text, enter: r.enter, ms: Date.now() - t0 };
     } catch (e) {
+      plog('take finish', s.t.id, s.t.sent, e);
       if (e instanceof ApiError && (s.t.finished || (e.status < 500 && e.status !== 409))) throw e;
       throw new Error('Saved on this phone. It goes to the PC when it can be reached.');
     } finally {

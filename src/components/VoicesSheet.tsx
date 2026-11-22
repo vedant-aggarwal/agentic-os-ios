@@ -1,20 +1,22 @@
 import { requireOptionalNativeModule } from 'expo';
 import { BlurView } from 'expo-blur';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { type ComponentRef, useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { lightTap, useScale } from '@/components/Glass';
 import { useReveal } from '@/components/Reveal';
 import { Sym } from '@/components/Sym';
 import { api, API, ApiError, currentToken } from '@/lib/api';
-import { localTakes, localUri } from '@/lib/gpt';
+import { gptAvailable, localTakes, localUri, useGptRecorder } from '@/lib/gpt';
+import { plog } from '@/lib/log';
 import { C, F } from '@/theme';
 
 // Voices (the top bar's waveform button): every GPT dictation, newest first, the time on the left. Tap a row to open
 // it: the full text (selectable), a player with a slider, Copy, and Transcribe, which runs it through Codex again
 // with the words appearing as they come. Takes live on the PC (/pc/takes, pc-take.ts); a take the PC hasn't got yet
-// still shows, from this phone's own copy.
+// still shows, from this phone's own copy. The record button at the bottom is voice mode: talk, the words appear as
+// the PC hears them, stop, and the take is saved here (nothing is typed on the PC).
 type Audio = typeof import('expo-audio');
 type FS = typeof import('expo-file-system');
 type Clip = typeof import('expo-clipboard');
@@ -73,6 +75,9 @@ export function VoicesSheet({ open, origin, onClose }: { open: boolean; origin: 
   const [openId, setOpenId] = useState<string | null>(null);
   const player = usePlayer();
   useEffect(() => { if (!open) player.pause(); }, [open, player]);
+  const rec = useRecord(useCallback((id: string) => { void reload().then(() => setOpenId(id)); }, [reload]));
+  const { stop: stopRec, phase: recPhase } = rec;
+  useEffect(() => { if (!open && recPhase === 'recording') void stopRec(); }, [open, recPhase, stopRec]);
   if (!r.ever) return null;
 
   const rows: Row[] = [];
@@ -95,21 +100,103 @@ export function VoicesSheet({ open, origin, onClose }: { open: boolean; origin: 
             </Pressable>
           </View>
           {error ? <Text style={s.note}>{error}</Text> : null}
+          {rec.phase !== 'idle' || rec.error ? <RecordCard rec={rec} /> : null}
           {takes === null ? (
             <ActivityIndicator color={C.muted} style={{ marginTop: 40 }} />
           ) : takes.length === 0 ? (
-            <Text style={[s.note, { marginTop: 24 }]}>Nothing yet. Switch the PC mic to GPT and talk; every take lands here.</Text>
+            <Text style={[s.note, { marginTop: 24 }]}>Nothing yet. Tap the record button and talk; every take lands here.</Text>
           ) : (
             <FlatList data={rows} keyExtractor={(x) => x.key} onRefresh={reload} refreshing={false}
-              contentContainerStyle={{ paddingBottom: insets.bottom + 24 }} keyboardShouldPersistTaps="handled"
+              contentContainerStyle={{ paddingBottom: insets.bottom + 120 }} keyboardShouldPersistTaps="handled"
               renderItem={({ item }) => item.kind === 'day'
                 ? <Text style={s.day}>{item.label}</Text>
                 : <TakeRow take={item.take} open={openId === item.take.id} player={player} patch={patch}
                     onToggle={() => setOpenId((cur) => (cur === item.take.id ? null : item.take.id))} />} />
           )}
+          <RecordButton rec={rec} bottom={insets.bottom + 20} width={r.width} />
         </Animated.View>
       </Animated.View>
     </Animated.View>
+  );
+}
+
+// ---- voice mode: record a take from this page ----
+function useRecord(onSaved: (id: string) => void) {
+  const g = useGptRecorder();
+  const [phase, setPhase] = useState<'idle' | 'recording' | 'saving'>('idle');
+  const [since, setSince] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [id, setId] = useState<string | null>(null);
+  const { start: gStart, finish: gFinish, cancel: gCancel } = g;
+  const start = useCallback(async () => {
+    setError(null);
+    const tid = newTakeId();
+    try { await gStart({ id: tid }); setId(tid); setSince(nowMs()); setPhase('recording'); }
+    catch (e) { plog('voices start', e); setError(String((e as Error)?.message ?? e)); }
+  }, [gStart]);
+  const stop = useCallback(async () => {
+    setPhase('saving');
+    try { await gFinish('none'); if (id) onSaved(id); }
+    catch (e) { plog('voices finish', e); setError(String((e as Error)?.message ?? e)); }
+    finally { setPhase('idle'); }
+  }, [gFinish, id, onSaved]);
+  const cancel = useCallback(() => { gCancel(); setPhase('idle'); }, [gCancel]);
+  return { phase, since, error, live: g.live, offline: g.offline, start, stop, cancel };
+}
+type Rec = ReturnType<typeof useRecord>;
+const nowMs = () => Date.now();
+const newTakeId = () => `t_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+
+function RecordCard({ rec }: { rec: Rec }) {
+  const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
+  const secs = useTicker(rec.phase === 'recording' ? rec.since : 0);
+  const label = rec.phase === 'recording' ? `Listening ${dur(secs)}` : rec.phase === 'saving' ? 'Finishing…' : 'Couldn’t record';
+  return (
+    <Animated.View entering={FadeIn.duration(160)} style={s.recCard}>
+      <View style={s.recHead}>
+        {rec.phase === 'recording' ? <View style={s.recDot} /> : null}
+        <Text style={s.recLabel}>{label}{rec.offline ? '  ·  saving on the phone' : ''}</Text>
+      </View>
+      {rec.live ? (
+        <ScrollView ref={scroll} style={{ maxHeight: 140 }} onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: true })}>
+          <Text selectable style={s.recLive}>{rec.live}</Text>
+        </ScrollView>
+      ) : rec.phase === 'recording' ? <Text style={s.note}>Talk. The words show here every few seconds.</Text> : null}
+      {rec.error ? <Text style={[s.note, { color: '#FF7A7A' }]}>{rec.error}</Text> : null}
+    </Animated.View>
+  );
+}
+
+/** Seconds since `from` (0 when not running), ticking once a second. */
+function useTicker(from: number) {
+  const [now, setNow] = useState(0);
+  useEffect(() => {
+    if (!from) return;
+    const tick = () => setNow(Math.floor((nowMs() - from) / 1000));
+    const first = setTimeout(tick, 0);
+    const id = setInterval(tick, 1000);
+    return () => { clearTimeout(first); clearInterval(id); };
+  }, [from]);
+  return from ? now : 0;
+}
+
+function RecordButton({ rec, bottom, width }: { rec: Rec; bottom: number; width: number }) {
+  const p = useScale(0.92);
+  const on = rec.phase === 'recording';
+  const label = on ? 'Stop and save' : rec.phase === 'saving' ? 'Saving' : 'Record a voice note';
+  return (
+    <View pointerEvents="box-none" style={[s.recWrap, { bottom, width }]}>
+      <Pressable accessibilityRole="button" accessibilityLabel={label} hitSlop={10} disabled={!gptAvailable || rec.phase === 'saving'}
+        onPress={() => { lightTap(); void (on ? rec.stop() : rec.start()); }}
+        onPressIn={() => p.set(p.to)} onPressOut={() => p.set(1)}>
+        <Animated.View style={[s.recBtn, on && s.recBtnOn, !gptAvailable && { opacity: 0.4 }, p.style]}>
+          {rec.phase === 'saving' ? <ActivityIndicator color="#fff" />
+            : on ? <View style={s.recStop} />
+            : <Sym name="mic.fill" size={26} color="#fff" fallback={<View style={s.recIdleDot} />} />}
+        </Animated.View>
+      </Pressable>
+      {!gptAvailable ? <Text style={s.note}>Recording arrives with the next app build.</Text> : null}
+    </View>
   );
 }
 
@@ -291,4 +378,17 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.09)',
   },
   actionText: { fontFamily: F.semibold, fontSize: 13, lineHeight: 18, color: C.text },
+  recCard: { borderRadius: 16, borderCurve: 'continuous', padding: 12, gap: 8, backgroundColor: 'rgba(118,107,230,0.16)', borderWidth: 1, borderColor: 'rgba(118,107,230,0.4)' },
+  recHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  recDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#FF5A5F' },
+  recLabel: { fontFamily: F.semibold, fontSize: 13, lineHeight: 18, color: C.text, fontVariant: ['tabular-nums'] },
+  recLive: { fontFamily: F.medium, fontSize: 16, lineHeight: 23, color: C.text },
+  recWrap: { position: 'absolute', left: 0, alignItems: 'center', gap: 6 },
+  recBtn: {
+    width: 68, height: 68, borderRadius: 34, alignItems: 'center', justifyContent: 'center', backgroundColor: ACCENT,
+    shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 12, shadowOffset: { width: 0, height: 4 },
+  },
+  recBtnOn: { backgroundColor: '#FF5A5F' },
+  recStop: { width: 22, height: 22, borderRadius: 5, backgroundColor: '#fff' },
+  recIdleDot: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#fff' },
 });

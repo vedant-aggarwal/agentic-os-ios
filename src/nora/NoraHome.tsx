@@ -192,6 +192,15 @@ function HomeBody({ open }: { open: boolean }) {
               action={`Chat with ${d.name}`} onAction={() => noraUi.openChat()} />
           ) : null}
 
+          {d.upcoming?.length ? (
+            <Section title="Coming up">
+              <View style={s.list}>
+                {d.upcoming.map((x, i) => <CallRow key={x.id} first={i === 0} glyph={/call/i.test(x.title) ? 'phone' : 'sparkle'}
+                  label={upcomingLabel(x.title, whenOf(x.at, x.time, d.day))} />)}
+              </View>
+            </Section>
+          ) : null}
+
           {d.calls.morning || d.calls.night ? (
             <Section title="Calls" action={callTransport() !== 'none' ? 'Call now' : undefined} onAction={() => noraUi.call()}>
               <View style={s.list}>
@@ -267,10 +276,27 @@ function SmallAct({ label, what, onPress, busy }: { label: string; what: string;
   );
 }
 
-function CallRow({ label, first }: { label: string; first: boolean }) {
+// "11:00" today, "Tomorrow 11:00", or "25 Nov 11:00" (days in IST, like the server's)
+function whenOf(at: string, time: string, today: string) {
+  const day = (ms: number) => new Date(ms + 330 * 60_000).toISOString().slice(0, 10);
+  const d = day(Date.parse(at));
+  if (d === today) return time;
+  if (d === day(Date.parse(`${today}T12:00:00+05:30`) + 86_400_000)) return `Tomorrow ${time}`;
+  const [, m, dd] = d.split('-');
+  return `${Number(dd)} ${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][Number(m) - 1]} ${time}`;
+}
+
+// Her job names start with their time ("11:00 call: Mandeep follow-ups"): "Call at 11:00: Mandeep follow-ups"
+function upcomingLabel(title: string, when: string) {
+  const m = /^\d{1,2}:\d{2}\s*(call)?\s*:?\s*/i.exec(title);
+  const rest = m ? title.slice(m[0].length) : title;
+  return m?.[1] ? `Call at ${when}: ${rest}` : `${when}: ${rest}`;
+}
+
+function CallRow({ label, first, glyph = 'phone' }: { label: string; first: boolean; glyph?: 'phone' | 'sparkle' }) {
   return (
     <View style={[s.item, !first && s.itemLine]}>
-      <NGlyph name="phone" size={16} color={C.muted} />
+      <NGlyph name={glyph} size={16} color={C.muted} />
       <Text style={[t.body, s.flex]}>{label}</Text>
     </View>
   );

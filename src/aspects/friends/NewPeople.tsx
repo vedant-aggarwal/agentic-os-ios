@@ -5,7 +5,7 @@ import { Button, Chip, Empty, Field, Icon, Press, Row, Screen, Section, Sheet, S
 import type { Actions } from './actions';
 import { count, firstName, whenAgo, whenAhead, type Person, type Place, type SeenPlace, type Week } from './data';
 import type { Model, NewView, Nudge } from './model';
-import { Avatar, PathTrack } from './parts';
+import { ActRow, Avatar, PathTrack } from './parts';
 
 const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const ORDER = [1, 2, 3, 4, 5, 6, 0];
@@ -24,7 +24,7 @@ export function NudgeRow({ n, a, onOpen, onPlan }: { n: Nudge; a: Actions; onOpe
   const right = n.kind === 'hello' ? <Button label="Saw again" kind="soft" small onPress={() => a.sawAgain(p)} />
     : n.kind === 'invite' ? <Button label="Plan it" kind="soft" small onPress={() => onPlan(p)} />
       : <Button label="Yes" kind="soft" small onPress={() => a.makeFriend(p)} />;
-  return <Row title={n.title} sub={n.sub} onPress={() => onOpen(p)} label={`${n.title}. ${n.sub}`} left={<Avatar person={p} stage={n.v.st.stage} />} right={right} />;
+  return <ActRow title={n.title} sub={n.sub} onPress={() => onOpen(p)} label={`${n.title}. ${n.sub}`} left={<Avatar person={p} stage={n.v.st.stage} />} action={right} />;
 }
 
 /** Someone he just met: a first name, where, one detail. One tap saves. */
@@ -143,7 +143,7 @@ export function NewPeopleScreen({ open, onClose, m, week, a, onPerson, onAdd, on
           return <Row key={pv.place.id} title={pv.place.name} sub={sub} chevron label={`${pv.place.name}. ${sub}`} onPress={() => { setPlace(pv.place); setPlaceOpen(true); }} />;
         })}
         {(week?.suggested ?? []).map((sp) => (
-          <Row key={sp.key} title={sp.name} sub={`In your calendar ${daysText(sp.days)?.toLowerCase() ?? 'most weeks'}`}
+          <Row key={sp.key} title={sp.name} sub={`${daysText(sp.days) ?? 'Most weeks'}, in your calendar`}
             label={`${sp.name}, suggested from your calendar`} right={<Button label="Keep" kind="soft" small onPress={() => void a.keepPlace(sp)} />} />
         ))}
         {!m.places.length && !(week?.suggested ?? []).length ? (
@@ -158,8 +158,8 @@ export function NewPeopleScreen({ open, onClose, m, week, a, onPerson, onAdd, on
             <Icon name={showFaded ? 'up' : 'down'} size={14} color={C.faint} />
           </Press>
           {showFaded ? m.faded.map((v) => (
-            <Row key={v.p.id} title={v.p.name} sub={newSub(v)} onPress={() => onPerson(v.p)} left={<Avatar person={v.p} stage={v.st.stage} />}
-              right={<Button label="Saw again" kind="quiet" small onPress={() => a.sawAgain(v.p)} />} />
+            <ActRow key={v.p.id} title={v.p.name} sub={newSub(v)} onPress={() => onPerson(v.p)} left={<Avatar person={v.p} stage={v.st.stage} />}
+              action={<Button label="Saw again" kind="quiet" small onPress={() => a.sawAgain(v.p)} />} />
           )) : null}
         </View>
       ) : null}

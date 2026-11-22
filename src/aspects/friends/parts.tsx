@@ -1,4 +1,5 @@
 import { requireOptionalNativeModule } from 'expo';
+import type { ReactNode } from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { C, F } from '@/theme';
@@ -40,6 +41,27 @@ export function Avatar({ person, stage, size = 40, ring }: { person: Person; sta
     <View style={[s.avatar, { width: size, height: size, borderRadius: size / 2, backgroundColor: friend ? tint(color, 0.2) : SURF.raised },
       ring ? { borderWidth: 2, borderColor: ring } : null]}>
       <Text style={[s.initial, { fontSize: size * 0.4, lineHeight: size * 0.5, color: friend ? color : C.textSoft }]}>{initial(person)}</Text>
+    </View>
+  );
+}
+
+/**
+ * A row that opens something, with its one action beside it rather than inside it. The kit's Row puts `right`
+ * inside its pressable, which hides a button there from VoiceOver and nests buttons on web.
+ */
+export function ActRow({ title, sub, left, action, onPress, label }: {
+  title: string; sub?: string | null; left?: ReactNode; action?: ReactNode; onPress: () => void; label?: string;
+}) {
+  return (
+    <View style={s.actRow}>
+      <Press label={label ?? title} onPress={onPress} scale={0.99} wrap={s.actWrap} style={s.actBody}>
+        {left}
+        <View style={s.actMid}>
+          <Text numberOfLines={2} style={s.actTitle}>{title}</Text>
+          {sub ? <Text numberOfLines={2} style={t.small}>{sub}</Text> : null}
+        </View>
+      </Press>
+      {action}
     </View>
   );
 }
@@ -107,6 +129,12 @@ export function PathTrack({ groups, onPerson, onAdd, onStop }: {
 
 const s = StyleSheet.create({
   avatar: { alignItems: 'center', justifyContent: 'center' },
+  // the same measures as the kit's Row
+  actRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56 },
+  actWrap: { flex: 1, minWidth: 0 },
+  actBody: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56, paddingVertical: 8 },
+  actMid: { flex: 1, minWidth: 0 },
+  actTitle: { fontFamily: F.medium, fontSize: 16, lineHeight: 24, color: C.text },
   initial: { fontFamily: F.semibold, textAlign: 'center' },
   track: { flexDirection: 'row', paddingTop: 4 },
   // the rail runs between the first and last node (the centres of the outer thirds)

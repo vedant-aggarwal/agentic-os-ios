@@ -1,19 +1,19 @@
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
-import { Button, Card, Chip, Field, haptic, Icon, IconButton, MOTION, Press, Row, SP, SURF, t, useAspect } from '@/aspects/kit';
+import { Button, Card, Chip, Field, haptic, Icon, IconButton, MOTION, Press, SP, SURF, t, useAspect } from '@/aspects/kit';
 import type { Actions } from './actions';
 import { ACT_CHIP, actWord, firstName, lastLine, LOG_ACTS, type Kind, type Moment } from './data';
 import type { DeepenIdea, FriendView } from './model';
 import { usualAct } from './model';
-import { Avatar, canPickPhoto, pickPhoto } from './parts';
+import { ActRow, Avatar, canPickPhoto, pickPhoto } from './parts';
 
 const layout = LinearTransition.springify().duration(MOTION.spring.duration).dampingRatio(1);
 
 /** The easiest next step for someone he hasn't seen in a while. Plain, never a countdown. */
 function hint(v: FriendView) {
   if (v.warmth === 'due') return v.rhythm?.mode === 'talk' ? 'A good week for a call.' : 'A good week to meet.';
-  if (v.warmth === 'drift') return 'A short message is enough to pick it up again.';
+  if (v.warmth === 'drift') return 'A short message is enough.';
   return null;
 }
 
@@ -25,12 +25,12 @@ export function FriendRow({ v, logged, onLog, onOpen }: {
   const talk = v.rhythm?.mode === 'talk';
   const h = hint(v);
   return (
-    <Row title={v.p.name} sub={`${lastLine(v.st)}${h ? `. ${h}` : ''}`} onPress={onOpen} label={`${v.p.name}. ${lastLine(v.st)}`}
+    <ActRow title={v.p.name} sub={`${lastLine(v.st)}${h ? `. ${h}` : ''}`} onPress={onOpen} label={`${v.p.name}. ${lastLine(v.st)}`}
       left={<Avatar person={v.p} stage="friend" />}
-      right={logged ? (
+      action={logged ? (
         <View style={s.done}><Icon name="check" size={16} color={color} /><Text style={[t.label, { color }]}>Logged</Text></View>
       ) : (
-        <Button label={talk ? 'Talked today' : 'Met today'} kind="soft" small onPress={() => onLog(talk ? 'call' : 'meet')} />
+        <Button label={talk ? 'Talked today' : 'Met today'} kind="quiet" small onPress={() => onLog(talk ? 'call' : 'meet')} />
       )} />
   );
 }
@@ -78,12 +78,12 @@ export function LogDetail({ moment, a, onClose, indent = true }: { moment: Momen
 }
 
 /** A plan they keep without planning it (the weekly meal): logged for this week in one tap. */
-export function UsualRow({ v, onLog }: { v: FriendView; onLog: () => void }) {
+export function UsualRow({ v, onLog, indent = true }: { v: FriendView; onLog: () => void; indent?: boolean }) {
   const { color } = useAspect();
   if (!v.usual) return null;
   const what = actWord(v.usual.act) ?? v.usual.act;
   return (
-    <View style={s.usual}>
+    <View style={[s.usual, !indent && s.flush]}>
       <Text style={[t.small, s.flex]} numberOfLines={1}>Weekly {what} with {firstName(v.p)}</Text>
       {v.usual.thisWeek ? (
         <View style={s.done}><Icon name="check" size={14} color={color} /><Text style={[t.label, { color }]}>This week</Text></View>
@@ -129,5 +129,6 @@ const s = StyleSheet.create({
   actions: { flexDirection: 'row', alignItems: 'center', gap: SP[8] },
   lineRow: { flexDirection: 'row', alignItems: 'flex-end', gap: SP[8] },
   usual: { flexDirection: 'row', alignItems: 'center', gap: SP[12], marginLeft: 52, minHeight: 36, marginTop: -SP[8], marginBottom: SP[4] },
+  flush: { marginLeft: 0, marginTop: 0, marginBottom: 0 },
   deepen: { gap: SP[12] },
 });

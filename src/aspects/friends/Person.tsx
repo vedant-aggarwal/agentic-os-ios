@@ -2,7 +2,7 @@ import { Image } from 'expo-image';
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { C } from '@/theme';
-import { Button, Chip, dayLabel, Field, Icon, Row, Screen, Section, Sheet, SP, t } from '@/aspects/kit';
+import { Button, Chip, dayLabel, Field, Icon, Row, Screen, Section, Sheet, SP, SURF, t, useAspect } from '@/aspects/kit';
 import { fileSource } from '@/lib/mod';
 import type { Actions } from './actions';
 import { DeepenCard, LogDetail, UsualRow } from './Circle';
@@ -12,6 +12,23 @@ import { deepenIdeas, plansWith, visitPhrase, type DeepenIdea, type Model } from
 import { Avatar, canPickPhoto, pickPhoto } from './parts';
 
 const STAGES = [{ key: 'met', label: 'Met' }, { key: 'again', label: 'Met again' }, { key: 'friend', label: 'Friend' }] as const;
+
+/** Where a new person is on the path. Plain text, not buttons: the stage moves when they meet, not by a tap here. */
+function Stepper({ stage }: { stage: string }) {
+  const { color } = useAspect();
+  const at = STAGES.findIndex((x) => x.key === stage);
+  return (
+    <View style={s.stepper} accessible accessibilityLabel={`Stage: ${STAGES[at]?.label ?? 'Met'}`}>
+      {STAGES.map((x, i) => (
+        <View key={x.key} style={s.step}>
+          {i ? <View style={[s.stepLine, i <= at && { backgroundColor: color }]} /> : null}
+          <View style={[s.stepDot, i <= at && { backgroundColor: color, borderColor: color }]} />
+          <Text style={[t.small, i === at ? { color } : i > at ? { color: C.faint } : null]}>{x.label}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
 
 function MomentRow({ mo, onPress }: { mo: Moment; onPress: () => void }) {
   const sub = [dayLabel(mo.date), mo.line, mo.source === 'calendar' ? 'From your calendar' : null].filter(Boolean).join('. ');
@@ -67,9 +84,7 @@ export function PersonScreen({ open, onClose, id, m, f, a, bank, onPlan, notice 
           </View>
 
           {nv ? (
-            <View style={s.chips} accessibilityLabel={`Stage: ${STAGES.find((x) => x.key === st.stage)?.label}`}>
-              {STAGES.map((x) => <Chip key={x.key} label={x.label} selected={st.stage === x.key} />)}
-            </View>
+            <Stepper stage={st.stage} />
           ) : null}
 
           {fv ? (
@@ -88,7 +103,7 @@ export function PersonScreen({ open, onClose, id, m, f, a, bank, onPlan, notice 
           )}
           {loggedMoment ? <LogDetail moment={loggedMoment} a={a} onClose={() => setLogged(null)} indent={false} /> : null}
 
-          {fv?.usual ? <UsualRow v={fv} onLog={() => setLogged(a.log(p, 'meet', { act: fv.usual!.act }))} /> : null}
+          {fv?.usual ? <UsualRow v={fv} indent={false} onLog={() => setLogged(a.log(p, 'meet', { act: fv.usual!.act }))} /> : null}
           {fv?.rhythm?.label ? <Text style={t.small}>Your rhythm with {first}: {fv.rhythm.label.charAt(0).toLowerCase()}{fv.rhythm.label.slice(1)}</Text> : null}
 
           {nv ? (
@@ -105,11 +120,14 @@ export function PersonScreen({ open, onClose, id, m, f, a, bank, onPlan, notice 
                   label={p.note ? `You noted: ${p.note}. Edit` : 'Add one thing to remember'} />
               )}
               {m.places.length ? (
+                <View style={s.gap8}>
+                <Text style={t.label}>Where you see {first}</Text>
                 <View style={s.chips}>
                   {m.places.map((pv) => (
                     <Chip key={pv.place.id} label={pv.place.name} selected={p.place === pv.place.id}
                       onPress={() => a.patchPerson(p, p.place === pv.place.id ? { place: null } : { place: pv.place.id, where: pv.place.name })} />
                   ))}
+                </View>
                 </View>
               ) : null}
             </Section>
@@ -118,7 +136,7 @@ export function PersonScreen({ open, onClose, id, m, f, a, bank, onPlan, notice 
           {fv ? <DeepenCard v={fv} ideas={deepenIdeas(fv, f.ideas.items ?? [], bank?.ideas ?? [])} onPlan={(d) => onPlan(p.id, d)} compact /> : null}
 
           <Section title="Plans" action="New" onAction={() => onPlan(p.id)} gap={0}>
-            {plans.length ? plans.map((pl) => <PlanRow key={pl.id} plan={pl} m={m} />)
+            {plans.length ? plans.map((pl) => <PlanRow key={pl.id} plan={pl} m={m} self={p.id} />)
               : <Text style={[t.small, s.pad]}>Nothing planned with {first} yet.</Text>}
           </Section>
 
@@ -138,7 +156,7 @@ export function PersonScreen({ open, onClose, id, m, f, a, bank, onPlan, notice 
               : <Text style={[t.small, s.pad]}>Nothing logged yet. The buttons above keep it to one tap.</Text>}
           </Section>
 
-          <Section title="Somewhere else">
+          {fv ? <Section title="Somewhere else">
             {fv ? (
               <View style={s.row}>
                 <Button label="Move to Family" kind="quiet" small onPress={() => { a.moveTo(p, 'family'); onClose(); }} wrap={s.flex} />
@@ -146,7 +164,8 @@ export function PersonScreen({ open, onClose, id, m, f, a, bank, onPlan, notice 
               </View>
             ) : null}
             {fv && p.friend_since ? <Button label="Back to new people" kind="quiet" small onPress={() => a.stillGettingToKnow(p)} /> : null}
-            {nv ? (confirm ? (
+          </Section> : null}
+          {nv ? (confirm ? (
               <View style={s.gap8}>
                 <Text style={t.small}>This removes {first} and the times you logged with only them.</Text>
                 <View style={s.row}>
@@ -155,7 +174,6 @@ export function PersonScreen({ open, onClose, id, m, f, a, bank, onPlan, notice 
                 </View>
               </View>
             ) : <Button label={`Remove ${first}`} kind="quiet" small onPress={() => setConfirm(true)} />) : null}
-          </Section>
         </>
       )}
       <MomentSheet moment={moment} onClose={() => setMoment(null)} f={f} a={a} notice={notice} />
@@ -197,6 +215,10 @@ const s = StyleSheet.create({
   gap8: { gap: SP[8] },
   row: { flexDirection: 'row', gap: SP[8] },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: SP[8] },
+  stepper: { flexDirection: 'row', alignItems: 'center' },
+  step: { flexDirection: 'row', alignItems: 'center', gap: SP[8] },
+  stepLine: { width: 20, height: 1, backgroundColor: SURF.line, marginHorizontal: SP[4] },
+  stepDot: { width: 8, height: 8, borderRadius: 4, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.32)' },
   head: { flexDirection: 'row', alignItems: 'center', gap: SP[16] },
   pad: { paddingVertical: SP[8] },
   noteRow: { flexDirection: 'row', alignItems: 'flex-end', gap: SP[8] },

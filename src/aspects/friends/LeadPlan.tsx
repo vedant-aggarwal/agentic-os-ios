@@ -7,8 +7,8 @@ import { dayAhead, fillName, firstName, roundSlot, whenAhead, type Person, type 
 import { copy } from './parts';
 import type { Model } from './model';
 
-export const withNames = (plan: Plan, m: Model) => {
-  const names = (plan.people ?? []).map((id) => m.persons.find((p) => p.id === id)).filter(Boolean).map((p) => firstName(p as Person));
+export const withNames = (plan: Plan, m: Model, omit?: string) => {
+  const names = (plan.people ?? []).filter((id) => id !== omit).map((id) => m.persons.find((p) => p.id === id)).filter(Boolean).map((p) => firstName(p as Person));
   return names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
 };
 export const whenLine = (plan: Plan) => (plan.date ? `${dayAhead(plan.date)}${plan.slot ? `, ${plan.slot}` : ''}` : 'No day set yet');
@@ -101,16 +101,22 @@ export function LeadSkeleton() {
   return <View style={s.skel} />;
 }
 
-export function PlanRow({ plan, m, onPress }: { plan: Plan; m: Model; onPress?: () => void }) {
-  return (
-    <Press label={`${plan.title}, ${whenLine(plan)}, with ${withNames(plan, m)}`} onPress={onPress} style={s.planRow}>
+/** One plan in a list. On a person's own page `self` leaves them out of "with". */
+export function PlanRow({ plan, m, onPress, self }: { plan: Plan; m: Model; onPress?: () => void; self?: string }) {
+  const names = withNames(plan, m, self);
+  const sub = `${whenLine(plan)}${names ? `, with ${names}` : ''}`;
+  const body = (
+    <>
       <View style={s.flex}>
         <Text numberOfLines={1} style={t.strong}>{plan.title}</Text>
-        <Text numberOfLines={1} style={t.small}>{whenLine(plan)}, with {withNames(plan, m)}</Text>
+        <Text numberOfLines={1} style={t.small}>{sub}</Text>
       </View>
       {plan.state === 'confirmed' ? <Text style={t.caption}>On</Text> : null}
-    </Press>
+      {onPress ? <Icon name="right" size={16} color={C.faint} /> : null}
+    </>
   );
+  return onPress ? <Press label={`${plan.title}, ${sub}`} onPress={onPress} style={s.planRow}>{body}</Press>
+    : <View style={s.planRow} accessible accessibilityLabel={`${plan.title}, ${sub}`}>{body}</View>;
 }
 
 const s = StyleSheet.create({

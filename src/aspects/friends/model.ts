@@ -17,7 +17,7 @@ const OPEN = new Set(['tentative', 'confirmed', 'asked', 'sent', 'draft', 'idea'
 export function visitPhrase(place: Place | null, visit: Visit | null) {
   if (!place) return null;
   if (!visit) return `${place.name}, next time you are there`;
-  return `${place.name}, ${whenAhead(visit.date)}${visit.at ? ` at ${visit.at}` : ''}`;
+  return `${place.name}, ${whenAhead(visit.date).replace(/^on /, '')}${visit.at ? ` at ${visit.at}` : ''}`;
 }
 
 export function buildModel(f: Friends) {
@@ -55,7 +55,7 @@ export function buildModel(f: Friends) {
   const ask = open.filter((p) => p.date && p.date < ref).sort((a, b) => String(a.date).localeCompare(String(b.date)));
   const upcoming = open.filter((p) => !p.date || p.date >= ref).sort((a, b) => String(a.date ?? '9999').localeCompare(String(b.date ?? '9999')) || String(a.slot ?? '').localeCompare(String(b.slot ?? '')));
   const done = plans.filter((p) => p.state === 'done').sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')));
-  const withPlan = new Set(upcoming.flatMap((p) => p.people ?? []));
+  const withPlan = new Set([...upcoming, ...ask].flatMap((p) => p.people ?? []));
 
   // ── second meetings: the next hello in the same place, then a small invitation, then "friends now?" ──
   const nudges: Nudge[] = [];
@@ -65,10 +65,10 @@ export function buildModel(f: Friends) {
     if (v.st.stage === 'again' && v.st.planDone) {
       nudges.push({ key: `f-${v.p.id}`, kind: 'friend', v, title: `Friends with ${first} now?`, sub: 'You spent time together beyond where you met.' });
     } else if (v.st.stage === 'met' && (v.st.since ?? 0) <= 21) {
-      const note = v.p.note ? ` You noted: ${v.p.note.replace(/[.\s]+$/, '')}.` : '';
+      const note = v.p.note ? ` ${v.p.note.replace(/[.\s]+$/, '')}.` : '';
       nudges.push({ key: `h-${v.p.id}`, kind: 'hello', v, title: `Say hello to ${first}`, sub: `${where ? `${where}.` : `Met ${whenAgo(v.st.last?.date ?? v.p.met ?? ref)}.`}${note}` });
     } else if (v.st.stage === 'again' && !withPlan.has(v.p.id)) {
-      nudges.push({ key: `i-${v.p.id}`, kind: 'invite', v, title: `Ask ${first} to something small`, sub: `${where ? `${where}. ` : ''}A chai or a walk right after is enough.` });
+      nudges.push({ key: `i-${v.p.id}`, kind: 'invite', v, title: `Plan something with ${first}`, sub: `${where ? `${where}. ` : ''}A chai or a walk right after is enough.` });
     }
   }
   const rank = (n: Nudge) => (n.kind === 'friend' ? 0 : n.kind === 'hello' ? 1 : 2);

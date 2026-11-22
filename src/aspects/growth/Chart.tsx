@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Line, Path } from 'react-native-svg';
-import { addDays, SP, t, useAspect } from '@/aspects/kit';
+import { addDays, shortDay, SP, t, useAspect } from '@/aspects/kit';
 import { C } from '@/theme';
 
 // A section over weeks on a fixed 0 to 10 scale, so a small wobble looks small. White is what the data shows each
@@ -67,8 +67,8 @@ export function Chart({ series, weeks, felt, width, height = 120, trend, axis = 
       </Svg>
       {axis ? (
         <View style={s.axis}>
-          <Text style={t.caption}>{weeks[0]?.label.replace(/\s*[–—-].*$/, '')}</Text>
-          <Text style={t.caption}>{weeks[n - 1]?.partial ? 'This week' : weeks[n - 1]?.label.replace(/\s*[–—-].*$/, '')}</Text>
+          <Text style={t.caption}>{weeks[0] ? `Week of ${shortDay(weeks[0].from)}` : ''}</Text>
+          <Text style={t.caption}>{weeks[n - 1]?.partial ? 'This week' : weeks[n - 1] ? `Week of ${shortDay(weeks[n - 1].from)}` : ''}</Text>
         </View>
       ) : null}
     </View>

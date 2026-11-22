@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { Button, Card, Empty, Failed, Field, haptic, Screen, Section, Sheet, Skeleton, SP, t, useAspect } from '@/aspects/kit';
+import { addDays, Button, Card, Empty, Failed, Field, haptic, Screen, Section, Sheet, shortDay, Skeleton, SP, t, useAspect, weekday } from '@/aspects/kit';
 import { useCollection } from '@/lib/mod';
 import { C } from '@/theme';
 import { refreshGrowth } from './data';
@@ -13,7 +13,8 @@ import { NAME } from './ui';
 const text = (r: Pick<Rule, 'when' | 'then'>) => {
   const w = r.when.trim().replace(/^when\s+/i, '').replace(/[.,]+$/, '');
   const th = r.then.trim().replace(/[.]+$/, '');
-  return w && th ? `When ${w}, ${th.charAt(0).toLowerCase()}${th.slice(1)}.` : '';
+  const lead = /^I/.test(th) ? th : `${th.charAt(0).toLowerCase()}${th.slice(1)}`; // "I" stays a capital
+  return w && th ? `When ${w}, ${lead}.` : '';
 };
 const held = (r: Rule) => {
   const c = r.checks ?? [];
@@ -63,7 +64,7 @@ function RuleRow({ r, onPress }: { r: Rule; onPress: () => void }) {
   const checks = (r.checks ?? []).slice(-8);
   const sub = r.status === 'retired' ? 'Retired'
     : h.of ? `Held ${h.held} of ${h.of} ${h.of === 1 ? 'time' : 'times'}` : 'Not checked yet';
-  const from = r.born?.text ? `From ${r.born.week ? `the week of ${weekWords(r.born.week)}` : 'a review'}: ${r.born.text}` : null;
+  const from = r.born?.text ? `From ${r.born.week ? `the week of ${weekWords(r.born.week)}` : 'a review'}: ${r.born.text}` : null; // "the week of 16 Nov"
   return (
     <Card onPress={onPress} label={`${text(r)} ${sub}`} style={s.rule}>
       <Text style={[t.strong, r.status === 'retired' && { color: C.muted }]}>{text(r)}</Text>
@@ -82,8 +83,13 @@ function RuleRow({ r, onPress }: { r: Rule; onPress: () => void }) {
   );
 }
 
-/** "2026-W46" as words without the year's week number: "week 46". */
-const weekWords = (key: string) => `week ${Number(key.split('-W')[1])}`;
+/** An ISO week key as the day it starts: "2026-W47" is "16 Nov". */
+function weekWords(key: string) {
+  const [y, w] = key.split('-W').map(Number);
+  const jan4 = `${y}-01-04`;
+  const monday = addDays(jan4, -((weekday(jan4) + 6) % 7));
+  return shortDay(addDays(monday, (w - 1) * 7));
+}
 
 /** Write, rewrite, retire or delete one rule. */
 export function RuleSheet({ open, rule, onClose }: { open: boolean; rule: Rule | null; onClose: () => void }) {
@@ -126,7 +132,7 @@ export function RuleSheet({ open, rule, onClose }: { open: boolean; rule: Rule |
         {preview ? <Text style={t.small}>{preview}</Text> : <Text style={t.caption}>One situation and one thing you do. Small enough to keep on a bad day.</Text>}
         {rule && (rule.checks ?? []).length ? (
           <Text style={t.caption}>
-            Checked in {(rule.checks ?? []).length} {(rule.checks ?? []).length === 1 ? 'review' : 'reviews'}, last in {weekWords(rule.checks!.at(-1)!.week)}.
+            Checked in {(rule.checks ?? []).length} {(rule.checks ?? []).length === 1 ? 'review' : 'reviews'}, last in the week of {weekWords(rule.checks!.at(-1)!.week)}.
           </Text>
         ) : null}
         <Button label={rule ? 'Save changes' : 'Save rule'} onPress={save} disabled={!ok} busy={busy} />

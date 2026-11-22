@@ -62,7 +62,7 @@ export function Scorer({ sections, values, onChange }: {
                 <Text style={t.strong}>{sec.name}</Text>
                 <Text style={t.caption}>{sub}</Text>
               </View>
-              <Text style={[t.title2, t.num, { color: v == null ? C.faint : changed ? color : C.text }]}>{v == null ? 'None' : num(v, 1)}</Text>
+              <Text style={[v == null ? t.label : t.title2, t.num, { color: v == null ? C.faint : changed ? color : C.text }]}>{v == null ? 'Not set' : num(v, 1)}</Text>
             </View>
             <Track value={v} measured={sec.measured} label={`${sec.name} score`} onChange={(n) => onChange(sec.key, n)} />
           </View>

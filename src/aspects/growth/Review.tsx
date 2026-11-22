@@ -19,11 +19,17 @@ const VERDICTS: { key: Verdict; label: string }[] = [{ key: 'done', label: 'Done
 const HELD: [string, boolean | null][] = [['Held', true], ['Broke it', false], ['Didn’t come up', null]];
 const MAX_MOVES = 3;
 
+type Sealed = { moves: string[]; rule: string | null };
+type Handoff = { reviewed: string | null; moves: { week: string | null; items: { id: string; text: string; state: string }[] } };
+const STATE_WORD: Record<string, string> = { offered: 'Waiting in Mission', accepted: 'Taken on in Mission', declined: 'Let go' };
+
 export function Review({ open, onClose }: { open: boolean; onClose: () => void }) {
   const g = useGet<ReviewDraft>(open ? REVIEW : null);
+  const [just, setJust] = useState<Sealed | null>(null); // what this sitting closed, kept while the route reloads
   const d = g.data;
+  const close = () => { setJust(null); onClose(); };
   return (
-    <Screen open={open} onClose={onClose} title="Sunday review" immersive scroll={!d || d.status !== 'open'}>
+    <Screen open={open} onClose={close} title="Sunday review" immersive scroll={!d || d.status !== 'open' || !!just}>
       {!d ? (
         g.error ? <Failed message={g.error} onRetry={g.refresh} /> : (
           <View style={s.list}>
@@ -33,14 +39,16 @@ export function Review({ open, onClose }: { open: boolean; onClose: () => void }
             {Array.from({ length: 3 }, (_, i) => <Skeleton key={i} height={88} radius={24} />)}
           </View>
         )
+      ) : just ? (
+        <Done d={d} moves={just.moves} rule={just.rule} onClose={close} />
       ) : d.status === 'closed' ? (
         <Card>
           <Empty title="The review opens on Saturday" body={`A week can be closed from Saturday to Tuesday.${d.window.nextOpen ? ` The next one opens ${dayLabel(d.window.nextOpen)}.` : ''}`} />
         </Card>
       ) : d.status === 'sealed' ? (
-        <Done d={d} moves={null} rule={null} onClose={onClose} />
+        <Done d={d} moves={null} rule={null} onClose={close} />
       ) : (
-        <Flow key={`${d.week}:${d.drafted_at}`} d={d} onClose={onClose} redraft={g.refresh} />
+        <Flow key={`${d.week}:${d.drafted_at}`} d={d} onSealed={setJust} redraft={g.refresh} />
       )}
     </Screen>
   );
@@ -51,7 +59,7 @@ type Moved = { id: string; text: string; aspect: AspectKey; keep: boolean; mine?
 type Move = DraftMove & { mine?: boolean };
 type RuleIdea = { id: string; when: string; then: string; why: string; from: { text: string; aspect: AspectKey; why: string | null } | null };
 
-function Flow({ d, onClose, redraft }: { d: ReviewDraft; onClose: () => void; redraft: () => Promise<unknown> }) {
+function Flow({ d, onSealed, redraft }: { d: ReviewDraft; onSealed: (s: Sealed) => void; redraft: () => Promise<unknown> }) {
   const a = useAspect();
   const active = d.rules.filter((r) => r.status === 'active');
   const steps: StepKey[] = [
@@ -78,7 +86,6 @@ function Flow({ d, onClose, redraft }: { d: ReviewDraft; onClose: () => void; re
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [ai, setAi] = useState(false);
-  const [sealed, setSealed] = useState<{ moves: string[]; rule: string | null } | null>(null);
 
   const carried: Move[] = d.commitments.filter((c) => verdicts[c.id]?.carry && verdicts[c.id]?.verdict !== 'done')
     .map((c) => ({ id: `carry:${c.id}`, text: c.text, aspect: c.aspect, serves: c.parent, carry: c.id, from: null, source: 'carry' }));
@@ -87,17 +94,17 @@ function Flow({ d, onClose, redraft }: { d: ReviewDraft; onClose: () => void; re
   const chosen: Move[] = [...carried, ...offered.filter((m) => picks.includes(m.id)).slice(0, room)];
 
   const ideas: RuleIdea[] = [];
-  const seen = new Set<string>();
+  const seen = new Set<string>(active.map((r) => r.when.trim().toLowerCase().replace(/^when\s+/, '')));
   for (const r of d.ruleIdeas) {
-    if (seen.has(r.when)) continue;
-    seen.add(r.when);
+    if (seen.has(r.when.toLowerCase())) continue;
+    seen.add(r.when.toLowerCase());
     ideas.push({ id: r.id, when: r.when, then: r.then, why: r.why, from: null });
   }
   for (const m of missed) {
     if (!m.keep || !m.why) continue;
-    const b = (m.why2 && d.ruleBank[m.why2]) || d.ruleBank[m.why];
-    if (!b || seen.has(b.when)) continue;
-    seen.add(b.when);
+    const b = [m.why2, m.why].map((k) => (k ? d.ruleBank[k] : null)).find((x) => x && !seen.has(x.when.toLowerCase()));
+    if (!b) continue;
+    seen.add(b.when.toLowerCase());
     ideas.push({ id: `b:${m.id}`, when: b.when, then: b.then, why: m.text, from: { text: m.text, aspect: m.aspect, why: m.why2 ?? m.why } });
   }
   const pickedRule = ruleId === 'own'
@@ -127,7 +134,7 @@ function Flow({ d, onClose, redraft }: { d: ReviewDraft; onClose: () => void; re
       };
       await sealReview(body);
       haptic.success();
-      setSealed({ moves: chosen.map((m) => m.text), rule: ruleLine });
+      onSealed({ moves: chosen.map((m) => m.text), rule: ruleLine });
     } catch (e) {
       a.notice((e as Error).message);
     } finally { setBusy(false); }
@@ -143,7 +150,6 @@ function Flow({ d, onClose, redraft }: { d: ReviewDraft; onClose: () => void; re
     } finally { setAi(false); }
   };
 
-  if (sealed) return <Done d={d} moves={sealed.moves} rule={sealed.rule} onClose={onClose} />;
   if (ai) return <Loading label="The model is reading your week. About twenty seconds." />;
 
   const head = (title: string, sub?: string) => (
@@ -168,7 +174,6 @@ function Flow({ d, onClose, redraft }: { d: ReviewDraft; onClose: () => void; re
     body = (
       <>
         {head('What moved', moved.length ? 'Drafted from your data. Untick anything that doesn’t feel like progress; add what the data missed.' : 'Nothing stood out in the data. Add anything that went well, even small.')}
-        {d.headline ? <Text style={t.lead}>{d.headline}</Text> : null}
         {moved.length ? (
           <View style={s.rows}>
             {moved.map((m) => (
@@ -230,7 +235,11 @@ function Flow({ d, onClose, redraft }: { d: ReviewDraft; onClose: () => void; re
             <Text style={t.caption}>{r.from ? `From: ${r.from.text}` : r.why}</Text>
           </Card>
         ))}
-        {!ideas.length ? <Text style={t.small}>Pick reasons on the misses screen and ideas show up here. Or write your own.</Text> : null}
+        {!ideas.length ? (
+          <Text style={t.small}>
+            {missed.some((m) => m.keep && m.why) ? 'Your rules already cover the reasons you picked. Write a new one if something else is going on.' : 'Pick reasons on the misses screen and ideas show up here. Or write your own.'}
+          </Text>
+        ) : null}
         <Card onPress={() => setRuleId(ruleId === 'own' ? null : 'own')} label="Write my own rule" style={[s.card, ruleId === 'own' && { borderColor: a.color }]}>
           <View style={s.pickRow}>
             <Text style={[t.strong, s.flex]}>Write my own</Text>
@@ -294,8 +303,8 @@ function Flow({ d, onClose, redraft }: { d: ReviewDraft; onClose: () => void; re
         {d.headline ? <Text style={t.lead}>{d.headline}</Text> : null}
         <Field label="One line on how it felt, if you like" value={feel} onChangeText={setFeel} placeholder="Slow start, good finish" maxLength={200} multiline />
         <View style={s.sum}>
-          {d.commitments.length ? <SumLine text={`${done} of ${d.commitments.length} of the week’s goals done`} /> : null}
-          <SumLine text={`${kept} ${kept === 1 ? 'thing' : 'things'} moved, ${missN} missed${why ? `, ${why} with a reason` : ''}`} />
+          {d.commitments.length ? <SumLine text={`${done} of ${d.commitments.length} done from the week you set`} /> : null}
+          <SumLine text={`${kept ? `${kept} ${kept === 1 ? 'thing' : 'things'} moved` : 'Nothing marked as moved'}, ${missN} missed${why ? `, ${why} with a reason` : ''}`} />
           <SumLine text={ruleLine ? `New rule: ${ruleLine}` : 'No new rule this week'} />
           {steps.includes('score') ? <SumLine text={scoreSkip ? 'Wheel not scored' : 'Wheel scored'} /> : null}
           <SumLine text={chosen.length ? `${chosen.length} ${chosen.length === 1 ? 'move' : 'moves'} for Mission: ${chosen.map((m) => m.text).join('; ')}` : 'No moves for next week'} />
@@ -345,7 +354,7 @@ function CommitCard({ c, v, onChange }: {
   c: Commitment; v: { verdict: Verdict | null; carry: boolean }; onChange: (v: { verdict: Verdict | null; carry: boolean }) => void;
 }) {
   const meta = [NAME[c.aspect], c.kind === 'move' ? 'a move from last review' : null,
-    c.progress != null ? `${Math.round(c.progress * 100)} percent along` : null, c.tasks ? `${c.tasks} ${c.tasks === 1 ? 'task' : 'tasks'}` : null].filter(Boolean).join(', ');
+    c.progress ? `${Math.round(c.progress)} percent along` : null, c.tasks ? `${c.tasks} ${c.tasks === 1 ? 'task' : 'tasks'}` : null].filter(Boolean).join(', ');
   return (
     <Card style={s.card}>
       <Text style={t.strong}>{c.text}</Text>
@@ -364,11 +373,9 @@ function MissCard({ m, whys, tree, onChange }: { m: Miss; whys: string[]; tree: 
   const sub = m.why ? tree[m.why] ?? [] : [];
   return (
     <Card style={[s.card, !m.keep && s.off]}>
-      <View style={s.pickRow}>
-        <View style={s.flex}>
-          <Text style={t.strong}>{m.text}</Text>
-          <Text style={t.caption}>{[NAME[m.aspect], m.detail].filter(Boolean).join(', ')}</Text>
-        </View>
+      <Text style={t.strong}>{m.text}</Text>
+      <View style={s.missMeta}>
+        <Text style={[t.caption, s.flex]}>{[NAME[m.aspect], m.detail].filter(Boolean).join(', ')}</Text>
         <Press label={m.keep ? `Not a miss: ${m.text}` : `Count it again: ${m.text}`} onPress={() => onChange({ ...m, keep: !m.keep })} style={s.notMiss}>
           <Text style={t.label}>{m.keep ? 'Not a miss' : 'Count it'}</Text>
         </Press>
@@ -403,7 +410,7 @@ function MoveCard({ m, on, disabled, note, goals, serves, onServe, onToggle }: {
         </View>
         <Radio on={on} />
       </Press>
-      {on && goals.length ? (
+      {on && goals.length && (m.aspect === 'mission' || serves) ? (
         <View style={s.serve}>
           <Text style={t.caption}>Serves</Text>
           <View style={s.chips}>
@@ -421,6 +428,8 @@ function MoveCard({ m, on, disabled, note, goals, serves, onServe, onToggle }: {
 /** After the seal: what went where, and the way to Mission. */
 function Done({ d, moves, rule, onClose }: { d: ReviewDraft; moves: string[] | null; rule: string | null; onClose: () => void }) {
   const a = useAspect();
+  const h = useGet<Handoff>(moves ? null : '/mod/growth/handoff');
+  const kept = h.data?.reviewed === d.week ? h.data.moves.items : null;
   return (
     <View style={s.done}>
       <View style={[s.doneMark, { borderColor: a.color }]}><Icon name="check" size={28} color={a.color} /></View>
@@ -431,9 +440,11 @@ function Done({ d, moves, rule, onClose }: { d: ReviewDraft; moves: string[] | n
           {moves.map((m) => <SumLine key={m} text={m} />)}
           <Text style={t.caption}>{moves.length === 1 ? 'This move waits' : 'These moves wait'} in Mission&apos;s This week. Take {moves.length === 1 ? 'it' : 'them'} on there.</Text>
         </View>
-      ) : moves ? <Text style={[t.small, s.centreText]}>No moves for next week.</Text> : (
-        <Text style={[t.small, s.centreText]}>Its moves wait in Mission&apos;s This week.</Text>
-      )}
+      ) : moves ? <Text style={[t.small, s.centreText]}>No moves for next week.</Text> : kept?.length ? (
+        <View style={s.sum}>
+          {kept.map((m) => <SumLine key={m.id} text={`${m.text}. ${STATE_WORD[m.state] ?? ''}`} />)}
+        </View>
+      ) : kept ? <Text style={[t.small, s.centreText]}>No moves for next week.</Text> : null}
       {rule ? <Text style={[t.small, s.centreText]}>New rule: {rule}</Text> : null}
       <View style={s.doneBtns}>
         <Button label="Open Mission" kind="accent" onPress={() => { onClose(); a.openAspect('mission'); }} />
@@ -461,7 +472,8 @@ const s = StyleSheet.create({
   radioIn: { width: 10, height: 10, borderRadius: 5 },
   addRow: { flexDirection: 'row', alignItems: 'flex-end', gap: SP[8] },
   aiRow: { flexDirection: 'row', alignItems: 'center', gap: SP[12] },
-  notMiss: { minHeight: 44, justifyContent: 'center', paddingHorizontal: SP[8] },
+  missMeta: { flexDirection: 'row', alignItems: 'center', gap: SP[8], marginTop: -SP[8] },
+  notMiss: { minHeight: 44, justifyContent: 'center', paddingLeft: SP[8] },
   skip: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   serve: { gap: SP[4] },
   sum: { alignSelf: 'stretch', gap: SP[8] },

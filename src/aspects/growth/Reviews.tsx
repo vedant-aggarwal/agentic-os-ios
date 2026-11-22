@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { Card, Empty, Failed, Row, Screen, Section, Skeleton, SP, shortDay, t } from '@/aspects/kit';
+import { Card, Empty, Failed, Row, Screen, Section, Skeleton, SP, shortDay, t, today } from '@/aspects/kit';
 import { useCollection } from '@/lib/mod';
 import { C } from '@/theme';
 import type { ReviewDoc } from './types';
@@ -16,7 +16,7 @@ export function ReviewsScreen({ open, onClose }: { open: boolean; onClose: () =>
   const [focus, setFocus] = useState<string | null>(null);
   const all = (reviews.items ?? []).filter((r) => !r.deleted_at).sort((a, b) => b.week.localeCompare(a.week));
   const sealed = all.filter((r) => r.status === 'sealed');
-  const drafts = all.filter((r) => r.status !== 'sealed');
+  const drafts = all.filter((r) => r.status !== 'sealed' && !!r.to && r.to < today()); // the open week's draft is not past
   const doc = focus ? all.find((r) => r.id === focus) ?? null : null;
 
   return (

@@ -55,7 +55,7 @@ export function OverTime({ open, start, onClose }: { open: boolean; start: Aspec
                 {x.series.some((v) => v != null) || x.feltHistory.length ? (
                   <Chart series={x.series} weeks={d.weeks} felt={x.feltHistory} width={width} height={56} />
                 ) : null}
-                {!x.series.some((v) => v != null) ? <Text style={t.caption}>No data from this part of your life yet. Only your score shows.</Text> : null}
+                {!x.series.some((v) => v != null) ? <Text style={t.caption}>{x.feltHistory.length ? 'No data from this part of your life yet. Only your score shows.' : 'Nothing here yet. Score the wheel and this fills in week by week.'}</Text> : null}
               </Card>
             ))}
           </Section>

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import {
-  Button, Card, Chip, dayLabel, Empty, Failed, Field, Icon, num, Page, Press, R, Row, Section, Sheet, Skeleton, SP, t, useAspect,
+  Button, Card, Chip, dayLabel, Empty, Failed, Field, Icon, num, Page, Press, R, Row, Section, Sheet, shortDay, Skeleton, SP, t, useAspect,
 } from '@/aspects/kit';
 import { useGet } from '@/lib/mod';
 import { C, type AspectKey } from '@/theme';
@@ -69,7 +69,7 @@ export default function Growth() {
         {sec ? (
           <SectionCard sec={sec} onOpen={() => a.openAspect(sec.key)} onTime={() => { setTimeSec(sec.key); setOpen('time'); }} onClose={() => setSel(null)} />
         ) : (
-          <Summary home={d} onPick={setSel} />
+          <Summary home={d} onPick={setSel} onScore={() => setOpen('score')} />
         )}
       </View>
 
@@ -112,13 +112,14 @@ function overTimeLine(d: Home) {
 }
 
 /** Under the wheel when nothing is picked: how old the scores are, what moved, where score and data part most. */
-function Summary({ home, onPick }: { home: Home; onPick: (k: AspectKey) => void }) {
+function Summary({ home, onPick, onScore }: { home: Home; onPick: (k: AspectKey) => void; onScore: () => void }) {
+  const a = useAspect();
   const w = home.wheel, sc = w.scoring;
   const moved = w.sections.filter((x) => x.moved && x.change != null);
   const line1 = sc.scored && sc.last ? `Scored ${whenSaid(sc.last)}.` : 'Not scored yet.';
   const line2 = !sc.scored ? 'Score it once and the wheel fills in.'
     : !sc.previous ? 'One scoring so far. The next shows what moved.'
-    : moved.length ? `Since ${dayLabel(sc.previous)}: ${moved.map((x) => `${x.name} ${x.change! > 0 ? 'up' : 'down'} ${Math.abs(x.change!)}`).join(', ')}.`
+    : moved.length ? `Since ${shortDay(sc.previous)}: ${moved.map((x) => `${x.name} ${x.change! > 0 ? 'up' : 'down'} ${Math.abs(x.change!)}`).join(', ')}.`
     : 'Nothing moved more than a point since the scoring before.';
   const gaps = w.sections.filter((x) => x.agree && x.agree !== 'agree' && x.felt != null && x.measured != null)
     .sort((x, y) => Math.abs(y.felt! - y.measured!) - Math.abs(x.felt! - x.measured!));
@@ -126,6 +127,11 @@ function Summary({ home, onPick }: { home: Home; onPick: (k: AspectKey) => void 
   return (
     <View style={s.summary}>
       <Text style={[t.small, s.centreText]}>{line1} {line2}</Text>
+      {home.lead !== 'score' && sc.days !== 0 ? (
+        <Press label="Score your wheel now" onPress={onScore} wrap={s.selfCentre} style={s.scoreLink}>
+          <Text style={[t.label, { color: a.color }]}>Score now</Text>
+        </Press>
+      ) : null}
       {g ? (
         <Card onPress={() => onPick(g.key)} label={`Where they part most: ${g.name}, you scored ${num(g.felt!, 1)}, the data reads ${num(g.measured!, 1)}`} style={s.gapCard}>
           <View style={s.gapText}>
@@ -267,9 +273,11 @@ const s = StyleSheet.create({
   flex: { flex: 1 },
   gap24: { gap: SP[24] },
   centre: { alignItems: 'center' },
+  selfCentre: { alignSelf: 'center' },
   centreText: { textAlign: 'center' },
   wheelBlock: { gap: SP[16] },
   summary: { gap: SP[12] },
+  scoreLink: { minHeight: 44, paddingHorizontal: SP[16], justifyContent: 'center' },
   gapCard: { flexDirection: 'row', alignItems: 'center', gap: SP[12], paddingVertical: SP[12] },
   gapText: { flex: 1, gap: SP[2] },
   secCard: { gap: SP[8] },

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Pressable, RefreshControl, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+// gesture handler's ScrollView, so the hero's sideways drag can take over from the page's scroll
+import { ScrollView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Backdrop, EdgeGlow } from '@/components/Backdrop';
 import { EdgeBlur } from '@/components/EdgeBlur';

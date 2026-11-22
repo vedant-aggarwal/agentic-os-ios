@@ -80,9 +80,10 @@ export function ThingRow({ pick, done, onToggle, onSwap, sub }: {
 }
 
 /** Where a suggestion came from, in a few words, under it. */
-export function whyOf(c: Cand | null): string | null {
+/** Where an idea came from. Short on the home card; Nora's reason in full on the person's screen. */
+export function whyOf(c: Cand | null, short = false): string | null {
   if (!c) return null;
-  if (c.from === 'nora') return c.why ? c.why : 'An idea from Nora';
+  if (c.from === 'nora') return c.why && !short ? c.why : 'An idea from Nora';
   if (c.from === 'idea') return 'One of your ideas';
   if (c.from === 'rhythm') return 'Your usual';
   if (c.from === 'own') return 'Your own';

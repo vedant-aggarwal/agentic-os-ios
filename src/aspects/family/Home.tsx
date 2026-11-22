@@ -38,7 +38,7 @@ export function PersonCard({ c, onOpen, onToggle, onSwap, onAddPhoto, onAddLine 
       <View style={s.week}>
         <Divider />
         <Text style={[t.label, s.weekLabel]}>This week</Text>
-        <ThingRow pick={c.week.pick} done={c.week.done} onToggle={onToggle} onSwap={c.week.options.length ? onSwap : undefined} sub={whyOf(c.week.pick)} />
+        <ThingRow pick={c.week.pick} done={c.week.done} onToggle={onToggle} onSwap={c.week.options.length ? onSwap : undefined} sub={whyOf(c.week.pick, true)} />
         {c.week.done ? (
           <View style={s.after}>
             <LinkRow icon={<G name="photo" size={16} color={color} />} label="Add a photo" color={color} onPress={onAddPhoto} />

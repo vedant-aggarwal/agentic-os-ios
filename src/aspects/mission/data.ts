@@ -53,7 +53,7 @@ export function endedAgo(end: string | null) {
 }
 export function daysLeftLabel(end: string) {
   const d = daysBetween(today(), end);
-  return d <= 0 ? 'Last day' : d === 1 ? 'One day left' : `${count(d, 'day')} left`;
+  return d <= 0 ? 'Last day' : d === 1 ? 'One day left' : cap(`${count(d, 'day')} left`);
 }
 /** When a reading was true: "today", "yesterday", "on 18 Jul". */
 export const when = (day: string) => {

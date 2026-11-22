@@ -54,7 +54,7 @@ export function GoalScreen({ id, open, onClose }: { id: string; open: boolean; o
               <>
                 <Text style={[t.big, t.num, { color: tone }]}>{Math.round(progressOf(g, src) * 100)}%</Text>
                 <GoalBar progress={progressOf(g, src)} time={g.time} color={tone} />
-                <Text style={t.small}>{sourceLine(g, src)}{g.time != null && g.status === 'active' ? `. ${Math.round(g.time * 100)}% of its time has gone.` : ''}</Text>
+                <Text style={t.small}>{sourceLine(g, src)}{g.time != null && g.time > 0.01 && g.status === 'active' ? `. ${Math.round(Math.min(1, g.time) * 100)}% of its time has gone.` : '.'}</Text>
                 <Link label="Change how it's measured" onPress={() => nav.measure(g.id)} />
               </>
             )}
@@ -115,10 +115,10 @@ export function GoalScreen({ id, open, onClose }: { id: string; open: boolean; o
 
 function WeekState({ c }: { c: Commitment }) {
   if (c.status !== 'active') return null;
-  const head = c.state === 'moving' ? `Moving, ${count(c.tasks.doneWeek, 'task')} done this week` : c.state === 'not_started' ? 'Not started yet' : 'This week';
+  const head = c.state === 'moving' ? (c.tasks.doneWeek ? `Moving, ${count(c.tasks.doneWeek, 'task')} done this week` : 'Moving') : c.state === 'not_started' ? 'Not started yet' : 'Next step';
   return (
     <Section title={head}>
-      <Text style={t.body}>{c.next ? `${c.state === 'not_started' ? 'Smallest next step' : 'Next step'}: ${c.next.title}` : 'No next step yet. Add a milestone or a task below.'}</Text>
+      <Text style={t.body}>{c.next ? (c.state === 'not_started' ? `Smallest next step: ${c.next.title}` : c.next.title) : 'No next step yet. Add a milestone or a task below.'}</Text>
     </Section>
   );
 }
@@ -223,13 +223,14 @@ function MeasureBody({ goal, onClose }: { goal: string; onClose: () => void }) {
   const cur = d?.measure && !d.measure.deleted_at ? d.measure : null;
   const [kind, setKind] = useState<Kind | null>(null);
   const k: Kind = kind ?? (cur?.source as Kind) ?? (d?.goal.progressMode === 'manual' ? 'manual' : 'auto');
+  const same = cur?.source === k ? cur : null; // a number kept for one kind of measure never prefills another
   const [pct, setPct] = useState<number | null>(null);
   const [target, setTarget] = useState('');
   const [from, setFrom] = useState('');
   const [jar, setJar] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const funds = useGet<{ items: Fund[] }>(k === 'jar' ? '/mod/money/funds' : null);
-  const body = useGet<{ weight: { now: number | null } | null }>(k === 'weight' ? '/mod/body/today' : null);
+  const body = useGet<{ weight: { now: number | null; goal: { goal: number } | null } | null }>(k === 'weight' ? '/mod/body/today' : null);
   if (!d) return r.error ? <Failed message={r.error} onRetry={r.refresh} /> : <Skeleton height={200} radius={24} />;
 
   const value = pct ?? Math.round(d.goal.progress);
@@ -240,9 +241,9 @@ function MeasureBody({ goal, onClose }: { goal: string; onClose: () => void }) {
       const base = { id: goal, goal };
       if (k === 'auto') { await measures.put({ ...base, source: 'auto' }); await call(`${M}/goal/${goal}`, { progressMode: 'auto' }); }
       if (k === 'manual') { await measures.put({ ...base, source: 'manual' }); await call(`${M}/goal/${goal}`, { progress: value }); }
-      if (k === 'income') await measures.put({ ...base, source: 'income', unit: 'rupees', target: n(target) ?? cur?.target ?? null });
-      if (k === 'jar') await measures.put({ ...base, source: 'jar', unit: 'rupees', jar: jar ?? cur?.jar ?? null, target: null });
-      if (k === 'weight') await measures.put({ ...base, source: 'weight', unit: 'kg', target: n(target) ?? cur?.target ?? null, from: n(from) ?? cur?.from ?? body.data?.weight?.now ?? null });
+      if (k === 'income') await measures.put({ ...base, source: 'income', unit: 'rupees', target: n(target) ?? same?.target ?? null });
+      if (k === 'jar') await measures.put({ ...base, source: 'jar', unit: 'rupees', jar: jar ?? same?.jar ?? null, target: null });
+      if (k === 'weight') await measures.put({ ...base, source: 'weight', unit: 'kg', target: n(target) ?? same?.target ?? null, from: n(from) ?? same?.from ?? body.data?.weight?.now ?? null });
       refresh();
       haptic.light();
       onClose();
@@ -252,38 +253,39 @@ function MeasureBody({ goal, onClose }: { goal: string; onClose: () => void }) {
   return (
     <>
       <View style={st.tiles}>
-        <Tile title="Count it for me" sub="Milestones, tasks or goals under it" selected={k === 'auto'} onPress={() => setKind('auto')} />
+        <Tile title="Count it for me" sub="Tasks or goals under it, else milestones" selected={k === 'auto'} onPress={() => setKind('auto')} />
         <Tile title="A number I set" sub="Move it by hand" selected={k === 'manual'} onPress={() => setKind('manual')} />
         <Tile title="Income this month" sub="From Money" selected={k === 'income'} onPress={() => setKind('income')} />
         <Tile title="A savings jar" sub="From Money" selected={k === 'jar'} onPress={() => setKind('jar')} />
         <Tile title="Weight" sub="From Body" selected={k === 'weight'} onPress={() => setKind('weight')} />
       </View>
       {k === 'manual' ? <Stepper label="progress" value={value} onChange={setPct} step={5} min={0} max={100} format={(v) => `${v}%`} /> : null}
-      {k === 'income' ? <Field label="Target for the month" value={target} onChangeText={setTarget} keyboardType="number-pad" suffix="₹" placeholder={cur?.target ? String(cur.target) : 'Money’s own target'} /> : null}
+      {k === 'income' ? <Field label="Target for the month" value={target} onChangeText={setTarget} keyboardType="number-pad" suffix="₹" placeholder={same?.target ? String(same.target) : 'Money’s own target'} /> : null}
       {k === 'jar' ? (
         items == null ? (funds.error ? <Text style={t.small}>{funds.error}</Text> : <Skeleton height={36} />)
           : items.length ? (
             <View style={st.chips}>
               {items.map((f) => {
                 const v = fundIn(f);
-                return <Chip key={f.id} label={v != null ? `${f.name}, ${fmt(v, 'rupees')}` : f.name} selected={(jar ?? cur?.jar) === f.id} onPress={() => setJar(f.id)} />;
+                return <Chip key={f.id} label={v != null ? `${f.name}, ${fmt(v, 'rupees')}` : f.name} selected={(jar ?? same?.jar) === f.id} onPress={() => setJar(f.id)} />;
               })}
             </View>
           ) : <Text style={t.small}>No savings jars in Money yet. Make one there and it shows here.</Text>
       ) : null}
       {k === 'weight' ? (
         <View style={st.row2}>
-          <View style={ps.flex}><Field label="Starting from" value={from} onChangeText={setFrom} keyboardType="decimal-pad" suffix="kg" placeholder={cur?.from != null ? String(cur.from) : body.data?.weight?.now != null ? String(body.data.weight.now) : ''} /></View>
-          <View style={ps.flex}><Field label="Aiming for" value={target} onChangeText={setTarget} keyboardType="decimal-pad" suffix="kg" placeholder={cur?.target != null ? String(cur.target) : 'Body’s goal'} /></View>
+          <View style={ps.flex}><Field label="Starting from" value={from} onChangeText={setFrom} keyboardType="decimal-pad" suffix="kg" inputStyle={st.shrink} placeholder={same?.from != null ? String(same.from) : body.data?.weight?.now != null ? String(body.data.weight.now) : ''} /></View>
+          <View style={ps.flex}><Field label="Aiming for" value={target} onChangeText={setTarget} keyboardType="decimal-pad" suffix="kg" inputStyle={st.shrink} placeholder={same?.target != null ? String(same.target) : body.data?.weight?.goal ? String(body.data.weight.goal.goal) : ''} /></View>
         </View>
       ) : null}
-      <Text style={t.caption}>{k === 'auto' ? 'Ticks and done tasks move it. Nothing to keep up by hand.' : k === 'manual' ? 'Only you move this one.' : 'Read each time you open Mission, with the date it was true.'}</Text>
-      <Button label="Save" onPress={save} busy={busy} disabled={k === 'jar' && !(jar ?? cur?.jar)} />
+      <Text style={t.caption}>{k === 'auto' ? 'Done tasks and finished goals under it move it. With neither, milestones do.' : k === 'manual' ? 'Only you move this one.' : 'Read each time you open Mission, with the date it was true.'}</Text>
+      <Button label="Save" onPress={save} busy={busy} disabled={k === 'jar' && !(jar ?? same?.jar)} />
     </>
   );
 }
 
 const st = StyleSheet.create({
+  shrink: { minWidth: 0 }, // a web input keeps a wide default width; without this the suffix is pushed out of a half-width field
   gap: { gap: 16 },
   head: { gap: 8 },
   progress: { gap: 8 },

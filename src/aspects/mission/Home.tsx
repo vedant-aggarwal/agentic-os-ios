@@ -6,11 +6,11 @@ import {
 import { ApiError, call, invalidate, useGet, type Read } from '@/lib/mod';
 import { C } from '@/theme';
 import {
-  act, ASPECT_LABEL, cap, count, daysLeftLabel, HANDOFF, M, message, progressOf, refresh, sourceLine, useReadingSync, useSources,
+  act, ASPECT_LABEL, cap, count, daysLeftLabel, HANDOFF, M, message, NUMBER_WORDS, progressOf, refresh, sourceLine, useReadingSync, useSources,
   type Handoff, type HandoffMove, type Sources,
 } from './data';
 import { useNav } from './nav';
-import { colorOf, Dot, GoalBar, Link, Rung, s as ps, Tag } from './parts';
+import { colorOf, Dot, GoalBar, Link, Rung, s as ps, Tag, Tile } from './parts';
 import type { Commitment, FirstBlock, Goal, Home as HomeData, RecordWeek, WeekBlock } from './types';
 
 /** Mission home: the line he lives by, then this quarter, this week and today's first block, nearer and larger. */
@@ -38,8 +38,8 @@ export function Home({ read }: { read: Read<HomeData> }) {
       <PurposeLine h={h} />
       {nothing ? (
         <Card>
-          <Empty title="Start with this week" body="Pick up to three things this week has to move. The rest of the ladder can wait."
-            action="Set this week" onAction={() => nav.add({ horizon: 'week', start: live.start })} />
+          <Empty title={`Start with ${h.plan ? 'next' : 'this'} week`} body={`Pick up to three things ${h.plan ? 'next' : 'this'} week has to move. The rest of the ladder can wait.`}
+            action={`Set ${h.plan ? 'next' : 'this'} week`} onAction={() => nav.add({ horizon: 'week', start: live.start })} />
         </Card>
       ) : null}
       {h.stale.length ? <CleanUp h={h} /> : null}
@@ -56,7 +56,7 @@ export function Home({ read }: { read: Read<HomeData> }) {
         {h.plan && h.week.commitments.length ? <LastDays week={h.week} /> : null}
         <Rung label={h.plan ? 'Next week' : 'This week'} right={live.label} live>
           {review ? <ReviewLine /> : null}
-          {moves.map((m) => <MoveCard key={m.id} m={m} week={live} reviewed={hand.data?.reviewed ?? null} />)}
+          {moves.map((m) => <MoveCard key={m.id} m={m} week={live} name={h.plan ? 'Next week' : 'This week'} reviewed={hand.data?.reviewed ?? null} />)}
           {live.commitments.map((c) => <CommitCard key={c.id} c={c} s={src} />)}
           {Array.from({ length: Math.max(0, live.limit - live.commitments.length) }, (_, i) => (
             <Press key={i} label="Add a commitment" onPress={() => nav.add({ horizon: 'week', start: live.start })} style={st.slot}>
@@ -141,7 +141,7 @@ export function CommitCard({ c, s }: { c: Commitment; s: Sources }) {
       else { await act('/close', { goal: c.id, outcome: 'done' }); haptic.success(); }
     } catch (e) { a.notice(message(e)); } finally { setBusy(false); }
   };
-  const state = done ? 'Done' : c.state === 'moving' ? `Moving, ${count(c.tasks.doneWeek, 'task')} done this week`
+  const state = done ? 'Done' : c.state === 'moving' ? (c.tasks.doneWeek ? `Moving, ${count(c.tasks.doneWeek, 'task')} done this week` : 'Moving')
     : c.state === 'not_started' ? 'Not started yet' : c.next ? 'Next step' : 'No next step yet';
   const p = progressOf(c, s);
   // the ring and the body are side by side, not nested, so each is its own control
@@ -201,20 +201,22 @@ function ReviewLine() {
 }
 
 /** A move from Growth's sealed review. Keeping it makes it one of the week's commitments. */
-function MoveCard({ m, week, reviewed }: { m: HandoffMove; week: WeekBlock; reviewed: string | null }) {
+function MoveCard({ m, week, name, reviewed }: { m: HandoffMove; week: WeekBlock; name: string; reviewed: string | null }) {
   const a = useAspect();
-  const [busy, setBusy] = useState<'keep' | 'skip' | null>(null);
-  const answer = async (keep: boolean) => {
-    setBusy(keep ? 'keep' : 'skip');
+  const [busy, setBusy] = useState<string | null>(null);
+  const [full, setFull] = useState(false);
+  const open = week.commitments.filter((c) => c.status === 'active');
+  const answer = async (keep: boolean, replaces?: string) => {
+    setBusy(replaces ?? (keep ? 'keep' : 'skip'));
     try {
       const r = await act<{ goal: string | null }>(`/week/${week.key}/move`, {
-        id: m.id, review: reviewed, text: m.text, aspect: m.aspect, serves: m.serves, carry: m.carry, accept: keep,
+        id: m.id, review: reviewed, text: m.text, aspect: m.aspect, serves: m.serves, carry: m.carry, accept: keep, replaces: replaces ?? null,
       });
       await call(`/mod/growth/moves/${encodeURIComponent(m.id)}`, keep ? { state: 'accepted', goal: r.goal } : { state: 'declined' });
       invalidate('/mod/growth/');
       if (keep) haptic.medium();
     } catch (e) {
-      a.notice(e instanceof ApiError && e.status === 409 ? `${week.label} already holds three. Close or move one to keep this.` : message(e));
+      if (e instanceof ApiError && e.status === 409) { setFull(true); haptic.light(); } else a.notice(message(e));
     } finally { setBusy(null); }
   };
   return (
@@ -222,10 +224,23 @@ function MoveCard({ m, week, reviewed }: { m: HandoffMove; week: WeekBlock; revi
       <Text style={t.caption}>{m.carry ? 'From your weekly review, carried on' : 'From your weekly review'}</Text>
       <Text style={t.strong}>{m.text}</Text>
       {m.aspect && ASPECT_LABEL[m.aspect] ? <Tag aspect={m.aspect} text={ASPECT_LABEL[m.aspect]} /> : null}
-      <View style={st.moveButtons}>
-        <Button label="Keep it" kind="soft" small busy={busy === 'keep'} disabled={!!busy} onPress={() => answer(true)} />
-        <Button label="Not this week" kind="quiet" small busy={busy === 'skip'} disabled={!!busy} onPress={() => answer(false)} />
-      </View>
+      {full ? (
+        <View style={st.replace}>
+          <Text style={t.small}>{`${name} already holds ${NUMBER_WORDS[week.limit] ?? week.limit}. Keep this in place of one, and that one is let go with the reason kept.`}</Text>
+          {open.map((c) => (
+            <Tile key={c.id} title={c.title} color={colorOf(c.aspect, a.color)} nested selected={busy === c.id} onPress={() => void answer(true, c.id)} wrap={st.replaceTile} />
+          ))}
+          <View style={st.moveButtons}>
+            <Button label="Not this week" kind="quiet" small busy={busy === 'skip'} disabled={!!busy} onPress={() => answer(false)} />
+            <Button label="Back" kind="quiet" small disabled={!!busy} onPress={() => setFull(false)} />
+          </View>
+        </View>
+      ) : (
+        <View style={st.moveButtons}>
+          <Button label="Keep it" kind="soft" small busy={busy === 'keep'} disabled={!!busy} onPress={() => answer(true)} />
+          <Button label="Not this week" kind="quiet" small busy={busy === 'skip'} disabled={!!busy} onPress={() => answer(false)} />
+        </View>
+      )}
     </View>
   );
 }
@@ -335,6 +350,8 @@ const st = StyleSheet.create({
   review: { gap: 4, padding: 16, borderRadius: 24, borderCurve: 'continuous', backgroundColor: SURF.row },
   move: { gap: 8, padding: 16, borderRadius: 24, borderCurve: 'continuous', backgroundColor: SURF.row, borderWidth: StyleSheet.hairlineWidth, borderColor: SURF.line },
   moveButtons: { flexDirection: 'row', gap: 8, marginTop: 4 },
+  replace: { gap: 8, marginTop: 4 },
+  replaceTile: { flexBasis: 'auto', flexGrow: 0 },
   first: { gap: 8 },
   firstHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   ticks: { flexDirection: 'row', alignItems: 'flex-end', gap: 4, height: 24, width: 92 },

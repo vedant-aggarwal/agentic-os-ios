@@ -4,7 +4,7 @@ import { Button, Card, Chip, Empty, Failed, Field, haptic, Row, Screen, Section,
 import { useGet } from '@/lib/mod';
 import { act, cap, count, M, message, WHY_SWITCH } from './data';
 import { useNav } from './nav';
-import { Dot, Tag, Tile } from './parts';
+import { Dot, s as ps, Tag, Tile } from './parts';
 import type { Project, Projects as ProjectsData } from './types';
 
 const PROJECTS = `${M}/projects`;
@@ -59,8 +59,12 @@ export function Projects({ open, onClose }: { open: boolean; onClose: () => void
             <Section title={`Quiet for a month, ${quiet.length}`}>
               <Text style={t.small}>Nothing done on these in thirty days. Parking one keeps it safe and out of the way.</Text>
               {quiet.map((p) => (
-                <Row key={p.slug} title={p.name} sub={`${serves(p)}. ${pace(p)}.`} left={<Dot aspect={p.aspect} />}
-                  right={<Button label="Park" kind="quiet" small onPress={() => park(p, true)} />} />
+                <View key={p.slug} style={st.quiet}>
+                  <View style={ps.flex}>
+                    <Row title={p.name} sub={`${serves(p)}. ${pace(p)}.`} left={<Dot aspect={p.aspect} />} onPress={() => setPick(p.slug)} />
+                  </View>
+                  <Button label="Park" kind="quiet" small onPress={() => park(p, true)} />
+                </View>
               ))}
             </Section>
           ) : null}
@@ -90,7 +94,7 @@ function ProjectSheet({ p, goals, onClose, onPark }: { p: Project | null; goals:
           <Text style={t.small}>{`${pace(x)}.${x.open ? ` ${cap(count(x.open, 'task'))} open.` : ''}${x.next ? ` Next: ${x.next.title}.` : ''}${x.deadline ? ` Deadline ${shortDay(x.deadline)}.` : ''}`}</Text>
           <Text style={t.label}>The goal it serves</Text>
           <View style={st.chips}>
-            {goals.filter((g) => g.status === 'active').map((g) => (
+            {goals.filter((g) => !g.status || g.status === 'active').map((g) => (
               <Chip key={g.id} label={g.title.length > 34 ? `${g.title.slice(0, 32)}…` : g.title} icon={<Dot aspect={g.aspect} />} selected={x.goal?.id === g.id} onPress={() => tie(g.id)} />
             ))}
             <Chip label="No goal" selected={!x.goal} onPress={() => tie(null)} />
@@ -165,4 +169,5 @@ const st = StyleSheet.create({
   list: { gap: 8 },
   full: { flexBasis: 'auto', flexGrow: 0 },
   why: { gap: 8 },
+  quiet: { flexDirection: 'row', alignItems: 'center', gap: 8 },
 });

@@ -4,6 +4,7 @@ import { Button, Card, Chip, Empty, Failed, Field, haptic, Icon, IconButton, Row
 import { call, useCollection } from '@/lib/mod';
 import { C } from '@/theme';
 import { M, message, refresh } from './data';
+import { Link } from './parts';
 import type { Direction, Purpose as PurposeDoc } from './types';
 
 const FAMS = [{ key: 'work', label: 'Work' }, { key: 'health', label: 'Health' }, { key: 'people', label: 'People' }] as const;
@@ -91,12 +92,12 @@ export function Purpose({ open, onClose }: { open: boolean; onClose: () => void 
 
       <Section title="Lifetime directions">
         <Text style={t.small}>A few lines that hold for life. Year and quarter goals point at them.</Text>
-        {life.items == null ? (life.error ? <Text style={t.small}>{life.error}</Text> : <Skeleton height={56} />) : dirs.map((d) => (
+        {life.items == null ? (life.error ? <Link label="Directions did not load. Try again" onPress={life.refresh} /> : <Skeleton height={56} />) : dirs.map((d) => (
           <Row key={d.id} title={d.title} sub={FAMS.find((f) => f.key === d.fam)?.label}
             right={<IconButton label={`Remove ${d.title}`} size={36} plain onPress={() => { void life.remove(d.id).then(refresh).catch((e) => a.notice(message(e))); }}><Icon name="trash" size={16} color={C.faint} /></IconButton>} />
         ))}
-        <Field value={dir} onChangeText={setDir} placeholder={dirs.length ? 'Add a direction' : 'Your first direction'} maxLength={200} onSubmit={() => void addDir()} />
-        {dir.trim() ? (
+        {life.items == null ? null : <Field value={dir} onChangeText={setDir} placeholder={dirs.length ? 'Add a direction' : 'Your first direction'} maxLength={200} onSubmit={() => void addDir()} />}
+        {life.items != null && dir.trim() ? (
           <>
             <View style={st.chips}>{FAMS.map((f) => <Chip key={f.key} label={f.label} selected={fam === f.key} onPress={() => setFam(f.key)} />)}</View>
             <Button label="Add direction" kind="soft" small onPress={() => void addDir()} wrap={st.left} />

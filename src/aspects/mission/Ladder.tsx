@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Card, Failed, Row, Screen, Section, Skeleton, t, useAspect } from '@/aspects/kit';
 import { useGet } from '@/lib/mod';
-import { cap, count, HORIZON_GOAL, HORIZON_NOW, M, useReadingSync, useSources } from './data';
+import { cap, count, HORIZON_GOAL, HORIZON_NOW, M, NUMBER_WORDS, useReadingSync, useSources } from './data';
 import { GoalLine } from './Home';
 import { useNav } from './nav';
 import { Dot, Link, Tag } from './parts';
@@ -42,17 +42,17 @@ export function Ladder({ open, onClose }: { open: boolean; onClose: () => void }
           {l.rungs.map((rung) => {
             const room = rung.limit != null && rung.goals.length < rung.limit;
             return (
-              <Section key={rung.horizon} title={`${HORIZON_NOW[rung.horizon]}, ${rung.label}`} action={room ? 'Add' : undefined}
+              <Section key={rung.horizon} title={`${rung.horizon === 'week' && rung.start > l.today ? 'Next week' : HORIZON_NOW[rung.horizon]}, ${rung.label}`} action={room ? 'Add' : undefined}
                 onAction={() => nav.add({ horizon: rung.horizon })}>
-                <Text style={[t.caption, t.num]}>
-                  {rung.limit != null ? `${rung.goals.length} of ${rung.limit}${room ? '' : ', full'}` : count(rung.goals.length, 'goal')}
-                </Text>
+                {rung.goals.length > 0 && rung.limit != null ? (
+                  <Text style={[t.caption, t.num]}>{`${rung.goals.length} of ${rung.limit}${room ? '' : ', full'}`}</Text>
+                ) : null}
                 {rung.goals.length ? rung.goals.map((g) => (
                   <View key={g.id} style={st.goal}>
                     <GoalLine g={g} s={src} />
                     {g.parent ? <Tag aspect={g.parent.aspect} text={`Serves ${g.parent.title}`} /> : null}
                   </View>
-                )) : <Text style={t.small}>Nothing set.</Text>}
+                )) : <Text style={t.small}>{rung.limit != null ? `Nothing set yet. Room for ${NUMBER_WORDS[rung.limit] ?? rung.limit}.` : 'Nothing set yet.'}</Text>}
               </Section>
             );
           })}

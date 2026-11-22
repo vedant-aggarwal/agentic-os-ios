@@ -1,9 +1,10 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { Card, Empty, Failed, Row, Screen, Section, shortDay, Skeleton, Stat, SURF, t, tint, useAspect } from '@/aspects/kit';
 import { useGet } from '@/lib/mod';
+import { C } from '@/theme';
 import { cap, count, M, OUTCOME_WORD } from './data';
 import { useNav } from './nav';
-import { Dot } from './parts';
+import { Dot, s as ps } from './parts';
 import type { RecordView } from './types';
 
 /** What was set and what happened to it, week by week, month by month. Every closed goal keeps its outcome. */
@@ -45,11 +46,13 @@ export function RecordScreen({ open, onClose }: { open: boolean; onClose: () => 
             </View>
             <Text style={t.caption}>Each column is a week, dated by its Monday. The fill is what got done.</Text>
           </Card>
-          <Section title="Months">
-            {d.months.map((m) => <Row key={m.key} title={cap(m.label)} right={m.set ? `${m.done} of ${m.set}` : 'None set'} />)}
-          </Section>
-          <Section title="Quarters">
-            {d.quarters.map((q) => <Row key={q.key} title={q.label} right={q.set ? `${q.done} of ${q.set}` : 'None set'} />)}
+          <Section title="Months and quarters" gap={4}>
+            {[...d.months, ...d.quarters].filter((m) => m.set || m.now).map((m) => (
+              <View key={m.key} style={st.line}>
+                <Text style={[t.body, ps.flex]}>{cap(m.label)}</Text>
+                <Text style={[t.label, t.num, m.now && { color: C.text }]}>{m.set ? `${m.done} of ${m.set}` : 'None set yet'}</Text>
+              </View>
+            ))}
           </Section>
           {d.closed.length ? (
             <Section title={`Closed, ${count(d.closed.length, 'goal')}`}>
@@ -67,6 +70,7 @@ export function RecordScreen({ open, onClose }: { open: boolean; onClose: () => 
 
 const st = StyleSheet.create({
   gap: { gap: 16 },
+  line: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 36 },
   stats: { flexDirection: 'row', flexWrap: 'wrap', gap: 24 },
   card: { gap: 12 },
   chart: { flexDirection: 'row', alignItems: 'flex-end', gap: 4, height: 112 },

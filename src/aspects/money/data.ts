@@ -53,9 +53,13 @@ export const decideLeak = (id: string, keep: boolean) => call(`/mod/money/leaks/
 
 // statements
 export type StatementFile = { id: string; name: string; where: 'inbox' | 'downloads'; size: number; at: string };
-export const useStatementFiles = (on: boolean) => useGet<{ files: StatementFile[] }>(on ? '/mod/money/statements/files' : null);
+/** Money's inbox folder on the PC by default; Downloads only when he asks (statement-like PDFs and CSVs). */
+export const useStatementFiles = (on: boolean, where: StatementFile['where'] = 'inbox') =>
+  useGet<{ where: StatementFile['where']; files: StatementFile[] }>(on ? `/mod/money/statements/files${where === 'downloads' ? '?where=downloads' : ''}` : null);
 export const useImport = (id: string | null) => useGet<{ item: Import }>(id ? `/mod/money/imports/${encodeURIComponent(id)}` : null);
 export const readFile = (id: string, password?: string) => call<{ item: Import }>('/mod/money/statements/read', { id, password });
+/** A file the phone sent to Money's inbox, found by the name it was sent under (a locked PDF, read again with its password). */
+export const readSent = (name: string, password?: string) => call<{ item: Import }>('/mod/money/statements/read', { name, password });
 export const readPasted = (text: string) => call<{ item: Import }>('/mod/money/statement', { text, source: 'paste' });
 export const uploadFile = (file: Blob & { name?: string }) =>
   upload<{ item: Import }>(`/mod/money/statements/upload?name=${encodeURIComponent(file.name ?? 'statement')}`, file, file.type || 'application/octet-stream');

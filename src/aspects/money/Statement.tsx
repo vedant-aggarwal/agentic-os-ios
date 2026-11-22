@@ -5,28 +5,30 @@ import { ApiError } from '@/lib/mod';
 import {
   ago, Button, CheckRing, Chip, Empty, Failed, Field, haptic, Loading, Press, R, rupees, Screen, Sheet, shortDay, Skeleton, SP, SURF, t, useAspect,
 } from '@/aspects/kit';
-import { act, fileImport, readFile, readPasted, refresh, uploadFile, useImport, useStatementFiles } from './data';
+import { act, fileImport, readFile, readPasted, readSent, refresh, uploadFile, useImport, useStatementFiles, type StatementFile } from './data';
 import type { Decision, Home, Import, Row as StRow } from './types';
 import { CategorySheet, ChipWrap, Group, Head, s as ui } from './ui';
 
 type Busy = { label: string } | null;
+type Locked = { id: string } | { sent: string };
 const safeName = (n: string) => {
   const raw = n.replace(/[\\/:*?"<>|\x00-\x1f]+/g, ' ').trim().slice(0, 80) || 'statement';
   return raw.replace(/^\.+/, '');
 };
 
 /**
- * A bank statement, once a month: the realistic way spending gets complete. Start from a file on the PC (Downloads or
- * Money's inbox), pasted text, or (web build) a file picked here. The PC reads it and sorts the rows; he reviews the
- * ones only he can answer and files them in one go.
+ * A bank statement, once a month: the realistic way spending gets complete. Start from a file in Money's own folder on
+ * the PC, from Downloads (looked in only when he taps "Look in Downloads"), pasted text, or (web build) a file picked
+ * here. The PC reads it and sorts the rows; he reviews the ones only he can answer and files them in one go.
+ * File names arrive with any account number cut to its last four, and ids are opaque: paths stay on the PC.
  */
 export function StatementScreen({ open, onClose, home, id, setId }: {
   open: boolean; onClose: () => void; home: Home; id: string | null; setId: (id: string | null) => void;
 }) {
   const [busy, setBusy] = useState<Busy>(null);
   const [error, setError] = useState<string | null>(null);
-  const [locked, setLocked] = useState<string | null>(null); // a file id whose PDF needs its password
-  const run = async (p: Promise<{ item: Import }>, file?: string) => {
+  const [locked, setLocked] = useState<Locked | null>(null); // a file whose PDF needs its password
+  const run = async (p: Promise<{ item: Import }>, file?: Locked) => {
     setError(null);
     setBusy({ label: 'Reading the statement on your PC. If its layout is new to the PC this can take a minute; you can leave and come back.' });
     try {
@@ -47,9 +49,13 @@ export function StatementScreen({ open, onClose, home, id, setId }: {
     <Screen open={open} onClose={id ? () => setId(null) : close} title="Bank statement">
       {busy ? <Loading label={busy.label} />
         : id ? <Review id={id} home={home} onDone={close} />
-          : <Start home={home} open={open} error={error} onRead={(f) => void run(readFile(f), f)} onPaste={(text) => void run(readPasted(text))}
-              onUpload={(file) => void run(uploadFile(file), `inbox:${safeName(file.name ?? 'statement')}`)} onOpen={(x) => setId(x)} />}
-      <PasswordSheet file={locked} onClose={() => setLocked(null)} onSubmit={(pw) => { const f = locked!; setLocked(null); void run(readFile(f, pw), f); }} />
+          : <Start home={home} open={open} error={error} onRead={(f) => void run(readFile(f), { id: f })} onPaste={(text) => void run(readPasted(text))}
+              onUpload={(file) => void run(uploadFile(file), { sent: safeName(file.name ?? 'statement') })} onOpen={(x) => setId(x)} />}
+      <PasswordSheet open={!!locked} onClose={() => setLocked(null)} onSubmit={(pw) => {
+        const f = locked!;
+        setLocked(null);
+        void run('sent' in f ? readSent(f.sent, pw) : readFile(f.id, pw), f);
+      }} />
     </Screen>
   );
 }
@@ -59,6 +65,8 @@ function Start({ home, open, error, onRead, onPaste, onUpload, onOpen }: {
   onUpload: (file: Blob & { name?: string }) => void; onOpen: (id: string) => void;
 }) {
   const files = useStatementFiles(open);
+  const [lookDl, setLookDl] = useState(false);
+  const dl = useStatementFiles(open && lookDl, 'downloads');
   const [text, setText] = useState('');
   const pick = () => {
     const doc = (globalThis as { document?: { createElement: (t: string) => any } }).document;
@@ -72,7 +80,7 @@ function Start({ home, open, error, onRead, onPaste, onUpload, onOpen }: {
   const waiting = home.spend.imports.review;
   return (
     <>
-      <Text style={t.body}>Download last month&apos;s statement from your bank&apos;s website on the PC, as a PDF or CSV. It shows up here. Rows you already logged are matched, so nothing is counted twice.</Text>
+      <Text style={t.body}>Download last month&apos;s statement from your bank&apos;s website on the PC, as a PDF or CSV, then look in Downloads here. Rows you already logged are matched, so nothing is counted twice.</Text>
       {error ? <View style={s.error}><Text style={[t.small, { color: C.textSoft }]}>{error}</Text></View> : null}
       {waiting.length ? (
         <View style={s.part}>
@@ -91,22 +99,16 @@ function Start({ home, open, error, onRead, onPaste, onUpload, onOpen }: {
         </View>
       ) : null}
       <View style={s.part}>
-        <Head title="On this PC" action="Look again" onAction={() => void files.refresh()} />
-        {files.data ? (files.data.files.length ? (
-          <Group>
-            {files.data.files.map((f) => (
-              <Press key={f.id} label={`Read ${f.name}`} onPress={() => onRead(f.id)} style={s.fileRow}>
-                <View style={ui.fill}>
-                  <Text style={t.strong} numberOfLines={1}>{f.name}</Text>
-                  <Text style={t.small}>{f.where === 'downloads' ? 'Downloads' : 'Sent from the phone'}, {ago(f.at)}</Text>
-                </View>
-                <Text style={t.label}>Read</Text>
-              </Press>
-            ))}
-          </Group>
-        ) : <Text style={t.small}>No statement in Downloads from the last 90 days. A file whose name says statement, account or your bank shows here.</Text>)
-          : files.error ? <Failed message={files.error} onRetry={() => void files.refresh()} />
-            : <Skeleton height={64} radius={R.card} />}
+        <Head title="On your PC" action="Look again" onAction={() => { void files.refresh(); if (lookDl) void dl.refresh(); }} />
+        <Files read={files} onRead={onRead}
+          empty="Nothing in Money's folder yet. A statement you send from here is kept there." />
+        {lookDl ? (
+          <>
+            <Text style={[t.label, s.sub]}>In Downloads</Text>
+            <Files read={dl} onRead={onRead}
+              empty="No statement PDF or CSV in Downloads from the last 90 days. A file whose name says statement, account or your bank shows here." />
+          </>
+        ) : <Button label="Look in Downloads" kind="quiet" onPress={() => setLookDl(true)} />}
       </View>
       {Platform.OS === 'web' ? (
         <View style={s.part}>
@@ -120,6 +122,27 @@ function Start({ home, open, error, onRead, onPaste, onUpload, onOpen }: {
         <Button label="Read it" kind="quiet" onPress={() => onPaste(text)} disabled={text.trim().length < 20} />
       </View>
     </>
+  );
+}
+
+/** One folder's statement files: name (account number cut to its last four) and age; tap to read it. */
+function Files({ read, onRead, empty }: {
+  read: { data?: { files: StatementFile[] } | null; error?: string | null; refresh: () => unknown }; onRead: (id: string) => void; empty: string;
+}) {
+  if (!read.data) return read.error ? <Failed message={read.error} onRetry={() => void read.refresh()} /> : <Skeleton height={56} radius={R.card} />;
+  if (!read.data.files.length) return <Text style={t.small}>{empty}</Text>;
+  return (
+    <Group>
+      {read.data.files.map((f) => (
+        <Press key={f.id} label={`Read ${f.name}`} onPress={() => onRead(f.id)} style={s.fileRow}>
+          <View style={ui.fill}>
+            <Text style={t.strong} numberOfLines={1}>{f.name}</Text>
+            <Text style={t.small}>{ago(f.at)}</Text>
+          </View>
+          <Text style={t.label}>Read</Text>
+        </Press>
+      ))}
+    </Group>
   );
 }
 
@@ -271,13 +294,13 @@ function ReviewRow({ r, on, onToggle, children }: { r: StRow; on?: boolean; onTo
   );
 }
 
-function PasswordSheet({ file, onClose, onSubmit }: { file: string | null; onClose: () => void; onSubmit: (pw: string) => void }) {
+function PasswordSheet({ open, onClose, onSubmit }: { open: boolean; onClose: () => void; onSubmit: (pw: string) => void }) {
   const a = useAspect();
   const [pw, setPw] = useState('');
   return (
-    <Sheet open={!!file} onClose={() => { setPw(''); onClose(); }} title="This PDF has a password">
+    <Sheet open={open} onClose={() => { setPw(''); onClose(); }} title="This PDF has a password">
       <Text style={t.small}>Banks usually use your customer ID or date of birth. It goes to your PC to open the file and is not kept.</Text>
-      <TextInput accessibilityLabel="Statement password" value={pw} onChangeText={setPw} secureTextEntry autoFocus={!!file} autoCapitalize="none" autoCorrect={false}
+      <TextInput accessibilityLabel="Statement password" value={pw} onChangeText={setPw} secureTextEntry autoFocus={open} autoCapitalize="none" autoCorrect={false}
         keyboardAppearance="dark" selectionColor={a.color} placeholder="Password" placeholderTextColor={C.faint} style={s.pw} onSubmitEditing={() => pw && onSubmit(pw)} />
       <Button label="Open it" onPress={() => { const v = pw; setPw(''); onSubmit(v); }} disabled={!pw} />
     </Sheet>
@@ -288,6 +311,7 @@ const s = StyleSheet.create({
   part: { gap: SP[12] },
   error: { padding: SP[12], borderRadius: R.row, backgroundColor: 'rgba(248,113,113,0.12)' },
   fileRow: { flexDirection: 'row', alignItems: 'center', gap: SP[12], minHeight: 56, paddingVertical: SP[8] },
+  sub: { marginTop: SP[4] },
   rrow: { paddingVertical: SP[12], gap: SP[8] },
   rtop: { flexDirection: 'row', alignItems: 'center', gap: SP[12], minHeight: 44 },
   rctl: { paddingLeft: SP[24] + SP[12] },

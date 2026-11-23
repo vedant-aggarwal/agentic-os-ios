@@ -1,5 +1,5 @@
 import { router, usePathname } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Account, Home, Nora, Work } from '@/components/Icons';
 import { signOut } from '@/lib/api';
 import { ASPECT_COLOR, C, F, FAMILY_ASPECTS, FAMILY_LABEL, type AspectKey, type FamilyKey } from '@/theme';
@@ -21,7 +21,7 @@ export function Sidebar({ width }: { width: number }) {
   return (
     <View style={s.bar}>
       <View style={s.brand}>
-        <View style={s.mark} />
+        <Image source={require('../../assets/images/logo-128.png')} style={s.mark} accessibilityLabel="Agentic OS logo" />
         <Text style={s.brandText}>Agentic OS</Text>
       </View>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={s.list} showsVerticalScrollIndicator={false}>
@@ -74,7 +74,7 @@ const s = StyleSheet.create({
     borderRightWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.08)', paddingTop: 20,
   },
   brand: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 20, paddingBottom: 20 },
-  mark: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#E8794A', boxShadow: '0 0 16px rgba(232,121,74,0.55)' },
+  mark: { width: 30, height: 30, borderRadius: 8, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.12)' },
   brandText: { fontFamily: F.semibold, fontSize: 16, letterSpacing: -0.2, color: C.text },
   list: { paddingHorizontal: 12, gap: 2, paddingBottom: 16 },
   group: { marginTop: 18, gap: 2 },

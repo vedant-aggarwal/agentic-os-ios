@@ -1,9 +1,10 @@
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { Glass, lightTap, useScale } from '@/components/Glass';
 import { Account, PcMic, Remote, ToPc, Voices } from '@/components/Icons';
 import { Smiley } from '@/components/Smiley';
 import { Sym } from '@/components/Sym';
+import { C, F } from '@/theme';
 
 // The top bar mirrors the Nora bar: the same glass. A pill holding the four PC actions takes about
 // two-thirds of the row; two floating round buttons (mood, account) share the rest. One gap G sets the row.
@@ -59,6 +60,19 @@ export function TopBar({ top, width, live, onFiles, onMic, onRemote, onRemoteHol
   top: number; width: number; live: boolean; onFiles: () => void; onMic: () => void; onRemote: () => void; onRemoteHold?: () => void; onVoices: () => void; onAccount: () => void; onNotBuilt: (what: string) => void;
 }) {
   const pill = width - 32 - 2 * (TOP_H + G);
+  // The web app is for the day, not the PC: the logo where the PC actions sit on the phone, and the account.
+  if (Platform.OS === 'web') {
+    return (
+      <View pointerEvents="box-none" style={[s.row, { top: top + TOP_GAP }]}>
+        <View style={[s.pill, s.brand]}>
+          <Glass radius={TOP_H / 2} />
+          <Image source={require('../../assets/images/logo-128.png')} style={s.logo} accessibilityLabel="Agentic OS logo" />
+          <Text style={s.brandText}>Agentic OS</Text>
+        </View>
+        <RoundButton label="Your account" onPress={onAccount}><Sym name="person.fill" size={OPTICAL.person} fallback={<Account size={GLYPH + 2} />} /></RoundButton>
+      </View>
+    );
+  }
   return (
     <View pointerEvents="box-none" style={[s.row, { top: top + TOP_GAP }]}>
       <View style={[s.pill, { width: pill }]}>
@@ -83,6 +97,9 @@ const s = StyleSheet.create({
     height: TOP_H, borderRadius: TOP_H / 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-evenly',
     boxShadow: '0 12px 32px rgba(0,0,0,0.4)',
   },
+  brand: { flex: 1, justifyContent: 'flex-start', gap: 10, paddingHorizontal: 10 },
+  logo: { width: 32, height: 32, borderRadius: 9 },
+  brandText: { fontFamily: F.semibold, fontSize: 16, letterSpacing: -0.2, color: C.text },
   btn: { width: BTN, height: BTN, borderRadius: BTN / 2, alignItems: 'center', justifyContent: 'center' },
   btnPressed: { backgroundColor: 'rgba(255,255,255,0.14)' },
   // something is running on the PC page while it is closed

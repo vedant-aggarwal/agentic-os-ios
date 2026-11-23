@@ -1,6 +1,6 @@
 import { BlurView } from 'expo-blur';
 import { useEffect, useRef, useState } from 'react';
-import { FlatList, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Image, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button, clock, Empty, Failed, Glyph, IconButton, Press, Skeleton, SURF, t, tint } from '@/aspects/kit';
@@ -8,6 +8,7 @@ import { Linked } from '@/components/Linked';
 import { useReveal } from '@/components/Reveal';
 import { callLength, type NoraMessage } from '@/lib/nora';
 import { C } from '@/theme';
+import { picSource, splitAttached, useAttach } from './attach';
 import { Composer, Dots, NGlyph, NORA, TopRow } from './parts';
 import { callTransport, noraUi, useNora } from './state';
 import { useDictate } from './useDictate';
@@ -57,6 +58,7 @@ export function ChatBody({ open, mic, replyTo, onClose = noraUi.closeChat }: {
   const dict = useDictate();
   const [draft, setDraft] = useState('');
   const [rowError, setRowError] = useState<{ id: number; text: string } | null>(null);
+  const attach = useAttach(open);
   const kb = useAnimatedKeyboard();
   const lift = useAnimatedStyle(() => ({ paddingBottom: Math.max(kb.height.value + 8, insets.bottom + 8) }));
 
@@ -78,7 +80,8 @@ export function ChatBody({ open, mic, replyTo, onClose = noraUi.closeChat }: {
       void th.answer(to.id, text).then((e) => { if (e) setDraft(text); });
       return;
     }
-    void th.send(text);
+    void th.send(text, attach.ids.length ? { ids: attach.ids, uris: attach.pics.filter((p) => p.id).map((p) => p.uri) } : undefined);
+    attach.clear();
   };
   const undo = async (m: NoraMessage, run: () => Promise<string | null>) => {
     const e = await run();
@@ -98,7 +101,8 @@ export function ChatBody({ open, mic, replyTo, onClose = noraUi.closeChat }: {
   return (
     <View style={[s.fill, { paddingTop: insets.top + 8 }]}>
       <View style={s.pad}>
-        <TopRow title={th.name} onClose={onClose}>
+        <TopRow title={th.name} onClose={onClose}
+          sub={th.busy ? th.busy.status : th.load.status === 'error' ? "Can't reach your PC" : 'Type, talk, or add a picture'}>
           {callTransport() !== 'none' ? (
             <IconButton label={`Call ${th.name}`} onPress={() => noraUi.call()}><NGlyph name="phone" size={18} /></IconButton>
           ) : null}
@@ -128,8 +132,13 @@ export function ChatBody({ open, mic, replyTo, onClose = noraUi.closeChat }: {
         <View style={[s.fill, s.center]}><Failed message={th.load.error ?? ''} onRetry={th.reload} /></View>
       ) : !th.messages.length && !th.busy ? (
         <View style={[s.fill, s.center]}>
-          <Empty title={`Talk to ${th.name}`} body="Ask her to plan, move or remember anything. Type, or tap the mic and talk."
+          <Empty title={`Talk to ${th.name}`} body="Ask her to plan, move or remember anything. Type, talk, or add a picture."
             icon={<NGlyph name="sparkle" size={28} color={NORA} />} />
+          <View style={s.starts}>
+            {STARTERS.map((x) => (
+              <Press key={x} label={x} onPress={() => setDraft(x)} style={s.starter}><Text style={t.small}>{x}</Text></Press>
+            ))}
+          </View>
         </View>
       ) : (
         <FlatList inverted data={rows} keyExtractor={(x) => x.key} style={s.fill}
@@ -155,9 +164,15 @@ export function ChatBody({ open, mic, replyTo, onClose = noraUi.closeChat }: {
             <Press label="Stop answering" onPress={noraUi.clearReply} hitSlop={8} style={s.replyX}><Text style={t.label}>Cancel</Text></Press>
           </View>
         ) : null}
-        <Composer draft={draft} setDraft={setDraft} onSend={send} dict={dict}
+        <Composer draft={draft} setDraft={setDraft} onSend={send} dict={dict} attach={replyTo ? undefined : attach}
           placeholder={replyTo ? `Your answer for ${replyTo.from}` : `Message ${th.name}`} />
       </Animated.View>
+      {attach.dragging ? (
+        <View pointerEvents="none" style={s.drop}>
+          <NGlyph name="image" size={28} color={NORA} />
+          <Text style={t.strong}>Drop pictures for {th.name}</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -174,6 +189,20 @@ function Change({ label, undone, onUndo }: { label: string; undone: boolean; onU
   );
 }
 
+const STARTERS = ['What is left for today?', 'Plan my evening', 'Remind me at 6 to call Papa'];
+
+/** Pictures sent with a message: the PC's copies once they land, the local ones until then. */
+function Pics({ m }: { m: NoraMessage }) {
+  const { pics } = splitAttached(m.text);
+  const sources = pics.length ? pics.map((p) => ({ key: p.id, src: picSource(p.id) })) : (m.att?.uris ?? []).map((uri) => ({ key: uri, src: { uri } }));
+  if (!sources.length) return null;
+  return (
+    <View style={s.picRow}>
+      {sources.map((x) => <Image key={x.key} source={x.src} style={[s.pic, sources.length === 1 && s.picOne]} resizeMode="cover" accessibilityLabel="Picture you sent" />)}
+    </View>
+  );
+}
+
 function Message({ m, name, error, onRetry, onUndo, onUndoDid, onAnswer }: {
   m: NoraMessage; name: string; error: string | null; onRetry: () => void;
   onUndo: (change: number) => void; onUndoDid: (id: string) => void; onAnswer: (id: string, from: string) => void;
@@ -181,7 +210,10 @@ function Message({ m, name, error, onRetry, onUndo, onUndoDid, onAnswer }: {
   if (m.role === 'user') {
     return (
       <View style={s.mine}>
-        <View style={[s.bubble, m.pending && s.pending]}><Text selectable style={t.body}><Linked text={m.text} /></Text></View>
+        <Pics m={m} />
+        {splitAttached(m.text).text ? (
+          <View style={[s.bubble, m.pending && s.pending]}><Text selectable style={t.body}><Linked text={splitAttached(m.text).text} /></Text></View>
+        ) : null}
         {m.failed ? (
           <Press label="Send again" onPress={onRetry} style={s.failed}>
             <Text style={[t.caption, { color: C.danger }]}>Didn&apos;t send. Tap to try again.</Text>
@@ -211,7 +243,7 @@ function Message({ m, name, error, onRetry, onUndo, onUndoDid, onAnswer }: {
   const askOpen = ask && ['asked', 'calling', 'scheduled'].includes(ask.status);
   return (
     <View style={s.hers}>
-      <Text selectable style={t.body}><Linked text={m.text} /></Text>
+      <View style={s.herBubble}><Text selectable style={t.body}><Linked text={m.text} /></Text></View>
       {(m.meta?.changes ?? []).map((c) => <Change key={`c${c.id}`} label={c.label} undone={c.undone} onUndo={() => onUndo(c.id)} />)}
       {(m.meta?.did ?? []).map((x) => (
         <Change key={x.id} label={x.title} undone={x.undone} onUndo={x.undo ? () => onUndoDid(x.id) : undefined} />
@@ -241,7 +273,20 @@ const s = StyleSheet.create({
   bubble: { backgroundColor: SURF.raised, borderRadius: 20, borderCurve: 'continuous', paddingHorizontal: 16, paddingVertical: 8 },
   pending: { opacity: 0.6 },
   failed: { minHeight: 32, justifyContent: 'center' },
-  hers: { gap: 8, paddingRight: 32 },
+  hers: { gap: 8, paddingRight: 32, alignItems: 'flex-start' },
+  herBubble: {
+    backgroundColor: 'rgba(255,255,255,0.035)', borderRadius: 20, borderTopLeftRadius: 6, borderCurve: 'continuous',
+    paddingHorizontal: 16, paddingVertical: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: SURF.line,
+  },
+  picRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'flex-end' },
+  pic: { width: 112, height: 112, borderRadius: 16, backgroundColor: SURF.track },
+  picOne: { width: 220, height: 220 },
+  starts: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center', paddingHorizontal: 24, marginTop: 16 },
+  starter: { minHeight: 36, paddingHorizontal: 14, borderRadius: 18, justifyContent: 'center', borderWidth: StyleSheet.hairlineWidth, borderColor: SURF.line, backgroundColor: SURF.row },
+  drop: {
+    position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, margin: 12, borderRadius: 24, borderWidth: 2, borderStyle: 'dashed', borderColor: tint(NORA, 0.6),
+    backgroundColor: 'rgba(9,10,14,0.85)', alignItems: 'center', justifyContent: 'center', gap: 8,
+  },
   when: { marginTop: -4 },
   system: { textAlign: 'center', color: C.danger, paddingHorizontal: 24 },
   call: {

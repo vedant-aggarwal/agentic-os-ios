@@ -1,7 +1,7 @@
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { useEffect, useRef, useState } from 'react';
-import { type GestureResponderEvent, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { type GestureResponderEvent, Platform, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import Animated, {
   ReduceMotion, useAnimatedProps, useAnimatedStyle, useSharedValue, withDelay, withSpring, type SharedValue,
 } from 'react-native-reanimated';
@@ -427,7 +427,9 @@ export function Dock({ bottom, width, aspects, onNotBuilt, onAspect, onHome, hid
           onPress={() => (onHome ? onHome() : noraUi.toggleHome())}><Sym name="house.fill" size={22} fallback={<Home />} /></SideOrb>
         <View style={[s.bar, { width: w, paddingHorizontal: Math.max(0, G - (48 - ICON) / 2) }]}>
           <Glass radius={BAR_H / 2} />
-          <Round label="Scan" onPress={() => onNotBuilt('Scan')}><Sym name="viewfinder" size={22} fallback={<Scan />} /></Round>
+          {/* no Scan on the web app; its slot stays so chat keeps its place right of the orb */}
+          {Platform.OS === 'web' ? <View style={{ width: 48, height: 48 }} />
+            : <Round label="Scan" onPress={() => onNotBuilt('Scan')}><Sym name="viewfinder" size={22} fallback={<Scan />} /></Round>}
           <Round label="Chat with Nora" onPress={() => noraUi.openChat()}><Sym name="sparkle" size={22} fallback={<Nora />} /></Round>
         </View>
         <WorkOrb fan={fan} />

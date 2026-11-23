@@ -49,14 +49,14 @@ const NORA_KEYS: NoraKeys = {
 // A desktop browser gets its own layout (src/desk); phones and narrow windows keep this one.
 export default function Today() {
   // While Today sits on screen, get every aspect page ready so the first tap opens drawn: their reads in one round
-  // trip (each request through the tunnel costs most of a second), and on web each page's code file.
+  // trip (each request through the tunnel costs most of a second), and each page's code.
   useEffect(() => {
     let last = 0;
     const go = () => {
       if (Date.now() - last < 5 * 60_000) return;
       last = Date.now();
       void warm(WARM);
-      if (Platform.OS === 'web') preloadPages();
+      preloadPages(); // web: each page's file; phone: each page's module, so the first tap draws at once
     };
     const t = setTimeout(go, 1500);
     const sub = AppState.addEventListener('change', (st) => { if (st === 'active') go(); });

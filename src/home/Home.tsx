@@ -154,6 +154,7 @@ function HomePage({ d, say, hide, onNora }: { d: HomeData; say: Say; hide: () =>
   const [showDone, setShowDone] = useState(false);
   const [holding, setHolding] = useState<Set<string>>(new Set());
   const today = istDay(), tomorrow = addDays(today, 1);
+  useEffect(() => noraUi.onCreate(() => setSheet({ edit: null })), []);
 
   const mine = useMemo(() => (d.today?.tasks ?? []).filter((x) => !x.parent && (x.owner == null || x.owner === 'me')
     && (list == null || (list === 'none' ? !x.area : x.area === list))), [d.today, list]);

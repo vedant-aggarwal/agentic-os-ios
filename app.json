@@ -18,7 +18,7 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSLocalNetworkUsageDescription": "Agentic OS connects straight to your PC on this Wi-Fi so the trackpad has no lag.",
-        "NSCameraUsageDescription": "Agentic OS uses the camera when you turn your phone into your PC's webcam.",
+        "NSCameraUsageDescription": "Agentic OS uses the camera for the photos you take from Today and the capture panel, and when you turn your phone into your PC's webcam.",
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
         },
@@ -98,7 +98,7 @@
         "expo-image-picker",
         {
           "photosPermission": "Agentic OS sends the photos and videos you pick to your PC.",
-          "cameraPermission": false,
+          "cameraPermission": "Agentic OS uses the camera for the photos you take from Today and the capture panel, and when you turn your phone into your PC's webcam.",
           "microphonePermission": false
         }
       ],

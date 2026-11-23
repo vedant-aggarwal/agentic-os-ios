@@ -1,9 +1,9 @@
 import { useCallback, useState, type ReactNode } from 'react';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Line } from 'react-native-svg';
-import { pickPhoto } from '@/aspects/body/pick';
 import { haptic, t, tint } from '@/aspects/kit/tokens';
 import { WaterRow } from '@/capture/parts';
+import { takePhoto } from '@/capture/shoot';
 import { frameOf, type FrameId } from '@/capture/moments';
 import type { BodyToday } from '@/lib/body';
 import type { Task } from '@/lib/today';
@@ -42,7 +42,7 @@ export function Plan({ d, body, now, onOpen, onToggleTask, say, onHome }: {
   const check = useCallback((id: CheckId) => { d.toggle(id).catch(fail); }, [d, fail]);
   const shoot = useCallback(async (id: FrameId) => {
     let picked;
-    try { picked = await pickPhoto(); } catch (e) { fail(e); return; }
+    try { picked = await takePhoto(); } catch (e) { fail(e); return; }
     if (!picked) return;
     const uri = typeof picked.uri === 'string' ? picked.uri : URL.createObjectURL(picked.uri);
     cap.photo(frameOf(id), picked, uri).then(say, fail);

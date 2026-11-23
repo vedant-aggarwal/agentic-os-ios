@@ -25,8 +25,23 @@ export function callTransport(): 'sim' | 'relay' | 'webrtc' | 'none' {
   return 'none';
 }
 
+// the My tasks widget's plus: Home opens on the create sheet (a request made before Home is listening waits)
+const createSubs = new Set<() => void>();
+let createWaiting = false;
+
 export const noraUi = {
   openHome: () => set({ home: true }),
+  /** Home with the create sheet up. */
+  openCreate: () => {
+    set({ home: true });
+    if (createSubs.size) for (const f of createSubs) f();
+    else createWaiting = true;
+  },
+  onCreate: (f: () => void) => {
+    createSubs.add(f);
+    if (createWaiting) { createWaiting = false; queueMicrotask(f); }
+    return () => { createSubs.delete(f); };
+  },
   closeHome: () => set({ home: false }),
   toggleHome: () => set({ home: !s.home }),
   /** `mic`: start dictating as it opens. `replyTo`: the composer answers that agent's question. */

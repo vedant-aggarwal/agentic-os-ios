@@ -10,7 +10,8 @@ import { NoraHome } from './NoraHome';
 import { noraUi } from './state';
 
 // Nora's surfaces, mounted by the dock (src/components/Dock.tsx): Home under the dock, chat and calls over it.
-// Links: agenticos://nora and nora/chat open chat (?mic=1 to talk), nora/home opens Home, nora/call rings her, and
+// Links: agenticos://nora and nora/chat open chat (?mic=1 to talk), nora/home opens Home (?create=1: on the create
+// sheet, the My tasks widget's plus), nora/call rings her, and
 // nora/call?id=<incoming id> joins the ring he just answered on the system call screen (lib/calls.ts).
 
 type P = { x: number; y: number };
@@ -19,7 +20,7 @@ function useNoraLinks() {
   useEffect(() => onLink('nora', (l) => {
     const part = (l.parts[0] ?? 'chat').toLowerCase();
     if (part === 'call') noraUi.call({ incomingId: l.query.id ?? null, reason: l.query.reason });
-    else if (part === 'home') noraUi.openHome();
+    else if (part === 'home') { if (l.query.create === '1') noraUi.openCreate(); else noraUi.openHome(); }
     else noraUi.openChat({ mic: l.query.mic === '1' });
   }), []);
   // dev-only preview: ?demo&nora=chat|home|call|call-fail|ring opens that surface on load

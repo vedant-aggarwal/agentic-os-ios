@@ -18,7 +18,6 @@ import { PcControls, type PcTab } from '@/components/PcControls';
 import { useAgent } from '@/lib/agent';
 import { micCenter, pillCenter, TOP_GAP, TOP_H, TopBar } from '@/components/TopBar';
 import { api, signOut } from '@/lib/api';
-import { DEMO } from '@/lib/demo';
 import { gazeTouch } from '@/lib/gaze';
 import { useToday } from '@/lib/useToday';
 import { useBody } from '@/lib/body';
@@ -91,8 +90,8 @@ function PhoneToday() {
   const [micOpen, setMicOpen] = useState(false); // opened by tapping the PC mic button
   const [voicesOpen, setVoicesOpen] = useState(false); // the top bar's waveform button
   const [accountOpen, setAccountOpen] = useState(false); // the top bar's person button
-  // the mood logger, flying out of the smiley at this point (dev, web sample mode: `?demo&mood=1` opens it on load,
-  // as the web top bar has no mood button)
+  // the mood logger, flying out of the smiley at this point (dev, web sample mode: `?demo&mood` gives the web bar the
+  // phone's mood button, and `mood=1` also opens the logger on load)
   const [moodFrom, setMoodFrom] = useState<{ x: number; y: number } | null>(() =>
     DEMO && new URLSearchParams(location.search).get('mood') === '1' ? { x: width - 102, y: insets.top + 32 } : null);
   const [filesOpen, setFilesOpen] = useState(false); // the top bar's To PC button

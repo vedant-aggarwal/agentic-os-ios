@@ -9,7 +9,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnRN } from 'react-native-worklets';
 import { haptic } from '@/aspects/kit';
-import { Smiley } from '@/components/Smiley';
+import { PET_PAD, Smiley } from '@/components/Smiley';
 import { DEMO } from '@/lib/demo';
 import { gaze } from '@/lib/gaze';
 import { heartBurst, pet, petDrive, petReact, useSadness } from '@/lib/pet';
@@ -17,7 +17,7 @@ import { noraUi } from '@/nora/state';
 import { F } from '@/theme';
 import {
   CloseButton, feel, FloatWords, GlassButton, INK_FAINT, INK_SOFT, LANTERN, MoonButton, NoraButton, NoraOrb, NoteField, type Pt, type Rect, RoundGo, SayBlock,
-  type SayMode, Summary, useClock,
+  type SayMode, Summary,
 } from './parts';
 import { POOL_OK, type PoolHandle, type PoolMsg, PoolSurface } from './Pool';
 import { type Ask, askNext, type MoodDraft, newMoodId, type Round, saveMood } from './talk';
@@ -44,10 +44,11 @@ function useLayout() {
     const dev = DEMO ? new URLSearchParams(location.search).get('inset')?.split(',').map(Number) : null;
     const top = dev?.[0] ?? real.top, bottom = Math.max(12, dev?.[1] ?? real.bottom);
     const side = W >= 410 ? 16 : 14;
-    const petSize = Math.round(Math.min(100, Math.max(80, W * 0.235)));
+    // the furball's square; its ears stand about a quarter of it above, so it sits a little below the row's top
+    const petSize = Math.round(Math.min(104, Math.max(84, W * 0.26)));
     const rowTop = top + 6;
-    const petCX = W / 2, petCY = rowTop + petSize / 2 + 2;
-    const textTop = petCY + petSize / 2 + 8;
+    const petCX = W / 2, petCY = rowTop + 10 + petSize / 2;
+    const textTop = petCY + petSize / 2 + 4;
     const barH = 52, barTop = H - bottom - 12 - barH;
     const poolTop = Math.round(textTop + 106);
     const pool: Rect = { x: side, y: poolTop, w: W - side * 2, h: Math.max(220, barTop - 14 - poolTop), r: 30 };
@@ -121,23 +122,22 @@ export function MoodLogger({ from, onClose }: { from: { x: number; y: number }; 
     timers.current.add(t);
   }, []);
   const alive = useRef(true), closingRef = useRef(false);
+  // closing: the parts go with the page, not each on its own way out (an exit that outlives the page plays over Today)
+  const [leaving, setLeaving] = useState(false);
+  // and once it has flown back over the button, the top bar's own pet comes back under it before this one goes
+  const [home, setHome] = useState(false);
   useEffect(() => () => { alive.current = false; for (const t of timers.current) clearTimeout(t); }, []);
 
-  // ── the pet: where it flies, how it squashes, the hover once it is home ──────────────────────────────────
+  // ── the pet: where it flies and how it squashes ─────────────────────────────────────────────────────────
   const s0 = BUTTON / L.petSize;
   const ox = useSharedValue(reduce ? 0 : from.x - L.petCX), oy = useSharedValue(reduce ? 0 : from.y - L.petCY);
-  const sc = useSharedValue(reduce ? 0.94 : s0), sq = useSharedValue(0), po = useSharedValue(reduce ? 0 : 1), hov = useSharedValue(0);
-  const hc = useClock(3400, !reduce);
+  const sc = useSharedValue(reduce ? 0.94 : s0), sq = useSharedValue(0), po = useSharedValue(reduce ? 0 : 1);
   const petStyle = useAnimatedStyle(() => {
     const k = sq.value;
     return {
       opacity: po.value,
       transform: [{ translateX: ox.value }, { translateY: oy.value }, { scaleX: sc.value * (1 - k * 0.7) }, { scaleY: sc.value * (1 + k) }],
     };
-  });
-  const hoverStyle = useAnimatedStyle(() => {
-    const a = hc.value * Math.PI * 2, b = hov.value;
-    return { transform: [{ translateY: Math.sin(a) * 3.4 * b }, { rotate: `${Math.sin(a + 1.1) * 2.2 * b}deg` }] };
   });
 
   // ── the backdrop over Today, and the water's own fade ────────────────────────────────────────────────────
@@ -153,10 +153,11 @@ export function MoodLogger({ from, onClose }: { from: { x: number; y: number }; 
     ui.set(withDelay(reduce ? 0 : 260, withTiming(1, { duration: 360 })));
     if (reduce) { po.set(withTiming(1, { duration: 220 })); sc.set(withTiming(1, { duration: 260 })); }
     else {
-      // out of the button: a pop and a little drop below the bar, then it waits for the water
-      sc.set(withSequence(withTiming(s0 * 1.5, { duration: 170, easing: Easing.out(Easing.quad) }), withSpring(s0 * 1.75, { duration: 500, dampingRatio: 0.5 })));
-      oy.set(withTiming(from.y - L.petCY + 26, { duration: 300, easing: Easing.out(Easing.cubic) }));
-      ox.set(withTiming(from.x - L.petCX - 10, { duration: 300, easing: Easing.out(Easing.cubic) }));
+      // out of the button with a pop, and a swoop to its place at the top (clear of the buttons that fade in where
+      // the bar was) while the cave goes dark; there it waits for the water
+      sc.set(withSequence(withTiming(s0 * 1.5, { duration: 160, easing: Easing.out(Easing.quad) }), withSpring(0.86, { duration: 640, dampingRatio: 0.62 })));
+      ox.set(withDelay(70, withSpring(0, { duration: 640, dampingRatio: 0.9 })));
+      oy.set(withDelay(70, withSpring(0, { duration: 640, dampingRatio: 0.66 })));
     }
     return () => {
       petDrive(false);
@@ -170,7 +171,8 @@ export function MoodLogger({ from, onClose }: { from: { x: number; y: number }; 
     else later(1400, () => setBegun(true));
   }, [begun, scene, failed, later]);
 
-  // the dive: down into the middle of the pool, a tap on the water that lights it, and back up to its perch
+  // the dive: from its place straight down into the middle of the pool, a tap on the water that lights it, and
+  // back up
   const dove = useRef(false);
   const dive = useCallback(() => {
     if (dove.current) return;
@@ -199,7 +201,6 @@ export function MoodLogger({ from, onClose }: { from: { x: number; y: number }; 
       ox.set(withDelay(60, withSpring(0, { duration: 1050, dampingRatio: 0.82 })));
       oy.set(withDelay(60, withSpring(0, { duration: 1050, dampingRatio: 0.6 })));
       sc.set(withDelay(60, withSpring(1, { duration: 900, dampingRatio: 0.66 })));
-      hov.set(withDelay(800, withTiming(1, { duration: 900 })));
       later(350, land);
       later(1200, () => gaze.set({ ...gaze.get(), active: false, at: Date.now() }));
     };
@@ -209,13 +210,13 @@ export function MoodLogger({ from, onClose }: { from: { x: number; y: number }; 
     sc.set(withTiming(0.8, { duration: T, easing: Easing.out(Easing.quad) }));
     sq.set(withTiming(0.16, { duration: T, easing: Easing.in(Easing.cubic) }));
     later(T + 600, splash); // if the fall never reports its end
-  }, [L, reduce, send, later, ox, oy, sc, sq, hov]);
+  }, [L, reduce, send, later, ox, oy, sc, sq]);
 
-  // it dives once the water is drawing (at least a beat after it pops out); a slow WebView doesn't hold it for long
+  // it dives once the water is drawing and it has reached its place; a slow WebView doesn't hold it for long
   useEffect(() => {
     if (!begun) return;
     const since = Date.now() - t0.current;
-    if (scene || failed) { later(Math.max(0, (reduce ? 0 : 340) - since), dive); return; }
+    if (scene || failed) { later(Math.max(0, (reduce ? 0 : 760) - since), dive); return; }
     later(1700, dive);
     later(4500, () => { if (!drawing.current) setFailed(true); });
   }, [begun, scene, failed]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -417,6 +418,7 @@ export function MoodLogger({ from, onClose }: { from: { x: number; y: number }; 
   const close = useCallback((then?: () => void) => {
     if (closingRef.current) return;
     closingRef.current = true;
+    setLeaving(true);
     Keyboard.dismiss();
     stopPulse();
     const cur = live.current;
@@ -434,7 +436,6 @@ export function MoodLogger({ from, onClose }: { from: { x: number; y: number }; 
     ui.set(withTiming(0, { duration: 200 }));
     wo.set(withTiming(0, { duration: T }));
     scrim.set(withDelay(reduce ? 0 : 120, withTiming(0, { duration: T })));
-    hov.set(withTiming(0, { duration: 160 }));
     if (reduce) po.set(withTiming(0, { duration: 200 }));
     else {
       const e = Easing.inOut(Easing.cubic);
@@ -443,7 +444,8 @@ export function MoodLogger({ from, onClose }: { from: { x: number; y: number }; 
       sc.set(withTiming(s0, { duration: T, easing: e }));
       sq.set(withSequence(withTiming(0.1, { duration: T * 0.6 }), withSpring(0, { duration: 300 })));
     }
-    later(T + 60, () => {
+    later(T, () => setHome(true));
+    later(T + 70, () => {
       petDrive(false);
       if (cur.stage !== 'field') {
         heartBurst(2);
@@ -453,7 +455,7 @@ export function MoodLogger({ from, onClose }: { from: { x: number; y: number }; 
       then?.();
       onClose();
     });
-  }, [reduce, stopPulse, save, send, ui, wo, scrim, hov, po, ox, oy, sc, sq, from.x, from.y, L.petCX, L.petCY, s0, later, onClose]);
+  }, [reduce, stopPulse, save, send, ui, wo, scrim, po, ox, oy, sc, sq, from.x, from.y, L.petCX, L.petCY, s0, later, onClose]);
 
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => { close(); return true; });
@@ -507,9 +509,13 @@ export function MoodLogger({ from, onClose }: { from: { x: number; y: number }; 
 
       {/* the pet */}
       <Animated.View pointerEvents="none" style={[s.pet, { left: L.petCX - L.petSize / 2, top: L.petCY - L.petSize / 2, width: L.petSize, height: L.petSize }, petStyle]}>
-        <Animated.View style={hoverStyle}>
-          <Smiley size={L.petSize} settleMs={3600} />
-        </Animated.View>
+        {/* its canvas reaches past its square (hearts above, glints at the sides): clipped to that, so a still
+            shown before the first frame can't spill over the page */}
+        <View pointerEvents="none" style={[s.petClip, { left: -PET_PAD.l * L.petSize, top: -PET_PAD.t * L.petSize, width: L.petSize * (1 + PET_PAD.l + PET_PAD.r), height: L.petSize * (1 + PET_PAD.t + PET_PAD.b) }]}>
+          <View style={{ position: 'absolute', left: PET_PAD.l * L.petSize, top: PET_PAD.t * L.petSize }}>
+            <Smiley size={L.petSize} settleMs={3600} always={home} />
+          </View>
+        </View>
       </Animated.View>
 
       <Animated.View pointerEvents="box-none" style={[StyleSheet.absoluteFill, uiStyle]}>
@@ -526,17 +532,17 @@ export function MoodLogger({ from, onClose }: { from: { x: number; y: number }; 
         {/* the bar under the pool */}
         <Animated.View pointerEvents="box-none" style={[s.bar, { top: L.barTop, height: L.barH, left: L.side + 2, right: L.side + 2 }, barStyle]}>
           {stage === 'field' && !touched && !touching && hint ? (
-            <Animated.View key="hint" entering={FadeIn.duration(600)} exiting={FadeOut.duration(160)} pointerEvents="none" style={s.center}>
+            <Animated.View key="hint" entering={FadeIn.duration(600)} exiting={leaving ? undefined : FadeOut.duration(160)} pointerEvents="none" style={s.center}>
               <Text style={s.hint}>Touch the water where you are</Text>
             </Animated.View>
           ) : null}
           {stage === 'field' && touched ? (
-            <Animated.View key="next" entering={FadeInDown.duration(380)} exiting={FadeOut.duration(140)} style={s.center}>
+            <Animated.View key="next" entering={FadeInDown.duration(380)} exiting={leaving ? undefined : FadeOut.duration(140)} style={s.center}>
               <MoonButton label="Next" arrow onPress={toContext} />
             </Animated.View>
           ) : null}
           {(stage === 'context' || stage === 'talk') && !busy ? (
-            <Animated.View key={`say${wave}`} entering={FadeInDown.duration(380).delay(250)} exiting={FadeOut.duration(140)} style={s.row}>
+            <Animated.View key={`say${wave}`} entering={FadeInDown.duration(380).delay(250)} exiting={leaving ? undefined : FadeOut.duration(140)} style={s.row}>
               <NoteField value={stage === 'context' ? note : text} onChangeText={onType}
                 placeholder={stage === 'context' ? 'Add a few words, if you like' : 'Or say it your way'}
                 onFocus={() => gaze.set({ x: fieldAt.x, y: fieldAt.y, active: true, at: Date.now() })}
@@ -599,6 +605,7 @@ function PlainField({ rect, stage, onTouch }: { rect: Rect; stage: Stage; onTouc
 
 const s = StyleSheet.create({
   pet: { position: 'absolute' },
+  petClip: { position: 'absolute', overflow: 'hidden' },
   bar: { position: 'absolute', justifyContent: 'center' },
   center: { alignItems: 'center', justifyContent: 'center' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10 },

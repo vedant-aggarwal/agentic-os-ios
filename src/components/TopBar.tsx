@@ -6,6 +6,7 @@ import { Glass, lightTap, useScale } from '@/components/Glass';
 import { Account, PcMic, Remote, ToPc, Voices } from '@/components/Icons';
 import { Smiley } from '@/components/Smiley';
 import { Sym } from '@/components/Sym';
+import { DEMO } from '@/lib/demo';
 import { justRubbed, rubEnd, rubMove, rubStart } from '@/lib/pet';
 import { C, F } from '@/theme';
 
@@ -80,6 +81,10 @@ function MoodButton({ onPress, petActive }: { onPress: (at: { x: number; y: numb
   );
 }
 
+// dev, web sample mode only: `?demo&mood` puts the phone's mood button in the web bar, to open and close the mood
+// logger from it the way the phone does (the pet flies out of it and back in)
+const MOOD_BUTTON = DEMO && new URLSearchParams(location.search).has('mood');
+
 export function TopBar({ top, width, live, petActive = true, onFiles, onMic, onRemote, onRemoteHold, onVoices, onAccount, onMood }: {
   top: number; width: number; live: boolean; petActive?: boolean; onFiles: () => void; onMic: () => void; onRemote: () => void; onRemoteHold?: () => void; onVoices: () => void; onAccount: () => void; onMood: (at: { x: number; y: number }) => void;
 }) {
@@ -93,6 +98,7 @@ export function TopBar({ top, width, live, petActive = true, onFiles, onMic, onR
           <Image source={require('../../assets/images/logo-128.png')} style={s.logo} accessibilityLabel="Agentic OS logo" />
           <Text style={s.brandText}>Agentic OS</Text>
         </View>
+        {MOOD_BUTTON ? <MoodButton onPress={onMood} petActive={petActive} /> : null}
         <RoundButton label="Your account" onPress={onAccount}><Sym name="person.fill" size={OPTICAL.person} fallback={<Account size={GLYPH + 2} />} /></RoundButton>
       </View>
     );

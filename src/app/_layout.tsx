@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { FileViewer } from '@/components/FileViewer';
+import { DeskFrame } from '@/desk/DeskFrame';
 import { startAlarms } from '@/lib/alarms';
 import { startCalls } from '@/lib/calls';
 import '@/lib/log'; // sends phone-side errors to the PC log
@@ -35,7 +36,9 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: C.scene }}>
       <StatusBar style="light" />
-      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: C.scene } }} />
+      <DeskFrame>
+        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: C.scene } }} />
+      </DeskFrame>
       {WorkSheets ? <WorkSheets /> : null}
       <FileViewer />
     </GestureHandlerRootView>

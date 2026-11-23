@@ -32,8 +32,15 @@ import { sectionEntry, SECTION_TARGETS } from '@/lib/aspectLinks';
 import { onLink, openLink } from '@/lib/links';
 import { invalidate } from '@/lib/mod';
 import { C, F, type AspectKey } from '@/theme';
+import DeskToday from '@/desk/DeskToday';
+import { useDesktop } from '@/desk/store';
 
+// A desktop browser gets its own layout (src/desk); phones and narrow windows keep this one.
 export default function Today() {
+  return useDesktop() ? <DeskToday /> : <PhoneToday />;
+}
+
+function PhoneToday() {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const t = useToday();

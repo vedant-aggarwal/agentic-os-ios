@@ -7,6 +7,7 @@ import { EdgeBlur } from '@/components/EdgeBlur';
 import { Glass } from '@/components/Glass';
 import { Notice } from '@/components/Notice';
 import { C } from '@/theme';
+import { useDesktop } from '@/desk/store';
 import { work, useWorkNotice } from '../store';
 import { BackIcon } from './icons';
 import { goBack } from './nav';
@@ -37,10 +38,11 @@ export function Shell({ children, right, actions, overlay }: {
 }) {
   const { lift, safeTop } = useShellInsets();
   const notice = useWorkNotice();
+  const desktop = useDesktop(); // a readable column in the middle of a desktop window
   return (
     <View style={s.screen}>
       <Backdrop />
-      <EdgeBack>{children}</EdgeBack>
+      <EdgeBack>{desktop ? <View style={s.column}>{children}</View> : children}</EdgeBack>
       <EdgeBlur edge="top" height={safeTop + BTN_GAP + BTN + 24} strength={30} curve={2} />
       <EdgeBlur height={lift + QUICK_H + 48} strength={35} curve={2.6} />
       <View pointerEvents="box-none" style={[s.top, { top: safeTop + BTN_GAP }]}>
@@ -104,6 +106,7 @@ function EdgeBackPan({ children }: { children: React.ReactNode }) {
 }
 
 const s = StyleSheet.create({
+  column: { flex: 1, width: '100%', maxWidth: 880, alignSelf: 'center' },
   screen: { flex: 1, backgroundColor: C.scene, overflow: 'hidden' },
   fill: { flex: 1 },
   edge: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 20 },

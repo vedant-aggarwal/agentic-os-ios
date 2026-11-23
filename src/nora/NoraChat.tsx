@@ -48,7 +48,10 @@ export function NoraChat({ origin }: { origin: { x: number; y: number } }) {
   );
 }
 
-function ChatBody({ open, mic, replyTo }: { open: boolean; mic: number; replyTo: { id: string; from: string } | null }) {
+/** The chat itself: drawn full screen by NoraChat on the phone, and as the side panel of the desktop web layout. */
+export function ChatBody({ open, mic, replyTo, onClose = noraUi.closeChat }: {
+  open: boolean; mic: number; replyTo: { id: string; from: string } | null; onClose?: () => void;
+}) {
   const insets = useSafeAreaInsets();
   const th = useThread(open);
   const dict = useDictate();
@@ -95,7 +98,7 @@ function ChatBody({ open, mic, replyTo }: { open: boolean; mic: number; replyTo:
   return (
     <View style={[s.fill, { paddingTop: insets.top + 8 }]}>
       <View style={s.pad}>
-        <TopRow title={th.name} onClose={noraUi.closeChat}>
+        <TopRow title={th.name} onClose={onClose}>
           {callTransport() !== 'none' ? (
             <IconButton label={`Call ${th.name}`} onPress={() => noraUi.call()}><NGlyph name="phone" size={18} /></IconButton>
           ) : null}

@@ -108,6 +108,15 @@ export function newId(prefix = 'p') {
 
 const pathOf = (mod: string, coll: string, id?: string) => `/mod/${mod}/${coll}${id ? `/${encodeURIComponent(id)}` : ''}`;
 
+const pullPath = (e: Entry, mod: string, coll: string) => pathOf(mod, coll) + (e.cursor != null ? `?since=${e.cursor}` : '');
+function applyPull(e: Entry, r: { items: Doc[]; cursor: string }) {
+  for (const d of r.items) {
+    if (e.writing.has(d.id)) continue;
+    if (d.deleted_at) e.map.delete(d.id); else e.map.set(d.id, d);
+  }
+  e.cursor = r.cursor; e.loaded = true; e.error = null; e.at = Date.now();
+}
+
 function pull(mod: string, coll: string): Promise<void> {
   const e = entryOf(`${mod}/${coll}`);
   if (e.inflight) return e.inflight;
@@ -120,12 +129,7 @@ function pull(mod: string, coll: string): Promise<void> {
   e.inflight = (async () => {
     try {
       await e.hydrated; // a pull with the saved cursor asks only for what changed
-      const r = await api<{ items: Doc[]; cursor: string }>(pathOf(mod, coll) + (e.cursor != null ? `?since=${e.cursor}` : ''));
-      for (const d of r.items) {
-        if (e.writing.has(d.id)) continue;
-        if (d.deleted_at) e.map.delete(d.id); else e.map.set(d.id, d);
-      }
-      e.cursor = r.cursor; e.loaded = true; e.error = null; e.at = Date.now();
+      applyPull(e, await api<{ items: Doc[]; cursor: string }>(pullPath(e, mod, coll)));
     } catch (err) {
       e.error = (err as Error).message; // what was loaded before stays on screen
     } finally {
@@ -284,6 +288,38 @@ function fetchGet(path: string): Promise<void> {
     }
   })();
   return g.inflight;
+}
+
+/**
+ * Fill many collections and reads in one round trip (POST /batch), so a page opened later draws at once. Skips any
+ * that are fresh or already on their way. A server without /batch, or a failed call, leaves each page to load itself.
+ */
+export async function warm(list: { collections: [string, string][]; gets: string[] }) {
+  if (DEMO) return;
+  const colls = list.collections.map(([mod, coll]) => ({ mod, coll, e: entryOf(`${mod}/${coll}`) }))
+    .filter((c) => !c.e.inflight && !(c.e.loaded && Date.now() - c.e.at < STALE));
+  const reads = list.gets.map((path) => ({ path, g: getOf(path) })).filter((r) => !r.g.inflight && !(r.g.at && Date.now() - r.g.at < STALE));
+  if (!colls.length && !reads.length) return;
+  await Promise.all([...colls.map((c) => c.e.hydrated), ...reads.map((r) => r.g.hydrated)]);
+  const want = colls.map((c) => ({ ...c, path: pullPath(c.e, c.mod, c.coll) }));
+  let res: Record<string, { status: number; body: unknown }>;
+  try {
+    res = (await api<{ results: Record<string, { status: number; body: unknown }> }>('/batch', { method: 'POST', body: { get: [...want.map((c) => c.path), ...reads.map((r) => r.path)] } })).results ?? {};
+  } catch { return; }
+  for (const c of want) {
+    const r = res[c.path];
+    if (r?.status !== 200 || !r.body || c.e.inflight || c.e.writing.size) continue; // a pull of its own got there first
+    applyPull(c.e, r.body as { items: Doc[]; cursor: string });
+    publish(c.e, `${c.mod}/${c.coll}`);
+  }
+  for (const { path, g } of reads) {
+    const r = res[path];
+    if (r?.status !== 200 || g.inflight) continue;
+    g.at = Date.now();
+    g.snap = { data: r.body, error: null, busy: false };
+    for (const fn of g.subs) fn();
+    save(`g:${path}`, () => r.body);
+  }
 }
 
 export type Read<T> = { data: T | null; error: string | null; busy: boolean; refresh: () => Promise<void> };

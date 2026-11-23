@@ -1,7 +1,8 @@
 import { requireOptionalNativeModule } from 'expo';
 import { useSyncExternalStore } from 'react';
-import { Platform } from 'react-native';
+import { Linking, Platform } from 'react-native';
 import { DEMO } from '@/lib/demo';
+import { NORA_LINE } from './line';
 
 // Which of Nora's three surfaces is open: Home (her day, under the dock), Chat (over everything) and a call (over
 // everything). The dock's buttons, deep links (agenticos://nora...) and notification taps all go through here.
@@ -38,7 +39,11 @@ export const noraUi = {
    * elsewhere, as when he answered on the lock screen). Without call audio on this build, ringing her opens chat to talk.
    */
   call: (o: { incomingId?: string | null; reason?: string; follow?: boolean } = {}) => {
-    if (callTransport() === 'none' && !o.incomingId && !o.follow) { set({ chat: true, mic: s.mic + 1 }); return; }
+    // no in-app call audio on this build: ring her SIM line, a real phone call, never dictation
+    if (callTransport() === 'none' && !o.incomingId && !o.follow) {
+      Linking.openURL(`tel:${NORA_LINE}`).catch(() => set({ chat: true }));
+      return;
+    }
     set({ call: { ...o, seq: ++seq } });
   },
   closeCall: () => set({ call: null }),

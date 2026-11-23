@@ -1,46 +1,47 @@
-import { lazy, type ComponentType, type LazyExoticComponent } from 'react';
+import { createElement, type ComponentType } from 'react';
 import type { AspectKey } from '@/theme';
 
-// One folder per aspect, each default-exporting its page from index.tsx. Loaded on first open, so a page costs
-// nothing until it is used and (in development) one page's broken file can't take the others down.
-const LOAD: Record<AspectKey, () => Promise<{ default: ComponentType }>> = {
-  body: () => import('./body'),
-  mind: () => import('./mind'),
-  soul: () => import('./soul'),
-  mission: () => import('./mission'),
-  money: () => import('./money'),
-  growth: () => import('./growth'),
-  family: () => import('./family'),
-  romance: () => import('./romance'),
-  friends: () => import('./friends'),
-};
-export const PAGES = Object.fromEntries(
-  Object.entries(LOAD).map(([k, f]) => [k, lazy(f)]),
-) as Record<AspectKey, LazyExoticComponent<ComponentType>>;
+export { WARM } from './warm';
 
-/** Fetch every page's code ahead of the first tap (web downloads each page as its own file). */
+// Phone: every page is part of the app's own bundle, so opening one never fetches code. (An import() here used to
+// make the dev client download each page from Metro on its first open, 2-3 s through the tunnel.) Each page's module
+// runs the first time it is drawn, or earlier when Today calls preloadPages; one that throws shows the host's error
+// card for that page only. Web downloads pages as separate files instead (registry.web.ts).
+/* eslint-disable @typescript-eslint/no-require-imports */
+const REQUIRE: Record<AspectKey, () => { default: ComponentType }> = {
+  body: () => require('./body'),
+  mind: () => require('./mind'),
+  soul: () => require('./soul'),
+  mission: () => require('./mission'),
+  money: () => require('./money'),
+  growth: () => require('./growth'),
+  family: () => require('./family'),
+  romance: () => require('./romance'),
+  friends: () => require('./friends'),
+};
+/* eslint-enable @typescript-eslint/no-require-imports */
+
+const ready = new Map<AspectKey, ComponentType>();
+const pageOf = (k: AspectKey) => {
+  let c = ready.get(k);
+  if (!c) { c = REQUIRE[k]().default; ready.set(k, c); }
+  return c;
+};
+
+export const PAGES = Object.fromEntries((Object.keys(REQUIRE) as AspectKey[]).map((k) => {
+  const Page = () => createElement(pageOf(k));
+  Page.displayName = `Aspect(${k})`;
+  return [k, Page];
+})) as unknown as Record<AspectKey, ComponentType>;
+
+/** Run every page's module ahead of the first tap, one per frame so Today never stutters. */
 export function preloadPages() {
-  for (const f of Object.values(LOAD)) f().catch(() => {});
+  const keys = (Object.keys(REQUIRE) as AspectKey[]).filter((k) => !ready.has(k));
+  const next = () => {
+    const k = keys.shift();
+    if (!k) return;
+    try { pageOf(k); } catch {} // drawing it shows the error
+    setTimeout(next, 16);
+  };
+  next();
 }
-
-/**
- * What the pages read first when they open, fetched together while Today is on screen (lib/mod warm: one round
- * trip). A page whose reads are here opens drawn; one missing here still works, it just loads on open.
- */
-export const WARM: { collections: [string, string][]; gets: string[] } = {
-  collections: [
-    ['body', 'workouts'], ['body', 'meals'],
-    ['soul', 'sits'], ['soul', 'plans'], ['soul', 'clean'], ['soul', 'settings'], ['growth', 'journal'],
-    ['mission', 'purpose'], ['mission', 'milestones'], ['mission', 'measures'], ['mission', 'life'],
-    ['money', 'transactions'], ['money', 'sources'], ['money', 'recurring'], ['money', 'funds'], ['money', 'accounts'],
-    ['growth', 'rules'], ['growth', 'reviews'],
-    ['people', 'persons'], ['people', 'ideas'], ['people', 'plans'], ['people', 'dates'], ['people', 'rhythms'], ['people', 'moments'],
-    ['romance', 'debriefs'], ['romance', 'sessions'], ['romance', 'prefs'], ['romance', 'follow'],
-    ['friends', 'places'],
-  ],
-  gets: [
-    '/mod/body/home', '/mod/mind/home', '/mod/mission/home', '/mod/money/home', '/mod/growth/home', '/mod/growth/handoff', '/mod/family/home',
-    '/mod/body/today', '/mod/soul/clean/now', '/mod/soul/journal', '/mod/money/jars', '/goals',
-    '/mod/people/calendar?back=0&ahead=60', '/mod/friends/week?days=14', '/mod/friends/bank', '/mod/romance/primer',
-  ],
-};

@@ -1,0 +1,8 @@
+{
+  "name": "pet-scene",
+  "private": true,
+  "description": "The mood pet: a raymarched creature in a WebView. `bun build.mjs` writes src/pet/sceneHtml.ts.",
+  "scripts": {
+    "build": "bun build.mjs"
+  }
+}

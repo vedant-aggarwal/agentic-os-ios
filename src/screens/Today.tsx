@@ -23,7 +23,9 @@ import { useToday } from '@/lib/useToday';
 import { useBody } from '@/lib/body';
 import { startContactSync } from '@/lib/contacts';
 import { DayPlan } from '@/today/DayPlan';
-import { useWispr } from '@/lib/wispr';
+import { type NoraKeys, useWispr } from '@/lib/wispr';
+import { noraUi } from '@/nora/state';
+import { MoodLogger } from '@/mood/MoodLogger';
 import { useKeyboardMic } from '@/lib/kbmic';
 import { Hero, HERO_H } from '@/hero/Hero';
 import { AspectHost, dockClearance, initialAspect, initialLink, type HostEntry } from '@/aspects/AspectHost';
@@ -32,6 +34,13 @@ import { sectionEntry, SECTION_TARGETS } from '@/lib/aspectLinks';
 import { onLink, openLink } from '@/lib/links';
 import { invalidate } from '@/lib/mod';
 import { C, F, type AspectKey } from '@/theme';
+
+// Volume down: a press rings Nora (not again while a call is up), a hold records a voice note to her chat.
+const NORA_KEYS: NoraKeys = {
+  tap: () => { if (!noraUi.inCall()) noraUi.call(); },
+  holdStart: () => noraUi.voiceNote(),
+  holdEnd: () => noraUi.voiceNoteSend(),
+};
 
 export default function Today() {
   const insets = useSafeAreaInsets();
@@ -50,12 +59,13 @@ export default function Today() {
   const [micOpen, setMicOpen] = useState(false); // opened by tapping the PC mic button
   const [voicesOpen, setVoicesOpen] = useState(false); // the top bar's waveform button
   const [accountOpen, setAccountOpen] = useState(false); // the top bar's person button
+  const [moodFrom, setMoodFrom] = useState<{ x: number; y: number } | null>(null); // the mood logger, flying out of the smiley at this point
   const [filesOpen, setFilesOpen] = useState(false); // the top bar's To PC button
   const [remoteOpen, setRemoteOpen] = useState(false); // the top bar's Remote PC button: the PC's screen, full screen
   const [pcTab, setPcTab] = useState<PcTab | null>(null); // hold Remote PC: media remote and power
   const [heroOn, setHeroOn] = useState(true); // the 3D hero renders only while some of it is on screen
-  // volume buttons drive Wispr on the PC while Today is up
-  const mic = useWispr(!!t.view);
+  // volume up drives Wispr on the PC while Today is up; volume down is Nora's (a press calls, a hold is a voice note)
+  const mic = useWispr(!!t.view, NORA_KEYS);
   const kbMic = useKeyboardMic(); // records for the keyboard extension (agenticos://flow)
   const agent = useAgent(!!t.view);
   const b = useBody(!!t.view); // today's workout, water and protein, under the Body part of the plan
@@ -137,7 +147,7 @@ export default function Today() {
       <EdgeBlur edge="top" height={insets.top + TOP_GAP + TOP_H + 28} strength={30} curve={2} />
       <TopBar top={insets.top} width={width} live={live} onMic={() => { setClosedLive(false); setMicOpen(true); }}
         onRemote={() => setRemoteOpen(true)} onRemoteHold={() => setPcTab('media')}
-        onVoices={() => setVoicesOpen(true)} onFiles={() => setFilesOpen(true)} onAccount={() => setAccountOpen(true)} onNotBuilt={notBuilt} />
+        onVoices={() => setVoicesOpen(true)} onFiles={() => setFilesOpen(true)} onAccount={() => setAccountOpen(true)} onMood={setMoodFrom} />
       {/* an aspect page grows out of the orb, over Today and its top bar; the dock stays above it */}
       {/* the pages read today's rows and tick them through Today, so a tick shows on both at once */}
       <LifeContext value={{ sections: v.sections, areaAspects: t.state.life.areaAspects, toggle }}>
@@ -161,6 +171,7 @@ export default function Today() {
       <AccountSheet open={accountOpen} onClose={() => setAccountOpen(false)} onSignedOut={t.reload} />
       <RemoteDesktop open={remoteOpen} onClose={() => setRemoteOpen(false)} />
       <PcControls tab={pcTab} onTab={setPcTab} onClose={() => setPcTab(null)} />
+      {moodFrom ? <MoodLogger from={moodFrom} onClose={() => setMoodFrom(null)} /> : null}
     </View>
   );
 }

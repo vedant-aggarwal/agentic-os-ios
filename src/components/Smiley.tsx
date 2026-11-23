@@ -1,7 +1,7 @@
 import { type ComponentRef, useEffect, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, {
-  Easing, ReduceMotion, type SharedValue, useAnimatedProps, useAnimatedReaction, useAnimatedStyle, useReducedMotion, useSharedValue,
+  Easing, ReduceMotion, type SharedValue, useAnimatedProps, useAnimatedReaction, useAnimatedStyle, useDerivedValue, useReducedMotion, useSharedValue,
   withRepeat, withSequence, withSpring, withTiming,
 } from 'react-native-reanimated';
 import Svg, { Circle, Defs, Ellipse, G, LinearGradient, Path, RadialGradient, Stop } from 'react-native-svg';
@@ -81,7 +81,8 @@ function Heart({ p, x, size }: { p: SharedValue<number>; x: SharedValue<number>;
   );
 }
 
-export function Smiley({ size = 30 }: { size?: number }) {
+/** settleMs: measure where it is again after this long (it was flying in, so the first measure was mid-flight). */
+export function Smiley({ size = 30, settleMs }: { size?: number; settleMs?: number }) {
   const reduce = useReducedMotion();
   const sadNow = useSadness();
   const yaw = useSharedValue(0), pitch = useSharedValue(0), roll = useSharedValue(0);
@@ -98,6 +99,25 @@ export function Smiley({ size = 30 }: { size?: number }) {
   const slot = useRef(0);
 
   useEffect(() => { sad.set(withTiming(sadNow, { duration: 1200 })); }, [sadNow, sad]);
+  useEffect(() => {
+    if (!settleMs) return;
+    const t = setTimeout(() => box.current?.measureInWindow((x, y, w, h) => center.set({ x: x + w / 2, y: y + h / 2 })), settleMs);
+    return () => clearTimeout(t);
+  }, [settleMs, center]);
+  // a bounce it can't help when the logger says he is wired
+  const bob = useSharedValue(0);
+  useEffect(() => { if (!reduce) bob.set(withRepeat(withTiming(1, { duration: 360, easing: Easing.inOut(Easing.quad) }), -1, true)); }, [reduce, bob]);
+  // What the face shows: his real mood (sadness since the last log, a rub's joy), or while the mood logger drives
+  // it, where his finger sits on the grid (lib/pet: val, nrg) plus the logger's passing reactions.
+  const fx = useDerivedValue(() => {
+    const d = pet.drive.value, r = pet.rub.value, v = pet.val.value, n = pet.nrg.value;
+    const joy = Math.max(pet.joy.value, r, d * Math.max(0, (v - 0.4) / 0.6));
+    const sd = sad.value * (1 - d) + d * Math.max(0, -v * 1.1);
+    const sm = smile.value * (1 - d) + d * Math.min(1, Math.max(0, 0.55 + v));
+    // unpleasant and wired reads as cross (knitted brows), not sad
+    const cross = Math.max(pet.anger.value, d * Math.min(1, Math.max(0, -v) * Math.max(0, n) * 2.2));
+    return { r, joy, sad: Math.min(1, sd), s: Math.min(1, sd) * (1 - joy) * (1 - cross), smile: sm, tired: d * Math.max(0, -n), wired: d * Math.max(0, n), worry: pet.worry.value, anger: cross, think: pet.think.value };
+  });
 
   // a tear now and then once it is really sad: it wells up, runs down the cheek and is gone
   useEffect(() => {
@@ -154,10 +174,11 @@ export function Smiley({ size = 30 }: { size?: number }) {
 
   // the whole ball leans into the finger and squishes while rubbed, hops after, sinks a little when sad
   const body = useAnimatedStyle(() => {
-    const r = pet.rub.value, s = sad.value * (1 - Math.max(pet.joy.value, r));
+    const { r, s, wired, tired } = fx.value;
     return {
       transform: [
-        { translateX: pet.fx.value * size * 0.06 * r }, { translateY: -hop.value * size * 0.16 + s * size * 0.04 },
+        { translateX: pet.fx.value * size * 0.06 * r },
+        { translateY: -hop.value * size * 0.16 + s * size * 0.04 + tired * size * 0.03 - bob.value * wired * size * 0.05 },
         { rotate: `${pet.fx.value * 12 * r}deg` },
         { scaleX: 1 + 0.07 * r - 0.03 * s }, { scaleY: 1 - 0.07 * r - 0.03 * s },
       ],
@@ -176,47 +197,48 @@ export function Smiley({ size = 30 }: { size?: number }) {
   });
   // open eyes: hidden behind happy arcs while rubbed; heavy-lidded when sad
   const eyes = useAnimatedStyle(() => {
-    const r = pet.rub.value, s = sad.value * (1 - Math.max(pet.joy.value, r));
+    const { r, s, tired, wired, think } = fx.value;
     return {
       opacity: 1 - Math.min(1, r * 1.6),
       transform: [
-        { translateX: (ex.value - yaw.value) * size * 0.06 }, { translateY: (ey.value - pitch.value) * size * 0.05 + s * size * 0.03 },
-        { scaleY: lid.value * (1 - 0.38 * s) },
+        { translateX: (ex.value - yaw.value) * size * 0.06 }, { translateY: (ey.value - pitch.value) * size * 0.05 + s * size * 0.03 - think * size * 0.06 },
+        { scaleY: lid.value * (1 - 0.38 * s) * (1 - 0.45 * tired) * (1 + 0.12 * wired) },
       ],
     };
   });
   const arcs = useAnimatedProps(() => ({ opacity: Math.min(1, pet.rub.value * 1.6) }));
   const arcsLit = useAnimatedProps(() => ({ opacity: Math.min(1, pet.rub.value * 1.6) * 0.5 }));
   const brows = useAnimatedProps(() => {
-    const s = sad.value * (1 - Math.max(pet.joy.value, pet.rub.value));
-    return { opacity: Math.min(1, s * 1.8), d: `M 25 ${29 - 2 * s} L 42 ${28 - 9 * s} M 58 ${28 - 9 * s} L 75 ${29 - 2 * s}` };
+    const { s, worry, anger } = fx.value;
+    const a = anger, w = Math.max(s, worry) * (1 - a); // worried: inner ends up; cross: inner ends down
+    return { opacity: Math.min(1, Math.max(w, a) * 1.8), d: `M 25 ${29 - 2 * w + a} L 42 ${28 - 9 * w + 7 * a} M 58 ${28 - 9 * w + 7 * a} L 75 ${29 - 2 * w + a}` };
   });
-  const cheeks = useAnimatedProps(() => ({ opacity: Math.max(pet.joy.value, pet.rub.value) * 0.8 }));
-  const dull = useAnimatedProps(() => ({ opacity: sad.value * (1 - Math.max(pet.joy.value, pet.rub.value)) * 0.42 }));
+  const cheeks = useAnimatedProps(() => ({ opacity: fx.value.joy * 0.8 }));
+  const dull = useAnimatedProps(() => ({ opacity: fx.value.s * 0.42 }));
   // the mouth: smile, grin or frown (each updater reads the shared values itself, so it reruns when they move)
   const mouth = useAnimatedProps(() => {
-    const { hw, y, dip } = mouthGeom(pet.joy.value, pet.rub.value, sad.value, smile.value);
+    const { hw, y, dip } = mouthGeom(fx.value.joy, 0, fx.value.sad, fx.value.smile);
     return { d: `M ${50 - hw} ${y} Q 50 ${y + dip} ${50 + hw} ${y}` };
   });
   const lip = useAnimatedProps(() => { // light catching the lower edge of the mouth's groove
-    const { j, hw, y, dip } = mouthGeom(pet.joy.value, pet.rub.value, sad.value, smile.value);
+    const { j, hw, y, dip } = mouthGeom(fx.value.joy, 0, fx.value.sad, fx.value.smile);
     const o = 0.45 * (1 - Math.min(1, j * 1.4));
     return { opacity: o, d: `M ${50 - hw * 0.75} ${y + 3.6 + dip * 0.12} Q 50 ${y + dip + 3.6} ${50 + hw * 0.75} ${y + 3.6 + dip * 0.12}` };
   });
   const open = useAnimatedProps(() => {
-    const { j, hw, y, dip } = mouthGeom(pet.joy.value, pet.rub.value, sad.value, smile.value);
+    const { j, hw, y, dip } = mouthGeom(fx.value.joy, 0, fx.value.sad, fx.value.smile);
     return { opacity: Math.min(1, j * 1.4), d: `M ${50 - hw} ${y} Q 50 ${y + dip + 9} ${50 + hw} ${y} Q 50 ${y + 3} ${50 - hw} ${y} Z` };
   });
   const teeth = useAnimatedProps(() => {
-    const { j, hw, y } = mouthGeom(pet.joy.value, pet.rub.value, sad.value, smile.value);
+    const { j, hw, y } = mouthGeom(fx.value.joy, 0, fx.value.sad, fx.value.smile);
     return { opacity: Math.min(1, j * 1.4) * 0.95, d: `M ${50 - hw * 0.7} ${y + 1.4} Q 50 ${y + 6} ${50 + hw * 0.7} ${y + 1.4} Q 50 ${y + 2.6} ${50 - hw * 0.7} ${y + 1.4} Z` };
   });
   const tongue = useAnimatedProps(() => {
-    const { j, y, dip } = mouthGeom(pet.joy.value, pet.rub.value, sad.value, smile.value);
+    const { j, y, dip } = mouthGeom(fx.value.joy, 0, fx.value.sad, fx.value.smile);
     return { opacity: Math.min(1, j * 1.4), cy: y + dip * 0.5 + 6 };
   });
   const tearDrop = useAnimatedProps(() => {
-    const v = tear.value, s = sad.value * (1 - Math.max(pet.joy.value, pet.rub.value));
+    const v = tear.value, s = fx.value.s;
     return { opacity: v <= 0.02 ? 0 : (v < 0.15 ? v / 0.15 : 1 - Math.max(0, v - 0.75) / 0.25) * Math.min(1, Math.max(0, (s - 0.6) * 4)), cy: 50 + v * 30 };
   });
 

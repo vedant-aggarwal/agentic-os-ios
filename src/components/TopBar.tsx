@@ -1,3 +1,4 @@
+import { type ComponentRef, useRef } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
 import Animated from 'react-native-reanimated';
@@ -58,7 +59,9 @@ function RoundButton({ label, onPress, children }: { label: string; onPress: () 
 }
 
 // The mood button: a tap logs a mood; a finger rubbing over it pets the smiley (lib/pet).
-function MoodButton({ onPress }: { onPress: () => void }) {
+function MoodButton({ onPress }: { onPress: (at: { x: number; y: number }) => void }) {
+  const box = useRef<ComponentRef<typeof View>>(null);
+  const open = () => box.current?.measureInWindow((x, y, w, h) => onPress({ x: x + w / 2, y: y + h / 2 }));
   const rub = usePanGesture({
     minDistance: 3,
     runOnJS: true,
@@ -69,15 +72,15 @@ function MoodButton({ onPress }: { onPress: () => void }) {
   });
   return (
     <GestureDetector gesture={rub}>
-      <View>
-        <RoundButton label="Log mood (rub to pet)" onPress={() => { if (!justRubbed()) onPress(); }}><Smiley size={30} /></RoundButton>
+      <View ref={box}>
+        <RoundButton label="Log mood (rub to pet)" onPress={() => { if (!justRubbed()) open(); }}><Smiley size={30} /></RoundButton>
       </View>
     </GestureDetector>
   );
 }
 
-export function TopBar({ top, width, live, onFiles, onMic, onRemote, onRemoteHold, onVoices, onAccount, onNotBuilt }: {
-  top: number; width: number; live: boolean; onFiles: () => void; onMic: () => void; onRemote: () => void; onRemoteHold?: () => void; onVoices: () => void; onAccount: () => void; onNotBuilt: (what: string) => void;
+export function TopBar({ top, width, live, onFiles, onMic, onRemote, onRemoteHold, onVoices, onAccount, onMood }: {
+  top: number; width: number; live: boolean; onFiles: () => void; onMic: () => void; onRemote: () => void; onRemoteHold?: () => void; onVoices: () => void; onAccount: () => void; onMood: (at: { x: number; y: number }) => void;
 }) {
   const pill = width - 32 - 2 * (TOP_H + G);
   return (
@@ -92,7 +95,7 @@ export function TopBar({ top, width, live, onFiles, onMic, onRemote, onRemoteHol
         <PillButton label="Remote PC (hold for media remote and power)" onPress={onRemote} onLongPress={onRemoteHold}><Sym name="cursorarrow.rays" size={OPTICAL.cursor} fallback={<Remote size={GLYPH} />} /></PillButton>
         <PillButton label="Voices" onPress={onVoices}><Sym name="waveform" size={OPTICAL.wave} fallback={<Voices size={GLYPH} />} /></PillButton>
       </View>
-      <MoodButton onPress={() => onNotBuilt('Mood')} />
+      <MoodButton onPress={onMood} />
       <RoundButton label="Your account" onPress={onAccount}><Sym name="person.fill" size={OPTICAL.person} fallback={<Account size={GLYPH + 2} />} /></RoundButton>
     </View>
   );

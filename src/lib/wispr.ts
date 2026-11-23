@@ -7,8 +7,9 @@ import { type DictateTo, gptAvailable, useGptRecorder } from './gpt';
 
 // The phone's volume buttons drive Wispr Flow on the PC (server: POST /pc/keys).
 //   Hold volume up                 hold Wispr's talk keys; let go and it stops and pastes
-//   Press volume down              hands-free: it keeps listening after you let go
-//   Hold up, then tap down         turns the hold into hands-free
+//   Press volume down              call Nora (the `nora` handlers; nothing goes to the PC)
+//   Hold volume down               a voice note to Nora: it records while held and sends when let go
+//   Hold up, then tap down         turns the hold into hands-free (the PC mic screen's orb also toggles it)
 //   Any volume press in hands-free stops it
 // Command mode (the PC agent) starts from the Action button control instead; see targets/controls.
 // Source 'phone' is GPT: the same controls record with this phone's mic instead, and the PC transcribes the clip
@@ -29,7 +30,12 @@ export const volumeButtonsAvailable = !!native;
 type Action = 'ptt-down' | 'ptt-up' | 'handsfree' | 'stop' | 'beat' | 'cmd-down' | 'cmd-up' | 'say-down' | 'say-up' | 'cmd-lock' | 'cmd-toggle';
 const haptic = (s: Haptics.ImpactFeedbackStyle) => { if (Platform.OS !== 'web') Haptics.impactAsync(s).catch(() => {}); };
 
-export function useWispr(enabled: boolean) {
+/** What volume down does: a press calls Nora, a hold records a voice note to her (holdStart, then holdEnd). */
+export type NoraKeys = { tap: () => void; holdStart: () => void; holdEnd: () => void };
+
+export function useWispr(enabled: boolean, nora?: NoraKeys) {
+  const noraRef = useRef(nora);
+  noraRef.current = nora;
   const [phase, setPhase] = useState<Phase>('idle');
   const [error, setError] = useState<string | null>(null);
   const [since, setSince] = useState(0); // when the phase began
@@ -39,7 +45,7 @@ export function useWispr(enabled: boolean) {
   const [sourceNote, setSourceNote] = useState<string | null>(null);
   // gesture state, read and written only in handlers and timers
   const g = useRef({
-    mode: 'idle' as 'idle' | 'ptt' | 'hfHeld' | 'handsfree' | 'stopHeld' | 'cmd' | 'cmdHf',
+    mode: 'idle' as 'idle' | 'ptt' | 'hfHeld' | 'handsfree' | 'stopHeld' | 'cmd' | 'cmdHf' | 'noraWait' | 'noraHold',
     ticks: [] as number[], t0: 0, // this press sequence's step times, ms from its first step
     steps: 0, quiet: null as ReturnType<typeof setTimeout> | null, beat: null as ReturnType<typeof setInterval> | null,
     sent: null as ReturnType<typeof setTimeout> | null,
@@ -175,9 +181,22 @@ export function useWispr(enabled: boolean) {
           startTalk();
           quietAfter(QUIET_FIRST, endTalk);
         } else {
-          handsFree(true); // volume down on its own: straight into hands-free
-          quietAfter(QUIET_FIRST, () => { st.mode = 'handsfree'; });
+          // volume down: a lone step is a press (call Nora); auto-repeat steps mean it is held (a voice note)
+          st.mode = 'noraWait';
+          haptic(Haptics.ImpactFeedbackStyle.Medium);
+          quietAfter(QUIET_FIRST, () => { st.mode = 'idle'; st.steps = 0; noraRef.current?.tap(); });
         }
+        break;
+      case 'noraWait':
+        if (button !== 'down') break;
+        st.mode = 'noraHold';
+        haptic(Haptics.ImpactFeedbackStyle.Heavy);
+        noraRef.current?.holdStart();
+        quietAfter(QUIET_REPEAT, () => { st.mode = 'idle'; st.steps = 0; haptic(Haptics.ImpactFeedbackStyle.Light); noraRef.current?.holdEnd(); });
+        break;
+      case 'noraHold':
+        if (button !== 'down') break;
+        quietAfter(QUIET_REPEAT, () => { st.mode = 'idle'; st.steps = 0; haptic(Haptics.ImpactFeedbackStyle.Light); noraRef.current?.holdEnd(); });
         break;
       case 'ptt':
         if (button === 'down') { handsFree(true); quietAfter(QUIET_FIRST, () => { st.mode = 'handsfree'; }); }

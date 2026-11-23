@@ -418,7 +418,7 @@ export function Dock({ bottom, width, aspects, onNotBuilt, onAspect, onHome, hid
       tap(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light));
       noraUi.closeHome(); // the aspect page opens under the dock, where Home sits
       onAspect(WHEEL[chosen]);
-    } else if (quick) noraUi.call(); // a call, or chat with the mic on where this build has no call audio
+    } else if (quick) noraUi.call(); // a call: in the app, or her SIM line where this build has no call audio
   };
 
   return (

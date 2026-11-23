@@ -4,6 +4,7 @@ import { ApiError } from '@/lib/api';
 import { DEMO } from '@/lib/demo';
 import { nora, type NoraIncoming, type NoraMessage, type NoraState } from '@/lib/nora';
 import { demoMode, noraDemo } from '@/lib/noraDemo';
+import { splitAttached } from './attach';
 
 // The chat thread while it is open: the last 80 messages, then a long poll that the PC answers as soon as a message
 // lands, her status changes ("Checking your calendar") or she starts ringing. A send shows at once and is replaced by
@@ -14,7 +15,8 @@ const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 function merge(list: NoraMessage[], add: NoraMessage[]) {
   if (!add.length) return list;
-  const byId = new Map(list.filter((m) => !m.pending || !add.some((a) => a.role === 'user' && a.text === m.text)).map((m) => [m.id, m]));
+  // the PC's copy of a message sent with pictures carries their attachment block; match on the words
+  const byId = new Map(list.filter((m) => !m.pending || !add.some((a) => a.role === 'user' && splitAttached(a.text).text === m.text)).map((m) => [m.id, m]));
   for (const m of add) byId.set(m.id, m);
   return [...byId.values()].sort((a, b) => (a.pending ? 1 : 0) - (b.pending ? 1 : 0) || a.id - b.id);
 }
@@ -76,14 +78,14 @@ export function useThread(open: boolean) {
     return () => sub.remove();
   }, [open]);
 
-  const send = useCallback(async (text: string) => {
+  const send = useCallback(async (text: string, att?: { ids: string[]; uris: string[] }) => {
     const t = text.trim();
-    if (!t) return;
+    if (!t && !att?.ids.length) return;
     if (DEMO) { noraDemo.send(t); return; }
     const id = local.current--;
-    setMessages((cur) => [...cur, { id, role: 'user', text: t, at: new Date().toISOString(), pending: true }]);
+    setMessages((cur) => [...cur, { id, role: 'user', text: t, at: new Date().toISOString(), pending: true, att }]);
     try {
-      await nora.send(t);
+      await nora.send(t, att?.ids);
     } catch (e) {
       setMessages((cur) => cur.map((m) => (m.id === id ? { ...m, failed: errText(e) } : m)));
     }
@@ -91,7 +93,7 @@ export function useThread(open: boolean) {
 
   const retry = useCallback((m: NoraMessage) => {
     setMessages((cur) => cur.filter((x) => x.id !== m.id));
-    void send(m.text);
+    void send(m.text, m.att);
   }, [send]);
 
   /** Undo one change she made. Resolves with an error message, or null. */

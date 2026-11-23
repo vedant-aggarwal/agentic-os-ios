@@ -26,6 +26,8 @@ export type NoraMessage = {
   pending?: boolean;
   /** On this phone only: the send failed with this message. */
   failed?: string;
+  /** On this phone only: pictures sent with it (ids on the PC, and local uris to draw until the PC's copy lands). */
+  att?: { ids: string[]; uris: string[] };
 };
 export type NoraIncoming = { id: string; reason: string; at: string; expires: number };
 export type NoraState = {
@@ -92,7 +94,8 @@ const enc = encodeURIComponent;
 export const nora = {
   state: (signal?: AbortSignal) => noraReq<NoraState>('/nora', { signal }),
   poll: (after: number, signal?: AbortSignal) => noraReq<NoraState>(`/nora?after=${after}&wait=25`, { signal, timeout: 40_000 }),
-  send: (text: string) => post<{ id: number; turn: string }>('/nora/messages', { text }),
+  send: (text: string, attachments: string[] = []) =>
+    post<{ id: number; turn: string }>('/nora/messages', attachments.length ? { text, attachments } : { text }),
   undoChange: (change: number) => post<{ undone: string[] }>('/nora/undo', { change }),
   answerAsk: (id: string, text: string) => post(`/nora/asks/${enc(id)}/answer`, { text }),
   home: (signal?: AbortSignal) => noraReq<NoraHome>('/nora/home', { signal, timeout: 30_000 }),

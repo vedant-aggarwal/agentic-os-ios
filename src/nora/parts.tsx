@@ -1,10 +1,11 @@
 import type { SymbolViewProps } from 'expo-symbols';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { Glyph, Icon, IconButton, Press, SURF, t } from '@/aspects/kit';
 import { Glass } from '@/components/Glass';
 import { C, F } from '@/theme';
+import type { Attach } from './attach';
 import type { useDictate } from './useDictate';
 
 // Pieces shared by Nora's chat, Home and call screens.
@@ -22,6 +23,7 @@ const G: Record<string, readonly [SymbolViewProps['name'], string, boolean?]> = 
   stop: ['stop.fill', 'M7 7h10v10H7z', true],
   sparkle: ['sparkle', 'M12 3c.6 4.4 2.6 6.4 7 7-4.4.6-6.4 2.6-7 7-.6-4.4-2.6-6.4-7-7 4.4-.6 6.4-2.6 7-7z', true],
   chat: ['bubble.left.fill', 'M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-8l-4 3v-3H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z'],
+  image: ['photo', 'M4 5h16a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zM3 16l5-5 4 4 3-3 6 6M15.5 9.5h.01'],
 };
 export function NGlyph({ name, size = 20, color = C.text }: { name: keyof typeof G; size?: number; color?: string }) {
   const [sf, d, filled] = G[name];
@@ -77,14 +79,17 @@ export function useElapsed(since: number | null) {
  * The reply box: type, or tap the mic and talk. While a take runs its words fill in as the PC hears them; the send
  * button stops the take and sends what was said in one tap, the mic button stops it and leaves the words to edit.
  */
-export function Composer({ draft, setDraft, onSend, dict, placeholder, sending = false, autoFocus, label = 'Message', inset = false }: {
+export function Composer({ draft, setDraft, onSend, dict, placeholder, sending = false, autoFocus, label = 'Message', inset = false, attach }: {
   draft: string; setDraft: (v: string) => void; onSend: (text: string) => void; dict: ReturnType<typeof useDictate>;
   placeholder: string; sending?: boolean; autoFocus?: boolean; label?: string;
   /** inside a card: a plain filled field, no glass or shadow on top of the card's own surface */
   inset?: boolean;
+  /** pictures to go with the message (chat only): a picture button, and the picked ones above the field */
+  attach?: Attach;
 }) {
   const rec = dict.state !== 'idle';
-  const canSend = !sending && dict.state !== 'finishing' && (rec || !!draft.trim());
+  const pics = attach?.pics ?? [];
+  const canSend = !sending && dict.state !== 'finishing' && (attach?.ready ?? true) && (rec || !!draft.trim() || !!attach?.ids.length);
   const join = (a: string, b: string) => (a.trim() ? `${a.trim()} ${b}` : b);
   const micTap = async () => {
     if (dict.state === 'idle') { void dict.start(); return; }
@@ -106,8 +111,28 @@ export function Composer({ draft, setDraft, onSend, dict, placeholder, sending =
     setDraft('');
     onSend(text);
   };
+  // a desktop keyboard: Enter sends, Shift+Enter starts a new line
+  const keys = Platform.OS === 'web' ? {
+    onKeyPress: (e: { nativeEvent: { key: string; shiftKey?: boolean }; preventDefault?: () => void }) => {
+      if (e.nativeEvent.key === 'Enter' && !e.nativeEvent.shiftKey) { e.preventDefault?.(); void send(); }
+    },
+  } : null;
   return (
     <View style={s.composer}>
+      {pics.length ? (
+        <View style={s.pics}>
+          {pics.map((p) => (
+            <View key={p.key} style={[s.pic, p.error && { borderColor: C.danger }]}>
+              <Image source={{ uri: p.uri }} style={s.picImg} accessibilityIgnoresInvertColors />
+              {!p.id && !p.error ? <View style={s.picBusy}><ActivityIndicator size="small" color={C.text} /></View> : null}
+              <Press label="Remove picture" onPress={() => attach!.remove(p.key)} hitSlop={6} style={s.picX}>
+                <Icon name="close" size={10} color={C.text} />
+              </Press>
+            </View>
+          ))}
+          {pics.some((p) => p.error) ? <Text style={[t.caption, { color: C.danger, alignSelf: 'center' }]}>{pics.find((p) => p.error)!.error}</Text> : null}
+        </View>
+      ) : null}
       {dict.error ? (
         <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(120)} style={s.note}>
           <Text style={[t.small, s.flex]}>{dict.error}</Text>
@@ -116,6 +141,11 @@ export function Composer({ draft, setDraft, onSend, dict, placeholder, sending =
       ) : null}
       <View style={[s.bar, inset ? s.barInset : s.barFloat]}>
         {inset ? null : <Glass radius={26} />}
+        {attach?.pick && !rec ? (
+          <Press label="Add pictures" onPress={attach.pick} scale={0.9} style={s.round}>
+            <NGlyph name="image" size={20} color={C.muted} />
+          </Press>
+        ) : null}
         <Press label={rec ? 'Stop talking and edit' : 'Talk instead of typing'} onPress={micTap} scale={0.9}
           style={[s.round, rec && { backgroundColor: NORA }]}>
           {dict.state === 'finishing' ? <ActivityIndicator size="small" color={C.text} />
@@ -131,7 +161,7 @@ export function Composer({ draft, setDraft, onSend, dict, placeholder, sending =
         ) : (
           <TextInput value={draft} onChangeText={setDraft} placeholder={placeholder} placeholderTextColor={C.faint}
             multiline {...WEB_ONE_ROW} style={s.input} keyboardAppearance="dark" accessibilityLabel={label} autoFocus={autoFocus}
-            submitBehavior="newline" />
+            submitBehavior="newline" {...keys} />
         )}
         <Press label="Send" onPress={send} disabled={!canSend} scale={0.9} style={[s.round, s.send]}>
           {sending ? <ActivityIndicator size="small" color={C.scene} /> : <Icon name="arrowUp" size={18} color={C.scene} />}
@@ -151,6 +181,11 @@ const s = StyleSheet.create({
   dots: { flexDirection: 'row', gap: 4, alignItems: 'center', height: 20 },
   dot: { width: 6, height: 6, borderRadius: 3 },
   composer: { gap: 8 },
+  pics: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 4 },
+  pic: { width: 64, height: 64, borderRadius: 14, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: SURF.line, backgroundColor: SURF.track },
+  picImg: { width: '100%', height: '100%' },
+  picBusy: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.45)' },
+  picX: { position: 'absolute', top: 4, right: 4, width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.65)' },
   note: {
     flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 16, paddingRight: 4, minHeight: 44, borderRadius: 16,
     borderCurve: 'continuous', backgroundColor: 'rgba(30,31,35,0.96)', borderWidth: StyleSheet.hairlineWidth, borderColor: SURF.line,

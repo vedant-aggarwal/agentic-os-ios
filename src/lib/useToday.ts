@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState } from 'react-native';
-import { api, ApiError, loadToken, setToken } from './api';
+import { api, ApiError, loadToken, setToken, WEB } from './api';
+import { keep, kept } from './mod';
 import { DEMO, demoData } from './demo';
 import { deriveToday, type Area, type LifePayload, type Task, type TodayPayload, type TodayView } from './today';
 
@@ -10,7 +11,16 @@ type State =
   | { status: 'error'; message: string }
   | { status: 'ready'; today: TodayPayload; life: LifePayload; areas: Area[] };
 
-/** Today from the phone server. The UI only ever renders what this returns. */
+type Saved = { day: string; today: TodayPayload; life: LifePayload; areas: Area[] };
+const localDay = () => new Date().toDateString();
+const fetchAll = () => Promise.all([
+  api<TodayPayload>('/today'),
+  api<LifePayload>('/life'),
+  api<{ areas: Area[] }>('/areas'),
+]);
+
+/** Today from the phone server. The UI only ever renders what this returns. The last day loaded is kept on the
+ * device, so a launch draws it at once and the PC's answer replaces it a moment later. */
 export function useToday() {
   const [state, setState] = useState<State>({ status: 'loading' });
   const [refreshing, setRefreshing] = useState(false);
@@ -20,14 +30,18 @@ export function useToday() {
 
   const load = useCallback(async () => {
     if (DEMO) return setState((s) => (s.status === 'ready' ? s : { status: 'ready', ...demoData() }));
+    if (live.current.status === 'loading') {
+      const s = await kept<Saved>('today');
+      if (s?.day === localDay() && live.current.status === 'loading') setState({ status: 'ready', today: s.today, life: s.life, areas: s.areas });
+    }
+    // Web signs in with the cookie, so the reads needn't wait for the sign-in check: both go out together.
+    const early = WEB ? fetchAll() : null;
+    early?.catch(() => {});
     if (!(await loadToken())) return setState({ status: 'signedOut' });
     try {
-      const [today, life, areas] = await Promise.all([
-        api<TodayPayload>('/today'),
-        api<LifePayload>('/life'),
-        api<{ areas: Area[] }>('/areas'),
-      ]);
+      const [today, life, areas] = await (early ?? fetchAll());
       setState({ status: 'ready', today, life, areas: areas.areas });
+      keep('today', { day: localDay(), today, life, areas: areas.areas } satisfies Saved);
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) { await setToken(null); return setState({ status: 'signedOut' }); }
       if (live.current.status !== 'ready') setState({ status: 'error', message: (e as Error).message });

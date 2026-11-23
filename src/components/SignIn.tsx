@@ -25,7 +25,9 @@ export function SignIn({ onDone }: { onDone: () => void }) {
       <Backdrop />
       <View style={s.form}>
         <Text style={s.title}>Sign in to your PC</Text>
-        <Text style={s.body}>Same account as agentic.norrita.com. Today reads and writes your real agentos tasks.</Text>
+        <Text style={s.body}>{Platform.OS === 'web'
+          ? 'Your Agentic OS account. Today reads and writes your real agentos tasks.'
+          : 'Same account as agentic.norrita.com. Today reads and writes your real agentos tasks.'}</Text>
         <View style={s.field}>
           <Text style={s.label}>Email</Text>
           <TextInput value={email} onChangeText={setEmail} autoCapitalize="none" autoComplete="email" keyboardType="email-address"
@@ -48,7 +50,7 @@ export function SignIn({ onDone }: { onDone: () => void }) {
 
 const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: C.scene, justifyContent: 'center', paddingHorizontal: 24 },
-  form: { gap: 16 },
+  form: { gap: 16, width: '100%', maxWidth: 400, alignSelf: 'center' }, // a card in the middle of a desktop window
   title: { fontFamily: F.semibold, fontSize: 30, lineHeight: 36, letterSpacing: -0.6, color: C.text },
   body: { fontFamily: F.regular, fontSize: 16, lineHeight: 24, color: C.muted },
   field: { gap: 8 },

@@ -55,8 +55,13 @@ function mixHex(a: string, b: string, k: number) {
 /** The app background (Backdrop) at a height on screen: bgTop to bgMid over the top 48%. */
 const backdropAt = (y: number, screenH: number) => mixHex(C.bgTop, C.bgMid, Math.min(1, y / (0.48 * screenH)));
 
-export function Hero({ view, top, topBar, active }: { view: TodayView; top: number; topBar: number; active: boolean }) {
-  const { width, height: screenH } = useWindowDimensions();
+export function Hero({ view, top, topBar, active, width: fixedW }: {
+  view: TodayView; top: number; topBar: number; active: boolean;
+  /** The desktop web layout draws the hero as a card narrower than the window. */
+  width?: number;
+}) {
+  const { width: winW, height: screenH } = useWindowDimensions();
+  const width = fixedW ?? winW;
   const h = top + HERO_H;
   const reduce = useReducedMotion();
   const surface = useRef<SurfaceHandle>(null);

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, RefreshControl, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Platform, Pressable, RefreshControl, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 // gesture handler's ScrollView, so the hero's sideways drag can take over from the page's scroll
 import { ScrollView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -32,8 +32,23 @@ import { sectionEntry, SECTION_TARGETS } from '@/lib/aspectLinks';
 import { onLink, openLink } from '@/lib/links';
 import { invalidate } from '@/lib/mod';
 import { C, F, type AspectKey } from '@/theme';
+import DeskToday from '@/desk/DeskToday';
+import { useNora } from '@/nora/state';
+import { useDesktop } from '@/desk/store';
+import { preloadPages } from '@/aspects/registry';
 
+// A desktop browser gets its own layout (src/desk); phones and narrow windows keep this one.
 export default function Today() {
+  // Web loads each aspect page as its own file: fetch them while Today sits idle, so the first tap opens at once.
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const t = setTimeout(preloadPages, 1500);
+    return () => clearTimeout(t);
+  }, []);
+  return useDesktop() ? <DeskToday /> : <PhoneToday />;
+}
+
+function PhoneToday() {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const t = useToday();
@@ -55,9 +70,11 @@ export default function Today() {
   const [pcTab, setPcTab] = useState<PcTab | null>(null); // hold Remote PC: media remote and power
   const [heroOn, setHeroOn] = useState(true); // the 3D hero renders only while some of it is on screen
   // volume buttons drive Wispr on the PC while Today is up
-  const mic = useWispr(!!t.view);
+  const native = Platform.OS !== 'web'; // the web app has no PC controls: no Wispr, no PC agent
+  const mic = useWispr(!!t.view && native);
   const kbMic = useKeyboardMic(); // records for the keyboard extension (agenticos://flow)
-  const agent = useAgent(!!t.view);
+  const agent = useAgent(!!t.view && native);
+  const noraOpen = useNora().chat;
   const b = useBody(!!t.view); // today's workout, water and protein, under the Body part of the plan
   const signedIn = !!t.view;
   useEffect(() => (signedIn ? startContactSync() : undefined), [signedIn]); // contacts to the PC, at most every 12 h (lib/contacts.ts)
@@ -135,9 +152,10 @@ export default function Today() {
           bar, 14 pt at the bottom edge */}
       {/* the same blur under the top bar, dense at the screen's top edge */}
       <EdgeBlur edge="top" height={insets.top + TOP_GAP + TOP_H + 28} strength={30} curve={2} />
-      <TopBar top={insets.top} width={width} live={live} onMic={() => { setClosedLive(false); setMicOpen(true); }}
+      {/* on web the bar would sit over Nora's chat header */}
+      {native || !noraOpen ? <TopBar top={insets.top} width={width} live={live} onMic={() => { setClosedLive(false); setMicOpen(true); }}
         onRemote={() => setRemoteOpen(true)} onRemoteHold={() => setPcTab('media')}
-        onVoices={() => setVoicesOpen(true)} onFiles={() => setFilesOpen(true)} onAccount={() => setAccountOpen(true)} onNotBuilt={notBuilt} />
+        onVoices={() => setVoicesOpen(true)} onFiles={() => setFilesOpen(true)} onAccount={() => setAccountOpen(true)} onNotBuilt={notBuilt} /> : null}
       {/* an aspect page grows out of the orb, over Today and its top bar; the dock stays above it */}
       {/* the pages read today's rows and tick them through Today, so a tick shows on both at once */}
       <LifeContext value={{ sections: v.sections, areaAspects: t.state.life.areaAspects, toggle }}>

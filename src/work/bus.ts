@@ -31,7 +31,7 @@ export const useSheetRequest = () => useSyncExternalStore(subscribe, () => curre
 
 // ---- push to talk from the fan ----
 export type MicEvent =
-  | { type: 'start'; project: string }   // finger rested on a project's mic: start recording into it
+  | { type: 'start'; project: string | null } // finger rested on a project's mic: start recording into it (null: Inbox)
   | { type: 'lock' }                      // slid up: keep recording hands free
   | { type: 'release' }                   // let go on the mic (or anywhere while locked = no-op): save the idea
   | { type: 'cancel' };                   // slid off before letting go: throw the take away

@@ -23,6 +23,7 @@
 //   job/<id>             a job's thread in the Projects hub (handled by +native-intent as a route)
 //   nora[/chat|/call]    Nora: chat, or a call (?id=<call id> to join one that is ringing)
 //   today                Today
+//   record               the Capture widget: start a hands-free voice idea into the Work inbox (src/work/voice.ts)
 
 export type Link = { target: string; parts: string[]; query: Record<string, string>; url: string };
 type Handler = (link: Link) => void;

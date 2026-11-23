@@ -6,6 +6,7 @@ import { type SharedValue, useSharedValue, withTiming } from 'react-native-reani
 import { api, ApiError, currentToken, loadToken } from '@/lib/api';
 import { DEMO } from '@/lib/demo';
 import { gptAvailable, localUri, useGptRecorder } from '@/lib/gpt';
+import { onLink } from '@/lib/links';
 import { plog } from '@/lib/log';
 import { type MicEvent, useMicEvents } from './bus';
 import { readCache, writeCache } from './cache';
@@ -68,7 +69,7 @@ export function appendText(prev: string, add: string) {
 // ---- what the overlay draws ----
 export type Ptt =
   | { phase: 'idle' }
-  | { phase: 'recording'; id: string; project: string; since: number | null; locked: boolean }
+  | { phase: 'recording'; id: string; project: string | null; since: number | null; locked: boolean }
   | { phase: 'error'; project: string | null; message: string };
 export type ChipKind = 'saving' | 'saved' | 'phone' | 'failed' | 'empty' | 'undone' | 'short';
 export type VoiceChip = { kind: ChipKind; id: string; project: string | null; detail: string | null; undo: boolean; seq: number };
@@ -123,7 +124,7 @@ async function dropPending(id: string) {
 
 // ---- push to talk ----
 type Rec = ReturnType<typeof useGptRecorder>;
-type Session = { id: string; project: string; started: boolean; end: null | 'release' | 'cancel' };
+type Session = { id: string; project: string | null; started: boolean; end: null | 'release' | 'cancel' };
 const host: { rec: Rec | null } = { rec: null };
 let session: Session | null = null;
 let lastStopAt = 0;
@@ -134,7 +135,7 @@ const deferred = new Map<string, { project: string | null; text: string; timer: 
 
 const recordingSince = (s: Session) => (ptt.phase === 'recording' && ptt.id === s.id ? ptt.since : null);
 
-async function begin(project: string) {
+async function begin(project: string | null) {
   if (session) return;
   const s: Session = { id: newTakeId(), project, started: false, end: null };
   session = s;
@@ -310,6 +311,13 @@ async function drain(): Promise<number> {
   return left;
 }
 
+/** agenticos://record (the Capture widget): a hands-free idea into the Inbox, as the fan's mic slid up to lock. */
+function quickCapture() {
+  if (session) return;
+  void begin(null);
+  if (ptt.phase === 'recording') setPtt({ ...ptt, locked: true });
+}
+
 function onMic(e: MicEvent) {
   switch (e.type) {
     case 'start': void begin(e.project); break;
@@ -324,6 +332,8 @@ export function useVoiceHost() {
   const rec = useGptRecorder();
   useLayoutEffect(() => { host.rec = rec; });
   useMicEvents(onMic);
+  // a widget tap that launched the app waits in links.ts until this registers, after host.rec is set
+  useEffect(() => onLink('record', quickCapture), []);
   useEffect(() => {
     let tries = 0;
     let timer: ReturnType<typeof setTimeout> | null = null;

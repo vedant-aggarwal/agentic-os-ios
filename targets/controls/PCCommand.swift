@@ -66,7 +66,8 @@ struct PCCommandControl: ControlWidget {
   }
 }
 
-/// Everything this extension shows: the Action button control, the day widgets (TodayWidgets.swift) and the
+/// Everything this extension shows: the Action button control, the day widgets (TodayWidgets.swift), the Capture
+/// widget (CaptureWidget.swift) and the
 /// snoozed alarm on the lock screen (AlarmLive.swift).
 @main
 struct AgenticControls: WidgetBundle {
@@ -74,6 +75,7 @@ struct AgenticControls: WidgetBundle {
     PCCommandControl()
     TodayWidget()
     NextTaskWidget()
+    CaptureWidget()
     #if canImport(AlarmKit)
     if #available(iOS 26.0, *) {
       AlarmLiveWidget()

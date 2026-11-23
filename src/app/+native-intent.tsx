@@ -18,6 +18,8 @@ export function redirectSystemPath({ path, initial }: { path: string; initial: b
     // before Today is up waits for it), so the app lands on Today and stays put if it was already open.
     const link = parseLink(path);
     if (link && ON_TODAY.has(link.target)) { openLink(path); return initial ? '/' : null; }
+    // agenticos://record, the Capture widget: a hands-free voice idea over whatever screen is open (src/work/voice.ts).
+    if (link?.target === 'record') { openLink(path); return initial ? '/' : null; }
   } catch {}
   return path;
 }

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { Pressable, RefreshControl, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { GestureDetector, ScrollView, usePanGesture } from 'react-native-gesture-handler';
 import Swipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
-import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeOut, LinearTransition, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { haptic, SURF, t, tint } from '@/aspects/kit/tokens';
@@ -158,13 +159,15 @@ function HomePage({ d, say, hide, onNora }: { d: HomeData; say: Say; hide: () =>
     && (list == null || (list === 'none' ? !x.area : x.area === list))), [d.today, list]);
   const buckets = useMemo(() => {
     const open = mine.filter((x) => ['inbox', 'todo', 'doing'].includes(x.status) || (x.status === 'done' && holding.has(x.id)));
-    const byDue = (a: Task, b: Task) => String(a.due).localeCompare(String(b.due));
-    const newest = (a: Task, b: Task) => Number(b.id.slice(1)) - Number(a.id.slice(1));
+    // his own order first (a drag sets position), newest on ties; Later keeps date order
+    const pos = (x: Task) => x.position ?? 0;
+    const byPos = (a: Task, b: Task) => pos(a) - pos(b) || Number(b.id.slice(1)) - Number(a.id.slice(1));
+    const byDue = (a: Task, b: Task) => String(a.due).localeCompare(String(b.due)) || byPos(a, b);
     return {
-      today: open.filter((x) => x.due && x.due <= today).sort(byDue),
-      tomorrow: open.filter((x) => x.due === tomorrow),
+      today: open.filter((x) => x.due && x.due <= today).sort(byPos),
+      tomorrow: open.filter((x) => x.due === tomorrow).sort(byPos),
       later: open.filter((x) => x.due && x.due > tomorrow).sort(byDue),
-      none: open.filter((x) => !x.due).sort(newest),
+      none: open.filter((x) => !x.due).sort(byPos),
       done: mine.filter((x) => x.status === 'done' && !holding.has(x.id) && !!x.completedAt && istDay(Date.parse(x.completedAt)) === today),
     };
   }, [mine, holding, today, tomorrow]);
@@ -185,15 +188,77 @@ function HomePage({ d, say, hide, onNora }: { d: HomeData; say: Say; hide: () =>
     if (d.tags[x.id]) d.untag(x.id).then(() => say('Taken back from Nora'), (e) => say(msg(e)));
     else d.tag(x.id, x.title).then(() => say('Nora has it'), (e) => say(msg(e)));
   };
-  const editOf = (x: Task) => setSheet({ edit: { id: x.id, title: x.title, notes: '', area: x.area, due: x.due, nora: !!d.tags[x.id] } });
+  const justDragged = useRef(false);
+  const editOf = (x: Task) => {
+    if (justDragged.current) return; // the finger lifting off a drag is not a tap
+    setSheet({ edit: { id: x.id, title: x.title, notes: '', area: x.area, due: x.due, nora: !!d.tags[x.id] } });
+  };
+
+  // ── drag to reorder: hold a row, drag it within or across buckets; a drop in another bucket takes that bucket's date ──
+  const bucketY = useRef(new Map<BucketKey, number>());
+  const rowBox = useRef(new Map<string, { b: BucketKey; y: number; h: number }>());
+  const [drop, setDrop] = useState<number | null>(null);
+  const shownNoDate = allNoDate ? buckets.none : buckets.none.slice(0, SHOWN_NO_DATE);
+  const lists: Record<BucketKey, Task[]> = { today: buckets.today, tomorrow: buckets.tomorrow, later: buckets.later, none: shownNoDate };
+  const top = (id: string) => { const r = rowBox.current.get(id); return r ? { ...r, top: (bucketY.current.get(r.b) ?? 0) + r.y } : null; };
+  function placeFor(id: string, dy: number) {
+    const me = top(id);
+    if (!me) return null;
+    const finger = me.top + me.h / 2 + dy;
+    let b: BucketKey = me.b;
+    let firstY = Infinity;
+    for (const k of BUCKETS) {
+      const y = bucketY.current.get(k);
+      if (y == null || !lists[k].length) continue;
+      if (y < firstY) { firstY = y; if (finger < y) b = k; }
+      if (y <= finger) b = k;
+    }
+    const rows = lists[b].filter((x) => x.id !== id).flatMap((x) => { const r = top(x.id); return r ? [{ x, r }] : []; });
+    const next = rows.find((o) => o.r.top + o.r.h / 2 > finger) ?? null;
+    const prev = [...rows].reverse().find((o) => o.r.top + o.r.h / 2 <= finger) ?? null;
+    const line = next ? next.r.top : prev ? prev.r.top + prev.r.h : (bucketY.current.get(b) ?? 0) + 32;
+    return { b, prev: prev?.x ?? null, next: next?.x ?? null, line };
+  }
+  const onMove = (id: string, dy: number) => setDrop(placeFor(id, dy)?.line ?? null);
+  const onDrop = (x: Task, dy: number) => {
+    justDragged.current = true;
+    setTimeout(() => { justDragged.current = false; }, 400);
+    setDrop(null);
+    const p = placeFor(x.id, dy);
+    const me = rowBox.current.get(x.id);
+    if (!p || !me) return;
+    const L = lists[p.b], i = L.indexOf(x);
+    if (p.b === me.b && (L[i - 1] ?? null) === p.prev && (L[i + 1] ?? null) === p.next) return; // dropped where it was
+    const due = p.b === me.b ? undefined : p.b === 'today' ? today : p.b === 'tomorrow' ? tomorrow : p.b === 'later' ? addDays(today, 2) : null;
+    const pos = (t: Task) => t.position ?? 0;
+    haptic.success();
+    const fail = (e: unknown) => say(msg(e));
+    if (p.prev && p.next && pos(p.next) - pos(p.prev) > 1e-6) d.reorder(x.id, (pos(p.prev) + pos(p.next)) / 2, due).catch(fail);
+    else if (!p.prev && p.next) d.reorder(x.id, pos(p.next) - 1024, due).catch(fail);
+    else if (p.prev && !p.next) d.reorder(x.id, pos(p.prev) + 1024, due).catch(fail);
+    else if (!p.prev && !p.next) d.reorder(x.id, 0, due).catch(fail);
+    else {
+      // neighbours share a position (old tasks all sit at 0): number the bucket afresh in the new order
+      const rest = L.filter((t) => t !== x);
+      const at = rest.indexOf(p.next!);
+      const order = [...rest.slice(0, at), x, ...rest.slice(at)];
+      order.forEach((t, k) => { if (t === x || pos(t) !== k * 1024) d.reorder(t.id, k * 1024, t === x ? due : undefined).catch(fail); });
+    }
+  };
 
   const areaName = (slug: string | null) => (slug ? d.areas.find((a) => a.slug === slug)?.name ?? slug : null);
   const listLabel = list == null ? 'All lists' : list === 'none' ? 'No area' : areaName(list) ?? list;
-  const row = (x: Task, first: boolean, showDue: boolean) => (
+  const row = (x: Task, first: boolean, showDue: boolean, b?: BucketKey) => (
     <TaskRow key={x.id} x={x} first={first} d={d} showDue={showDue} areaName={areaName(x.area)} color={areaColor(d.life, x.area)}
-      onTick={() => tick(x)} onOpen={() => editOf(x)} onDate={() => editOf(x)} onNora={() => toggleNora(x)} onDelete={() => remove(x)} say={say} />
+      onTick={() => tick(x)} onOpen={() => editOf(x)} onDate={() => editOf(x)} onNora={() => toggleNora(x)} onDelete={() => remove(x)} say={say}
+      drag={b && x.status !== 'done' ? {
+        onLayout: (y, h) => rowBox.current.set(x.id, { b, y, h }),
+        onLift: () => { haptic.medium(); onMove(x.id, 0); },
+        onMove: (dy) => onMove(x.id, dy),
+        onDrop: (dy) => onDrop(x, dy),
+      } : undefined} />
   );
-  const noDate = allNoDate ? buckets.none : buckets.none.slice(0, SHOWN_NO_DATE);
+  const noDate = shownNoDate;
   const nothing = !buckets.today.length && !buckets.tomorrow.length && !buckets.later.length && !buckets.none.length;
 
   return (
@@ -243,12 +308,12 @@ function HomePage({ d, say, hide, onNora }: { d: HomeData; say: Say; hide: () =>
               {nothing ? (
                 <View style={st.empty}><Text style={t.strong}>Nothing open</Text><Text style={t.small}>Tasks you add here show on Today on their due day.</Text></View>
               ) : null}
-              {buckets.today.length ? <Bucket label="Today">{buckets.today.map((x, i) => row(x, i === 0, x.due !== today))}</Bucket> : null}
-              {buckets.tomorrow.length ? <Bucket label="Tomorrow">{buckets.tomorrow.map((x, i) => row(x, i === 0, false))}</Bucket> : null}
-              {buckets.later.length ? <Bucket label="Later">{buckets.later.map((x, i) => row(x, i === 0, true))}</Bucket> : null}
+              {buckets.today.length ? <Bucket label="Today" onY={(y) => bucketY.current.set('today', y)}>{buckets.today.map((x, i) => row(x, i === 0, x.due !== today, 'today'))}</Bucket> : null}
+              {buckets.tomorrow.length ? <Bucket label="Tomorrow" onY={(y) => bucketY.current.set('tomorrow', y)}>{buckets.tomorrow.map((x, i) => row(x, i === 0, false, 'tomorrow'))}</Bucket> : null}
+              {buckets.later.length ? <Bucket label="Later" onY={(y) => bucketY.current.set('later', y)}>{buckets.later.map((x, i) => row(x, i === 0, true, 'later'))}</Bucket> : null}
               {buckets.none.length ? (
-                <Bucket label="No date">
-                  {noDate.map((x, i) => row(x, i === 0, false))}
+                <Bucket label="No date" onY={(y) => bucketY.current.set('none', y)}>
+                  {noDate.map((x, i) => row(x, i === 0, false, 'none'))}
                   {buckets.none.length > SHOWN_NO_DATE ? (
                     <Pressable accessibilityRole="button" onPress={() => setAllNoDate((v) => !v)} style={st.more}>
                       <Text style={st.moreText}>{allNoDate ? 'Show fewer' : `${buckets.none.length - SHOWN_NO_DATE} more with no date`}</Text>
@@ -266,6 +331,7 @@ function HomePage({ d, say, hide, onNora }: { d: HomeData; say: Say; hide: () =>
                   {showDone ? buckets.done.map((x, i) => row(x, i === 0, false)) : null}
                 </>
               ) : null}
+              {drop != null ? <View pointerEvents="none" style={[st.dropLine, { top: drop - 1 }]} /> : null}
             </Animated.View>
           )}
         </View>
@@ -280,9 +346,12 @@ function HomePage({ d, say, hide, onNora }: { d: HomeData; say: Say; hide: () =>
   );
 }
 
-function Bucket({ label, children }: { label: string; children: ReactNode }) {
+type BucketKey = 'today' | 'tomorrow' | 'later' | 'none';
+const BUCKETS: BucketKey[] = ['today', 'tomorrow', 'later', 'none'];
+
+function Bucket({ label, children, onY }: { label: string; children: ReactNode; onY?: (y: number) => void }) {
   return (
-    <View>
+    <View onLayout={(e) => onY?.(e.nativeEvent.layout.y)}>
       <Text style={st.bucket}>{label}</Text>
       {children}
     </View>
@@ -290,16 +359,35 @@ function Bucket({ label, children }: { label: string; children: ReactNode }) {
 }
 
 // ── a task row: swipe left for Date, Nora, Delete; what Nora is doing on it underneath ─────────────────────────────
-function TaskRow({ x, first, d, showDue, areaName, color, onTick, onOpen, onDate, onNora, onDelete, say }: {
+type Drag = { onLayout: (y: number, h: number) => void; onLift: () => void; onMove: (dy: number) => void; onDrop: (dy: number) => void };
+function TaskRow({ x, first, d, showDue, areaName, color, onTick, onOpen, onDate, onNora, onDelete, say, drag }: {
   x: Task; first: boolean; d: HomeData; showDue: boolean; areaName: string | null; color: string;
-  onTick: () => void; onOpen: () => void; onDate: () => void; onNora: () => void; onDelete: () => void; say: Say;
+  onTick: () => void; onOpen: () => void; onDate: () => void; onNora: () => void; onDelete: () => void; say: Say; drag?: Drag;
 }) {
   const ref = useRef<SwipeableMethods>(null);
+  // hold 350 ms: the row lifts and follows the finger; let go and it lands where the line shows
+  const ty = useSharedValue(0), lift = useSharedValue(0);
+  const [lifted, setLifted] = useState(false);
+  const pan = usePanGesture({
+    enabled: !!drag,
+    activateAfterLongPress: 350,
+    runOnJS: true,
+    onActivate: () => { ref.current?.close(); setLifted(true); lift.set(withSpring(1)); drag?.onLift(); },
+    onUpdate: (e) => { ty.set(e.translationY); drag?.onMove(e.translationY); },
+    onDeactivate: (e) => { drag?.onDrop(e.translationY); },
+    onFinalize: () => { ty.set(withSpring(0, { damping: 18, stiffness: 220 })); lift.set(withSpring(0)); setLifted(false); },
+  });
+  const liftStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: ty.value }, { scale: 1 + 0.03 * lift.value }],
+    zIndex: lift.value > 0.01 ? 10 : 0,
+  }));
   const tag = d.tags[x.id];
   const done = x.status === 'done';
   const act = (f: () => void) => () => { ref.current?.close(); f(); };
   return (
-    <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(160)} layout={LinearTransition.duration(220)}>
+    <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(160)} layout={LinearTransition.duration(220)}
+      onLayout={(e) => drag?.onLayout(e.nativeEvent.layout.y, e.nativeEvent.layout.height)} style={[liftStyle, lifted && st.lifted]}>
+      <GestureDetector gesture={pan}>
       <Swipeable ref={ref} friction={1.6} rightThreshold={48} overshootRight={false}
         renderRightActions={() => (
           <View style={st.actions}>
@@ -323,6 +411,7 @@ function TaskRow({ x, first, d, showDue, areaName, color, onTick, onOpen, onDate
           <Tick done={done} color={color} size={26} label={`${x.title}${done ? ', done' : ''}`} onPress={onTick} />
         </Pressable>
       </Swipeable>
+      </GestureDetector>
     </Animated.View>
   );
 }
@@ -539,6 +628,8 @@ const st = StyleSheet.create({
   nbActs: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 },
   replyRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 6, borderRadius: 17, backgroundColor: 'rgba(255,255,255,0.06)', paddingHorizontal: 12 },
   replyInput: { flex: 1, fontFamily: F.regular, fontSize: 15, lineHeight: 20, color: C.text, paddingVertical: 8 },
+  dropLine: { position: 'absolute', left: 16, right: 16, height: 2, borderRadius: 1, backgroundColor: NORA },
+  lifted: { boxShadow: '0 14px 30px rgba(0,0,0,0.5)', borderRadius: 12, overflow: 'hidden' },
   pageRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 16, minHeight: 56 },
   leadCol: { width: 24, alignItems: 'center' },
 });

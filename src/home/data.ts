@@ -82,6 +82,11 @@ export function useHomeData(open: boolean) {
   };
   const remove = (id: string) => patch(id, { status: 'dropped' }, { status: 'dropped' });
   const restore = (id: string) => patch(id, { status: 'todo' }, { status: 'todo' });
+  /** Home's drag: a new place in the order, and the bucket's date when it moved buckets (undefined = keep). */
+  const reorder = (id: string, position: number, due?: string | null) => {
+    const p = { position, ...(due !== undefined ? { due } : {}) };
+    return patch(id, p, p);
+  };
   const edit = (id: string, d: Draft) => patch(id, { title: d.title.trim(), area: d.area, due: d.due },
     { title: d.title.trim(), area: d.area, due: d.due, ...(d.notes.trim() ? { notes: d.notes.trim() } : {}) });
 
@@ -129,6 +134,6 @@ export function useHomeData(open: boolean) {
     return t;
   }
 
-  return { today, life, areas, home, tags, error, refreshing, load, toggle, remove, restore, edit, add, tag, untag, answer };
+  return { today, life, areas, home, tags, error, refreshing, load, toggle, remove, restore, edit, reorder, add, tag, untag, answer };
 }
 export type HomeData = ReturnType<typeof useHomeData>;

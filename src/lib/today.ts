@@ -4,7 +4,7 @@ import { ASPECT_COLOR, type AspectKey, type FamilyKey } from '@/theme';
 export type Task = {
   id: string; title: string; status: 'inbox' | 'todo' | 'doing' | 'done' | 'dropped';
   area: string | null; due: string | null; scheduled: { start: string; end: string } | null;
-  owner: string | null; completedAt: string | null; parent?: string | null; repeat?: string | null;
+  owner: string | null; completedAt: string | null; parent?: string | null; repeat?: string | null; position?: number;
 };
 export type CalEvent = { id: string; title: string; start: string; end: string; allDay: boolean; area: string | null; location: string | null };
 export type TodayPayload = { date: string; now: string; events: CalEvent[]; tasks: Task[]; inboxCount: number };
@@ -61,12 +61,12 @@ function shortDate(d: string) {
 
 export function deriveToday(t: TodayPayload, life: LifePayload, areas: Area[]): TodayView {
   const aspectOf = (area: string | null): AspectKey | null => (area ? life.areaAspects[area]?.[0] ?? null : null);
-  const familyOf = new Map(life.aspects.map((a) => [a.key, a.family]));
-  const areaName = new Map(areas.map((a) => [a.slug, a.name]));
+  const familyOf = new Map((life.aspects ?? []).map((a) => [a.key, a.family]));
+  const areaName = new Map((areas ?? []).map((a) => [a.slug, a.name]));
   const colorOf = (area: string | null) => { const a = aspectOf(area); return a ? ASPECT_COLOR[a] : null; };
 
   // His own top-level tasks; agents' tasks live on the Work page.
-  const mine = t.tasks.filter((x) => !x.parent && (x.owner == null || x.owner === 'me'));
+  const mine = (t.tasks ?? []).filter((x) => !x.parent && (x.owner == null || x.owner === 'me'));
   const open = (x: Task) => x.status === 'todo' || x.status === 'doing';
   const doneToday = mine.filter((x) => x.status === 'done' && x.completedAt && istDate(x.completedAt) === t.date);
   const dueToday = mine.filter((x) => open(x) && x.due === t.date);

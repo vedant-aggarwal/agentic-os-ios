@@ -36,7 +36,7 @@ export function useToday() {
     if (DEMO) return setState((s) => (s.status === 'ready' ? s : { status: 'ready', ...demoData() }));
     if (live.current.status === 'loading') {
       const s = await kept<Saved>('today');
-      if (s?.day === localDay() && live.current.status === 'loading') setState({ status: 'ready', today: s.today, life: s.life, areas: s.areas });
+      if (s?.day === localDay() && Array.isArray(s.areas) && Array.isArray(s.today?.tasks) && Array.isArray(s.life?.aspects) && live.current.status === 'loading') setState({ status: 'ready', today: s.today, life: s.life, areas: s.areas });
     }
     // Web signs in with the cookie, so the reads needn't wait for the sign-in check: both go out together.
     const early = WEB ? fetchAll() : null;

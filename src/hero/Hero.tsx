@@ -1,7 +1,7 @@
 import * as Haptics from 'expo-haptics';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
-import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
+import { GestureDetector, GestureStateManager, useCompetingGestures, usePanGesture } from 'react-native-gesture-handler';
 import Animated, { ReduceMotion, useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient, Polygon, Stop } from 'react-native-svg';
 import { Crystals } from '@/components/Crystals';
@@ -12,7 +12,34 @@ import type { SceneMsg, SurfaceHandle } from './types';
 
 // Today's hero: nine crystals in a cave (hero-scene/main.js), one per aspect, on one stone. Each fills with a
 // coloured liquid up to its share done of everything open in that aspect (today's plan plus carried tasks). A sideways drag turns the stone; it settles with one
-// crystal facing you, named under the scene.
+// crystal facing you, named under the scene. Flick it hard and often and it spins up until the fog is thrown out of
+// the cave, with haptic ticks as it goes. Ivy hangs from the roof: a touch on it grabs and swings it, and it snaps
+// if swung too hard, then grows back.
+
+/** expo-haptics for each `haptic` message from the scene. */
+const BUZZ: Record<string, Haptics.ImpactFeedbackStyle> = {
+  light: Haptics.ImpactFeedbackStyle.Light,
+  medium: Haptics.ImpactFeedbackStyle.Medium,
+  heavy: Haptics.ImpactFeedbackStyle.Heavy,
+  rigid: Haptics.ImpactFeedbackStyle.Rigid,
+  soft: Haptics.ImpactFeedbackStyle.Soft,
+};
+/** How near (in points) a touch must land to a hanging strand to grab it rather than turn the stone. */
+const PLANT_HIT = 26;
+
+/** Distance in points from (x, y) to the nearest strand, each a polyline in 0..1 scene coordinates. */
+function nearStrand(strands: number[][], x: number, y: number, w: number, h: number) {
+  let best = Infinity;
+  for (const s of strands) {
+    for (let i = 0; i + 3 < s.length; i += 2) {
+      const ax = s[i] * w, ay = s[i + 1] * h, bx = s[i + 2] * w, by = s[i + 3] * h;
+      const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy;
+      const t = l2 > 0 ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / l2)) : 0;
+      best = Math.min(best, Math.hypot(x - ax - dx * t, y - ay - dy * t));
+    }
+  }
+  return best;
+}
 
 /** The hero's height below the safe area. The scene runs up behind the status bar and the top bar. */
 export const HERO_H = 420;
@@ -36,6 +63,9 @@ export function Hero({ view, top, topBar, active }: { view: TodayView; top: numb
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
   const [facing, setFacing] = useState<AspectKey | null>(null);
+  const strands = useRef<number[][]>([]);
+  const lastBuzz = useRef(0);
+  const holding = useRef(false);
   const shown = useSharedValue(0);
   const fade = useAnimatedStyle(() => ({ opacity: shown.value }));
 
@@ -61,15 +91,45 @@ export function Hero({ view, top, topBar, active }: { view: TodayView; top: numb
     else if (m.t === 'grab') {
       if (haptics) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     } else if (m.t === 'facing') {
-      setFacing(m.key as AspectKey);
+      // null while it spins too fast to name a crystal
+      setFacing((m.key as AspectKey | null) ?? null);
       // a light tick each time a new crystal turns to face you
       if (m.tick && haptics) Haptics.selectionAsync().catch(() => {});
+    } else if (m.t === 'plants') {
+      if (Array.isArray(m.s)) strands.current = m.s as number[][];
+    } else if (m.t === 'haptic' && haptics) {
+      // the scene paces its own ticks; this only keeps a burst from piling up (a heavy one always goes through)
+      const now = Date.now();
+      if (m.k !== 'heavy' && now - lastBuzz.current < 45) return;
+      lastBuzz.current = now;
+      if (m.k === 'tick') Haptics.selectionAsync().catch(() => {});
+      else Haptics.impactAsync(BUZZ[m.k as string] ?? Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     }
   }, [shown]);
 
-  // A sideways drag turns the stone and holds the page still; an up/down drag fails it and the page scrolls.
+  // Who gets a touch: one that lands on a hanging strand grabs the plant at once (any direction, the page stays
+  // put); anywhere else a sideways drag turns the stone and holds the page still, and an up/down drag fails it so
+  // the page scrolls.
   const send = (m: SceneMsg) => surface.current?.send(m);
-  const pan = usePanGesture({
+  const plant = usePanGesture({
+    manualActivation: true,
+    runOnJS: true,
+    onTouchesDown: (e) => {
+      const t = e.changedTouches[0];
+      if (t && e.numberOfTouches === 1 && nearStrand(strands.current, t.x, t.y, width, h) < PLANT_HIT) {
+        GestureStateManager.activate(e.handlerTag);
+        holding.current = true;
+        send({ t: 'pgrab', x: t.x / width, y: t.y / h });
+      } else GestureStateManager.fail(e.handlerTag);
+    },
+    onUpdate: (e) => send({ t: 'pmove', x: e.x / width, y: e.y / h }),
+    onDeactivate: (e) => {
+      holding.current = false;
+      send({ t: 'prel', vx: e.canceled ? 0 : e.velocityX / width, vy: e.canceled ? 0 : e.velocityY / h });
+    },
+    onFinalize: () => { if (holding.current) { holding.current = false; send({ t: 'prel', vx: 0, vy: 0 }); } },
+  });
+  const turn = usePanGesture({
     activeOffsetX: [-8, 8],
     failOffsetY: [-12, 12],
     runOnJS: true,
@@ -77,6 +137,7 @@ export function Hero({ view, top, topBar, active }: { view: TodayView; top: numb
     onUpdate: (e) => { if (e.changeX) send({ t: 'move', dx: e.changeX / width }); },
     onDeactivate: (e) => send({ t: 'up', vx: e.canceled ? 0 : e.velocityX / width }),
   });
+  const gesture = useCompetingGestures(plant, turn);
 
   const p = facing ? view.reach[facing] : undefined;
   const label = facing
@@ -95,7 +156,7 @@ export function Hero({ view, top, topBar, active }: { view: TodayView; top: numb
       ) : (
         <Fallback view={view} top={top + topBar} width={width} />
       )}
-      <GestureDetector gesture={pan}>
+      <GestureDetector gesture={gesture}>
         <View
           style={StyleSheet.absoluteFill}
           accessible

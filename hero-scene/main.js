@@ -1,7 +1,9 @@
 // Today hero: nine quartz crystals, one per life aspect, growing as one cluster out of a mossy boulder in a dark
 // cave, lit by a shaft of daylight through a crack in the roof. Each crystal holds a coloured liquid, levelled by
 // gravity, up to that aspect's share done; a full one overflows and leaks down its side onto the stone.
-// A sideways drag turns the whole boulder; it settles with one crystal facing you, which the app names.
+// A sideways drag turns the whole boulder with real weight; flicks add up until it is a blur and the fog round its
+// foot (fog.js) is thrown up out of the cave. It slows on its own and settles with one crystal facing you, which the
+// app names. Ivy hangs from the roof (plants.js): drag it to swing it, too hard and it snaps, then grows back.
 // Runs in a WebView (phone) or an iframe (web build). Messages: see recv() and toApp().
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -11,6 +13,8 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
+import { createFog } from './fog.js';
+import { createPlants } from './plants.js';
 
 // ── bridge ──────────────────────────────────────────────────────────────────────────────────────────────────
 const RN = window.ReactNativeWebView;
@@ -609,56 +613,10 @@ const dustUniforms = { uTime: { value: 0 }, uDpr: { value: PX } };
   scene.add(dust);
 }
 
-// low mist drifting over the floor, warm where the shaft falls on it
-const mistTime = { value: 0 }, swirlU = { value: 0 }, shearU = { value: 0 };
-{
-  [[-0.98, 9, 1], [-0.86, 7.5, 0.8], [-0.74, 6, 0.55]].forEach(([y, size, amt], k) => {
-    const m = new THREE.ShaderMaterial({
-      uniforms: { ...LIGHT_UNIFORMS, uTime: mistTime, uAmt: { value: amt }, uSeed: { value: k * 7.3 }, uSwirl: swirlU, uShear: shearU },
-      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false,
-      vertexShader: 'varying vec3 vW; varying vec2 vUv; void main(){ vUv = uv; vec4 w = modelMatrix*vec4(position,1.0); vW = w.xyz; gl_Position = projectionMatrix*viewMatrix*w; }',
-      fragmentShader: `${NOISE}
-        uniform float uTime; uniform float uAmt; uniform float uSeed; uniform float uSwirl; uniform float uShear;
-        uniform vec3 uKeyPos; uniform vec3 uKeyDir; uniform vec3 uKeyCol; uniform float uCosO; uniform float uCosI;
-        varying vec3 vW; varying vec2 vUv;
-        void main(){
-          float an = uSwirl + uShear*(1.6/(length(vW.xz) + 0.5) - 0.8), ca = cos(an), sa = sin(an);
-          vec2 sp = vec2(vW.x*ca - vW.z*sa, vW.x*sa + vW.z*ca);
-          float n = snoise(vec3(sp*0.55 + vec2(uTime*0.03, uTime*0.012), uSeed))*0.5 + 0.5;
-          n = n*0.65 + (snoise(vec3(sp*1.5 - vec2(uTime*0.04, 0.0), uSeed + 3.0))*0.5 + 0.5)*0.35;
-          float d = smoothstep(0.3, 0.85, n)*smoothstep(0.5, 0.18, length(vUv - 0.5));
-          vec3 L = normalize(uKeyPos - vW);
-          float cone = smoothstep(uCosO - 0.1, uCosI, dot(-L, uKeyDir));
-          vec3 col = mix(vec3(0.03, 0.035, 0.048), uKeyCol*0.4, cone);
-          gl_FragColor = vec4(col*d*uAmt, 1.0);
-        }`,
-    });
-    const p = new THREE.Mesh(new THREE.PlaneGeometry(size, size), m);
-    p.rotation.x = -Math.PI / 2; p.position.set(0, y, -0.4);
-    p.renderOrder = 1;
-    scene.add(p);
-  });
-}
-// Fog lying round the foot of the stone. Turning the stone drags it round; spin it again and again and the fog
-// is pulled up into a whirl around the stone, which dies down a few seconds after you stop. Billboards that
-// know their own position in the world, so each one thins out where it meets the floor, the stone or the crystals.
-const fogU = { uTime: mistTime, uSwirl: swirlU, uShear: shearU, uE: { value: 0 }, tCloud: { value: null }, tFloor: { value: null }, uRockY: { value: ROCK_Y } };
-const vortex = { swirl: 0, shear: 0, w: 0, e: 0, last: null };
-{
-  // a tiling cloud texture, cheaper on a phone than noise worked out per pixel
-  const N = 128, c = document.createElement('canvas'); c.width = c.height = N;
-  const x = c.getContext('2d'), img = x.createImageData(N, N);
-  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
-    const a = (i / N) * Math.PI * 2, b = (j / N) * Math.PI * 2;
-    const v = clamp01(0.5 + fbm(Math.cos(a) * 1.4, Math.sin(a) * 1.4 + Math.cos(b) * 1.4, Math.sin(b) * 1.4, 4) * 1.5);
-    const o = (j * N + i) * 4;
-    img.data[o] = img.data[o + 1] = img.data[o + 2] = Math.round(v * 255); img.data[o + 3] = 255;
-  }
-  x.putImageData(img, 0, 0);
-  const cloud = new THREE.CanvasTexture(c);
-  cloud.wrapS = cloud.wrapT = THREE.RepeatWrapping; cloud.colorSpace = THREE.NoColorSpace;
-  fogU.tCloud.value = cloud;
-  // the floor's height, so fog can thin out just above it
+// The fog round the foot of the stone (fog.js). Turning the stone drags it round; as the spin builds it is pulled
+// up into a whirl round the stone, and a wild spin throws it up out of the cave. It settles back as the spin dies.
+const fog = (() => {
+  // the floor's height, so the fog lies on it and rays stop where they meet it
   const F = 64, S = 3.2, fd = new Uint8Array(F * F * 4);
   for (let j = 0; j < F; j++) for (let i = 0; i < F; i++) {
     const h = floorH(((i + 0.5) / F * 2 - 1) * S, ((j + 0.5) / F * 2 - 1) * S);
@@ -666,80 +624,35 @@ const vortex = { swirl: 0, shear: 0, w: 0, e: 0, last: null };
   }
   const floorTex = new THREE.DataTexture(fd, F, F, THREE.RGBAFormat);
   floorTex.magFilter = floorTex.minFilter = THREE.LinearFilter; floorTex.needsUpdate = true;
-  fogU.tFloor.value = floorTex;
-
-  const COUNT = 64, r = rng(707);
-  const base = new THREE.PlaneGeometry(1, 1);
-  const g = new THREE.InstancedBufferGeometry();
-  g.index = base.index; g.setAttribute('position', base.attributes.position); g.setAttribute('uv', base.attributes.uv);
-  const attr = (fn) => new THREE.InstancedBufferAttribute(Float32Array.from({ length: COUNT }, fn), 1);
-  g.setAttribute('aA', attr(() => r() * Math.PI * 2));
-  g.setAttribute('aR', attr(() => 1.0 + Math.pow(r(), 0.8) * 1.5));
-  g.setAttribute('aY', attr(() => 0.06 + r() * 0.32));
-  g.setAttribute('aH', attr(() => r()));
-  g.setAttribute('aS', attr(() => 0.75 + r() * 0.7));
-  g.setAttribute('aSeed', attr(() => r()));
-  g.instanceCount = COUNT;
-  const m = new THREE.ShaderMaterial({
-    uniforms: { ...LIGHT_UNIFORMS, ...fogU },
-    transparent: true, depthWrite: false, premultipliedAlpha: true, fog: false,
-    vertexShader: `attribute float aA; attribute float aR; attribute float aY; attribute float aH; attribute float aS; attribute float aSeed;
-      uniform float uTime; uniform float uSwirl; uniform float uShear; uniform float uE;
-      varying vec3 vW; varying vec2 vUv; varying float vSeed; varying float vFade; varying float vE;
-      void main(){
-        float e = smoothstep(0.15, 0.95, uE);
-        float rise = fract(aH + uTime*(0.04 + 0.14*e));
-        float r = mix(aR, 1.08 + 0.65*rise, e*0.85);
-        float th = aA + uSwirl + uShear*(1.6/(r + 0.5) - 0.8) + uTime*0.02*(aSeed - 0.3);
-        vec3 c = vec3(sin(th)*r, -1.0 + aY + e*rise*2.2, cos(th)*r);
-        float sz = aS*mix(1.0, 0.62, e);
-        vec3 right = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
-        vec3 up = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
-        vec3 w = c + (right*position.x*mix(1.0, 1.7, e) + up*position.y*mix(0.65, 0.34, e))*sz; // streaks as it whirls
-        vW = w; vUv = uv; vSeed = aSeed;
-        vFade = mix(1.0, smoothstep(0.0, 0.15, rise)*(1.0 - smoothstep(0.55, 1.0, rise)), e); vE = e;
-        gl_Position = projectionMatrix*viewMatrix*vec4(w, 1.0);
-      }`,
-    fragmentShader: `uniform sampler2D tCloud; uniform sampler2D tFloor; uniform float uTime; uniform float uE; uniform float uRockY;
-      uniform vec3 uKeyPos; uniform vec3 uKeyDir; uniform vec3 uKeyCol; uniform float uCosO; uniform float uCosI; uniform vec3 uRimCol;
-      varying vec3 vW; varying vec2 vUv; varying float vSeed; varying float vFade; varying float vE;
-      void main(){
-        float disc = smoothstep(0.5, 0.12, length(vUv - 0.5));
-        float n = texture2D(tCloud, vUv*0.7 + vec2(vSeed*7.1 + uTime*0.012, vSeed*3.3)).r;
-        float n2 = texture2D(tCloud, vUv*1.6 - vec2(vSeed*2.0 + uTime*0.02, uTime*0.01)).r;
-        float d = disc*smoothstep(0.3, 0.85, n*0.65 + n2*0.45);
-        float fl = texture2D(tFloor, vW.xz/6.4 + 0.5).r*1.2 - 1.7;
-        d *= smoothstep(0.0, 0.25, vW.y - fl);
-        vec3 b = (vW - vec3(0.0, uRockY, 0.0))/vec3(1.12, 0.72, 1.06);
-        d *= smoothstep(0.96, 1.3, length(b));
-        d *= mix(1.0, smoothstep(0.72, 1.05, length(vW.xz)), smoothstep(-0.45, -0.2, vW.y));
-        d *= vFade;
-        vec3 L = normalize(uKeyPos - vW);
-        float cone = smoothstep(uCosO - 0.12, uCosI, dot(-L, uKeyDir));
-        vec3 col = vec3(0.045, 0.05, 0.062) + uRimCol*0.02 + uKeyCol*cone*0.2;
-        float a = d*mix(0.5, 0.22, vE);
-        gl_FragColor = vec4(col*a, a);
-      }`,
-  });
-  const fog = new THREE.Mesh(g, m);
-  fog.frustumCulled = false;
-  fog.renderOrder = 2;
-  scene.add(fog);
-}
-function updateVortex(dt) {
-  // the stone's own turning speed, from how far it turned this frame
-  if (vortex.last === null) vortex.last = turn.angle;
-  const dA = turn.angle - vortex.last; vortex.last = turn.angle;
-  const wT = Math.abs(dA) < 1 ? dA / Math.max(dt, 1e-3) : 0;
-  if (state.reduce) { vortex.e = 0; fogU.uE.value = 0; return; }
-  vortex.e = Math.min(1, vortex.e + Math.abs(wT) * dt * 0.075);
-  vortex.e *= Math.exp(-dt / 4.5);
-  // the fog follows the stone round, and keeps turning on its own while the whirl lasts
-  const target = wT * 0.9 + Math.sign(vortex.w || wT) * vortex.e * 3.2;
+  return createFog({ renderer, camera, light: LIGHT_UNIFORMS, floorTex, rockY: ROCK_Y });
+})();
+const vortex = { swirl: 0, shear: 0, w: 0, e: 0, lift: 0, rise: 0, lifted: false };
+function updateVortex(dt, t) {
+  const u = fog.u;
+  u.uTime.value = t;
+  if (state.reduce) {
+    vortex.e = vortex.lift = 0;
+    u.uE.value = u.uLift.value = 0; u.uTop.value = 0.35;
+    return;
+  }
+  const a = turn.speed, wT = turn.w;
+  // how hard it is whirling builds over a second or so and dies away over a few; past a wild speed the fog goes
+  // up and out, and comes back down slowly as the spin dies
+  const eT = sstep(2.5, 22, a);
+  vortex.e += (eT - vortex.e) * (1 - Math.exp(-dt * (eT > vortex.e ? 1.5 : 0.32)));
+  const lT = sstep(25, 36, a);
+  vortex.lift += (lT - vortex.lift) * (1 - Math.exp(-dt * (lT > vortex.lift ? 2.4 : 0.7)));
+  if (!vortex.lifted && vortex.lift > 0.5) { vortex.lifted = true; toApp({ t: 'haptic', k: 'heavy' }); }
+  else if (vortex.lifted && vortex.lift < 0.15) vortex.lifted = false;
+  // the fog follows the stone round, slower than it, and keeps turning on its own while the whirl lasts
+  const target = THREE.MathUtils.clamp(wT * 0.9, -9, 9) + Math.sign(vortex.w || wT) * vortex.e * 3.2;
   vortex.w += (target - vortex.w) * Math.min(1, dt * 1.6);
   vortex.swirl += vortex.w * dt;
-  vortex.shear = (vortex.shear + vortex.w * dt) * Math.exp(-dt / 2.5);
-  fogU.uSwirl.value = vortex.swirl; fogU.uShear.value = vortex.shear; fogU.uE.value = vortex.e;
+  vortex.shear = THREE.MathUtils.clamp((vortex.shear + vortex.w * dt) * Math.exp(-dt / 2.5), -14, 14);
+  vortex.rise += dt * (0.03 + 0.5 * vortex.e + 0.7 * vortex.lift);
+  u.uSwirl.value = vortex.swirl; u.uShear.value = vortex.shear; u.uE.value = vortex.e;
+  u.uLift.value = vortex.lift; u.uRise.value = vortex.rise;
+  u.uTop.value = Math.min(5.5, 0.35 + 1.6 * vortex.e + 3.5 * vortex.lift);
 }
 
 // soft haze hanging in the air: a few large faint clouds, brighter inside the shaft
@@ -932,11 +845,12 @@ function gemMaterial(geo) {
 // What quartz shows in the dark: light caught inside it where the sun reaches, a milky root, faint veils,
 // and a cool line along the edges from the cave behind. Drawn over the glass, additive. Under a crystal's
 // liquid the light it catches takes the liquid's colour; a crystal with something open has a faintly tinted root.
+const glintU = { value: 0 }; // 0 at rest, up to 1 as the spin gets wild: the light caught inside flashes harder
 function quartzMat() {
   return new THREE.ShaderMaterial({
     uniforms: {
       ...LIGHT_UNIFORMS, uUpL: { value: new THREE.Vector3(0, 1, 0) }, uLvl: { value: -9 },
-      uCol: { value: new THREE.Color(1, 1, 1) }, uHas: { value: 0 },
+      uCol: { value: new THREE.Color(1, 1, 1) }, uHas: { value: 0 }, uGlint: glintU,
     },
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
     polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
@@ -949,6 +863,7 @@ function quartzMat() {
     fragmentShader: `${NOISE}
       uniform vec3 uKeyPos; uniform vec3 uKeyDir; uniform vec3 uKeyCol; uniform float uCosO; uniform float uCosI;
       uniform vec3 uRimDir; uniform vec3 uRimCol; uniform vec3 uUpL; uniform float uLvl; uniform vec3 uCol; uniform float uHas;
+      uniform float uGlint;
       varying vec3 vN; varying vec3 vW; varying vec3 vO; varying float vV; varying vec3 vB; varying vec3 vNL;
       void main(){
         vec3 N = normalize(vN); if (!gl_FrontFacing) N = -N;
@@ -967,7 +882,7 @@ function quartzMat() {
         float e = min(min(vB.x, vB.y), vB.z);
         float ew = fwidth(e);
         float line = 1.0 - smoothstep(ew*0.35, ew*1.3, e);
-        c += (uKeyCol*cone*(0.025 + 0.14*max(dot(N, L), 0.0)) + uRimCol*0.012)*line*tint;
+        c += (uKeyCol*cone*(0.025 + 0.14*max(dot(N, L), 0.0))*(1.0 + 2.5*uGlint) + uRimCol*0.012)*line*tint;
         // fine growth steps across the prism faces, seen where the light grazes them
         float prism = 1.0 - smoothstep(0.2, 0.4, abs(normalize(vNL).y));
         float sy = vO.y*150.0 + snoise(vO*vec3(4.0, 0.6, 4.0))*3.0;
@@ -975,8 +890,8 @@ function quartzMat() {
         c += uKeyCol*lit*st*prism*0.025*tint;
         // light that got inside and bounced off a far face: glints that come and go as the stone turns
         if (!gl_FrontFacing) {
-          float g = pow(max(dot(N, normalize(L + V)), 0.0), 90.0);
-          c += uKeyCol*cone*g*0.9*tint;
+          float g = pow(max(dot(N, normalize(L + V)), 0.0), mix(90.0, 40.0, uGlint));
+          c += uKeyCol*cone*g*(0.9 + 3.0*uGlint)*tint;
         }
         gl_FragColor = vec4(c*(gl_FrontFacing ? 0.7 : 1.0), 1.0);
       }`,
@@ -1219,6 +1134,52 @@ class Crystal {
 }
 const crystals = LAYOUT.map((L, i) => new Crystal(i, L));
 
+// A star of light on a crystal's tip each time it swings through the angle where it throws the sun at you. A
+// fast spin sweeps every tip past it several times a second, so the whole cluster sparkles.
+const sparkle = (() => {
+  const N = crystals.length, pos = new Float32Array(N * 3), amp = new Float32Array(N);
+  crystals.forEach((c, i) => { _v.copy(c.apexT); _v.y += 0.015; pos.set([_v.x, _v.y, _v.z], i * 3); });
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('aAmp', new THREE.BufferAttribute(amp, 1).setUsage(THREE.DynamicDrawUsage));
+  const m = new THREE.ShaderMaterial({
+    uniforms: { uDpr: { value: PX } },
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false,
+    vertexShader: `attribute float aAmp; uniform float uDpr; varying float vA;
+      void main(){
+        vA = aAmp;
+        vec4 mv = modelViewMatrix*vec4(position, 1.0);
+        gl_PointSize = aAmp > 0.003 ? (14.0 + 34.0*aAmp)*uDpr*(6.0/-mv.z) : 0.0;
+        gl_Position = projectionMatrix*mv;
+      }`,
+    fragmentShader: `varying float vA;
+      void main(){
+        vec2 c = gl_PointCoord - 0.5;
+        float ray = max(0.0, 1.0 - abs(c.x)*26.0)*max(0.0, 1.0 - abs(c.y)*2.0) + max(0.0, 1.0 - abs(c.y)*26.0)*max(0.0, 1.0 - abs(c.x)*2.0);
+        float core = exp(-dot(c, c)*90.0);
+        gl_FragColor = vec4(vec3(1.0, 0.9, 0.76)*(ray*0.8 + core*1.4)*vA, 1.0);
+      }`,
+  });
+  const pts = new THREE.Points(g, m);
+  pts.frustumCulled = false; pts.renderOrder = 5;
+  table.add(pts);
+  const prev = new Float32Array(N).fill(NaN), A = new Float32Array(N);
+  const AT = -0.62; // where a tip catches the sun for you, round from the front
+  return (dt, gain) => {
+    for (let i = 0; i < N; i++) {
+      const now = crystals[i].az + turn.angle, was = Number.isNaN(prev[i]) ? now : prev[i];
+      prev[i] = now;
+      // did it sweep through the angle this frame? then a full flash; else how near it came
+      const lo = Math.min(now, was), hi = Math.max(now, was);
+      const k = Math.ceil((lo - AT) / (Math.PI * 2)), at = AT + k * Math.PI * 2;
+      const near = Math.pow(Math.max(0, Math.cos(Math.min(Math.abs(wrap(now - AT)), Math.abs(wrap(was - AT))))), 70);
+      A[i] = Math.max(A[i] * Math.exp(-dt * 16), (at <= hi ? 1 : near) * gain);
+      amp[i] = A[i];
+    }
+    g.attributes.aAmp.needsUpdate = true;
+  };
+})();
+
 // Many small crystals packed between and around the nine, merged into one mesh. Each holds the liquid of the
 // nearest of the nine, filled to the same share and levelled the same way, so every aspect's side of the stone
 // echoes it; around an aspect with nothing open they stay clear.
@@ -1358,10 +1319,13 @@ function updateDrip(dt) {
   });
 }
 
-// ── post: a little bloom on real highlights, ACES, vignette, and the fade into the app ──────────────────────
-const target = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 });
+// ── post: the fog, a little bloom on real highlights, ACES, vignette, and the fade into the app ──────────────────────
+// the scene's depth is kept, for the fog to stop at
+const target = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4, depthTexture: new THREE.DepthTexture(1, 1) });
 const composer = new EffectComposer(renderer, target);
 composer.addPass(new RenderPass(scene, camera));
+composer.addPass(fog.march);
+composer.addPass(fog.composite);
 const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.32, 0.5, 0.9);
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
@@ -1369,12 +1333,26 @@ const grade = new ShaderPass({
   uniforms: {
     tDiffuse: { value: null }, uBg: { value: new THREE.Vector3() }, uBgTop: { value: new THREE.Vector3() }, uBgStop: { value: 1 },
     uFade: { value: 0 }, uFadeStart: { value: 0.78 }, uAspect: { value: 1 }, uTop: { value: 0.24 },
+    uBlur: { value: 0 }, uBlurC: { value: new THREE.Vector2(0.5, 0.6) }, uBlurR: { value: new THREE.Vector2(0.4, 0.3) },
   },
   vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
   fragmentShader: `uniform sampler2D tDiffuse; uniform vec3 uBg; uniform vec3 uBgTop; uniform float uBgStop; uniform float uFade;
-    uniform float uFadeStart; uniform float uAspect; uniform float uTop; varying vec2 vUv;
+    uniform float uFadeStart; uniform float uAspect; uniform float uTop; uniform float uBlur; uniform vec2 uBlurC; uniform vec2 uBlurR;
+    varying vec2 vUv;
     void main(){
       vec3 c = texture2D(tDiffuse, vUv).rgb;
+      // spinning fast, the stone and its crystals smear sideways, most down the middle where they move across
+      // the view, least at the sides where they turn toward or away from you
+      if (uBlur > 0.0005) {
+        vec2 q = (vUv - uBlurC)/uBlurR;
+        float L = uBlur*smoothstep(1.0, 0.45, length(q))*sqrt(max(0.0, 1.0 - q.x*q.x*0.8));
+        if (L > 0.0008) {
+          float j = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233)))*43758.5453);
+          vec3 acc = vec3(0.0);
+          for (int i = 0; i < 9; i++) acc += texture2D(tDiffuse, vUv + vec2(((float(i) + j)/9.0 - 0.5)*L, 0.0)).rgb;
+          c = acc/9.0;
+        }
+      }
       float y = 1.0 - vUv.y; // 0 at the top
       vec3 bg = mix(uBgTop, uBg, clamp(y/uBgStop, 0.0, 1.0)); // the app background behind this row
       vec2 q = vUv - vec2(0.5, 0.5); q.x *= uAspect;
@@ -1398,6 +1376,8 @@ function setBg() {
   grade.uniforms.uBgStop.value = state.bgStop;
 }
 setBg();
+
+const plants = createPlants({ scene, camera, haptic: (k) => toApp({ t: 'haptic', k }), reduce: () => state.reduce });
 
 // ── framing: the tallest tip just under the app's top bar, the stone's top about two thirds down ────────────
 const PITCH = 0.17;
@@ -1441,22 +1421,36 @@ function frame() {
     m.position.set(side * (hw + 0.2), hh * 0.74, -D).applyMatrix4(camera.matrixWorld);
   }
   mouth.position.set(0, 0.3, 0.2).applyMatrix4(camera.matrixWorld);
+  fog.resize(W, H, DPR);
+  plants.place(state.topFrac, W, H);
+  zonesSent = '';
+  // where the stone and its crystals sit on screen, for the blur of a fast spin
+  _v.set(0, -0.05, 0).project(camera);
+  const wy = 2 * camera.position.distanceTo(camLook) * tan;
+  grade.uniforms.uBlurC.value.set((_v.x + 1) / 2, (_v.y + 1) / 2);
+  grade.uniforms.uBlurR.value.set(1.2 / (wy * camera.aspect), 0.95 / wy);
 }
 
-// ── turning: a drag turns the boulder; let go and it coasts, then eases one crystal round to face you ───────
-const turn = { angle: 0, vel: 0, dragging: false, last: 0, moved: false, front: -1 };
+// ── turning: a drag turns the boulder with real weight; let go and it coasts, slowing as stone on stone would.
+// Flick it again while it spins and the flicks add up, until it is a blur and the fog goes up and out of the cave.
+// Once it has slowed it eases one crystal round to face you. While it spins fast the app hides the name and gets
+// haptic ticks instead, quicker and harder as it speeds up.
+const turn = { angle: 0, vel: 0, dragging: false, last: 0, moved: false, front: -1, free: 0, fv: 0, w: 0, speed: 0, prev: 0, fast: false, passF: -1, buzz: 0 };
 const R_TURN = 1.0; // a drag of this many world units turns it one radian
+const W_MAX = 48, W_FAST = 6, W_SLOW = 4.5;
 function frontIndex() {
   let best = 0, bd = Infinity;
   crystals.forEach((c, i) => { const d = Math.abs(wrap(c.az + turn.angle)); if (d < bd) { bd = d; best = i; } });
   return best;
 }
+function setAngle(a) { turn.angle = turn.prev = a; turn.vel = turn.free = turn.w = turn.speed = 0; }
 function worldPerScreenX() {
   const d = camera.position.distanceTo(camLook);
   return 2 * d * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2) * camera.aspect;
 }
 function down() {
-  turn.dragging = true; turn.moved = true; turn.vel = 0; turn.last = performance.now();
+  // the finger lands on it: what it was doing carries on under the finger for a moment, so a flick adds to it
+  turn.dragging = true; turn.moved = true; turn.free = turn.vel; turn.fv = 0; turn.last = performance.now();
   toApp({ t: 'grab' });
 }
 function move(dx) {
@@ -1464,22 +1458,38 @@ function move(dx) {
   const now = performance.now(), dt = Math.max(1, now - turn.last) / 1000;
   const dA = (dx * worldPerScreenX()) / R_TURN;
   turn.angle += dA;
-  turn.vel = lerp(turn.vel, dA / dt, 0.5);
+  turn.fv = lerp(turn.fv, dA / dt, 0.5);
   turn.last = now;
 }
 function up(vx) {
   if (!turn.dragging) return;
   const since = performance.now() - turn.last;
-  if (typeof vx === 'number' && since < 80) turn.vel = (vx * worldPerScreenX()) / R_TURN;
-  else if (since > 80) turn.vel = 0;
-  turn.vel = THREE.MathUtils.clamp(turn.vel, -14, 14);
+  let vf = 0;
+  if (since < 80) vf = typeof vx === 'number' ? (vx * worldPerScreenX()) / R_TURN : turn.fv;
+  turn.vel = THREE.MathUtils.clamp(turn.free + vf, -W_MAX, W_MAX);
   turn.dragging = false;
 }
+function buzz() {
+  const now = performance.now(), a = turn.speed;
+  if (now - turn.buzz < 1000 / 14) return;
+  turn.buzz = now;
+  toApp({ t: 'haptic', k: a > 30 ? 'rigid' : a > 18 ? 'medium' : a > 10 ? 'light' : 'tick' });
+}
 function updateTurn(dt) {
-  if (!turn.dragging) {
-    if (Math.abs(turn.vel) > 1.1) {
+  if (turn.dragging) {
+    // held: the spin it had dies away under the finger, fast if the finger is still
+    const still = performance.now() - turn.last > 70;
+    if (still) turn.fv *= Math.exp(-dt * 12);
+    turn.free *= Math.exp(-dt * (still ? 8 : 1.4));
+    turn.angle += turn.free * dt;
+  } else {
+    const a = Math.abs(turn.vel);
+    if (a > 1.3) {
+      // friction: grippy when slow, so an ordinary flick settles in a couple of seconds; it runs freer when fast,
+      // so a wild spin lasts
+      const dec = (0.7 + lerp(0.7, 0.14, sstep(6, 30, a)) * a) * dt;
+      turn.vel = Math.sign(turn.vel) * Math.max(0, a - dec);
       turn.angle += turn.vel * dt;
-      turn.vel *= Math.exp(-dt * 2.4);
     } else {
       const diff = wrap(-crystals[frontIndex()].az - turn.angle);
       turn.vel += (diff * 20 - turn.vel * 8) * dt;
@@ -1491,11 +1501,32 @@ function updateTurn(dt) {
     }
   }
   table.rotation.y = turn.angle;
+  // how fast it is really turning, held or free
+  const dA = turn.angle - turn.prev;
+  turn.prev = turn.angle;
+  turn.w = dA / Math.max(dt, 1e-3);
+  turn.speed += (Math.abs(turn.w) - turn.speed) * (1 - Math.exp(-dt * 12));
+  if (!turn.fast && turn.speed > W_FAST) { turn.fast = true; turn.front = -1; toApp({ t: 'facing', key: null }); }
+  else if (turn.fast && turn.speed < W_SLOW) turn.fast = false;
   const f = frontIndex();
-  if (f !== turn.front) {
+  if (f !== turn.passF) { turn.passF = f; if (turn.fast) buzz(); }
+  if (!turn.fast && f !== turn.front) {
     turn.front = f;
     toApp({ t: 'facing', key: ASPECTS[f], tick: turn.moved });
   }
+}
+
+// ── plants: who gets a touch. The app asks the scene where the strands are (`plants` messages) and decides at the
+// touch itself: on a strand it grabs the plant, anywhere else a sideways drag turns the stone and an up/down one
+// scrolls the page. Standalone, the scene decides the same way.
+let zonesAt = 0, zonesSent = '';
+function sendZones(t) {
+  if (t - zonesAt < 0.12) return;
+  zonesAt = t;
+  const z = plants.zones(), key = JSON.stringify(z);
+  if (key === zonesSent) return;
+  zonesSent = key;
+  toApp({ t: 'plants', s: z });
 }
 
 function applyData() {
@@ -1512,7 +1543,7 @@ function recv(m) {
         // open on the first aspect with something planned today
         state.gotData = true;
         const first = state.aspects.findIndex((a) => a.total > 0);
-        turn.angle = -crystals[first < 0 ? 1 : first].az; turn.vel = 0;
+        setAngle(-crystals[first < 0 ? 1 : first].az);
       }
       applyData();
     }
@@ -1521,6 +1552,9 @@ function recv(m) {
   } else if (m.t === 'down') down();
   else if (m.t === 'move') move(m.dx);
   else if (m.t === 'up') up(m.vx);
+  else if (m.t === 'pgrab') plants.grab(m.x, m.y);
+  else if (m.t === 'pmove') plants.move(m.x, m.y);
+  else if (m.t === 'prel') plants.release(m.vx, m.vy);
   else if (m.t === 'pause') state.paused = true;
   else if (m.t === 'resume') { if (state.paused) { state.paused = false; last = performance.now(); requestAnimationFrame(loop); } }
 }
@@ -1533,18 +1567,43 @@ window.addEventListener('message', (e) => {
 document.addEventListener('message', (e) => { try { recv(JSON.parse(e.data)); } catch { /* not ours */ } });
 
 if (STANDALONE) {
-  // opened on its own (dev): drive it with the mouse or a finger directly
-  let lx = null, lt = 0, v = 0;
+  // opened on its own (dev): drive it with the mouse or a finger directly. A press on a strand grabs it; any
+  // other press turns the stone.
+  let lx = null, lt = 0, v = 0, plant = false, px = 0, py = 0, pvx = 0, pvy = 0;
   const el = renderer.domElement;
-  el.addEventListener('pointerdown', (e) => { lx = e.clientX; lt = performance.now(); v = 0; down(); el.setPointerCapture(e.pointerId); });
-  el.addEventListener('pointermove', (e) => {
-    if (lx === null) return;
-    const now = performance.now(), dx = (e.clientX - lx) / innerWidth;
-    v = dx / Math.max(1, now - lt) * 1000; lx = e.clientX; lt = now; move(dx);
+  el.addEventListener('pointerdown', (e) => {
+    const x = e.clientX / innerWidth, y = e.clientY / innerHeight;
+    try { el.setPointerCapture(e.pointerId); } catch { /* synthetic event */ }
+    lt = performance.now();
+    if (plants.grab(x, y)) { plant = true; px = x; py = y; pvx = pvy = 0; return; }
+    lx = e.clientX; v = 0; down();
   });
-  const end = () => { if (lx !== null) { up(v); lx = null; } };
+  el.addEventListener('pointermove', (e) => {
+    const now = performance.now(), ms = Math.max(1, now - lt);
+    if (plant) {
+      const x = e.clientX / innerWidth, y = e.clientY / innerHeight;
+      pvx = lerp(pvx, (x - px) / ms * 1000, 0.6); pvy = lerp(pvy, (y - py) / ms * 1000, 0.6);
+      px = x; py = y; lt = now; plants.move(x, y);
+      return;
+    }
+    if (lx === null) return;
+    const dx = (e.clientX - lx) / innerWidth;
+    v = dx / ms * 1000; lx = e.clientX; lt = now; move(dx);
+  });
+  const end = () => {
+    if (plant) { plant = false; const fresh = performance.now() - lt < 80; plants.release(fresh ? pvx : 0, fresh ? pvy : 0); return; }
+    if (lx !== null) { up(v); lx = null; }
+  };
   el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end);
   applyData();
+  // dev handle for previews and screenshots
+  window.heroDev = {
+    turn, vortex, fog, plants, renderer, composer, state, down, move, up,
+    spin: (w) => { turn.vel = w; turn.moved = true; },
+    // pause the loop and step it by hand (for captures): tick(ms) advances the scene by that many milliseconds
+    manual: () => { state.paused = true; },
+    tick: (ms) => { tick(last + ms); },
+  };
 }
 
 // ── loop ────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -1559,43 +1618,63 @@ renderer.compile(scene, camera);
 let scansIn = false;
 Promise.all(scanLoads).then(() => { scansIn = true; });
 setTimeout(() => { scansIn = true; }, 6000);
-let last = performance.now(), t0 = last, reveal = 0, readySent = false;
+let last = performance.now(), t0 = last, reveal = 0, readySent = false, dustT = 0;
+const back = new THREE.Vector3(), wind = { side: 0, up: 0, e: 0, lift: 0 };
 function loop(now) {
   if (state.paused || document.hidden) return;
+  tick(now);
+  requestAnimationFrame(loop);
+}
+function tick(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   const t = (now - t0) / 1000;
   if (scansIn) reveal = Math.min(1, reveal + dt / (state.reduce ? 0.3 : 1.4));
   const e = 1 - Math.pow(1 - reveal, 3);
   grade.uniforms.uFade.value = e;
-  // a slow push-in on load, then the faintest drift, as if the camera is held by hand
+  updateTurn(dt);
+  updateVortex(dt, t);
+  // a slow push-in on load, then the faintest drift, as if the camera is held by hand; a wild spin shakes it
   const drift = state.reduce ? 0 : 1;
-  camera.position.copy(camBase).addScaledVector(camBase.clone().sub(camLook).normalize(), (1 - e) * 0.6 * drift);
+  back.copy(camBase).sub(camLook).normalize();
+  camera.position.copy(camBase).addScaledVector(back, (1 - e) * 0.6 * drift);
   camera.position.x += Math.sin(t * 0.21) * 0.03 * drift;
   camera.position.y += Math.sin(t * 0.17 + 1.0) * 0.02 * drift;
+  const shake = 0.006 * vortex.lift * sstep(20, 40, turn.speed) * drift;
+  if (shake > 0) { camera.position.x += noise3(t * 31, 0.3, 0) * shake; camera.position.y += noise3(0.7, t * 29, 0) * shake; }
   camera.lookAt(camLook);
   beamUniforms.uTime.value = t;
-  dustUniforms.uTime.value = drift ? t : 0;
-  mistTime.value = t;
+  // the dust in the shaft stirs as the stone whirls
+  dustT += dt * (1 + 5 * vortex.e + 6 * vortex.lift) * drift;
+  dustUniforms.uTime.value = dustT;
   for (const sp of hazeSprites) {
     const u = sp.userData, k = drift ? t : 0;
     sp.position.set(u.base.x + Math.sin(k * 0.05 + u.ph) * 0.25, u.base.y + Math.sin(k * 0.04 + u.ph * 2) * 0.1, u.base.z);
     sp.material.rotation += u.spin * dt * drift;
   }
-  updateTurn(dt);
   camera.updateMatrixWorld();
   table.updateMatrixWorld(true);
   for (const c of crystals) c.update(dt, t);
   updateDruse();
-  updateVortex(dt);
   updateDrip(dt);
+  // feedback as it speeds up: glints, sparkles on the tips, a stronger bloom, the stone smearing sideways
+  const g = state.reduce ? 0 : sstep(1.5, 30, turn.speed);
+  glintU.value = g;
+  sparkle(dt, turn.speed > 0.8 && !state.reduce ? 0.25 + 0.75 * g : 0);
+  bloom.strength = 0.32 + 0.32 * g;
+  grade.uniforms.uBlur.value = state.reduce ? 0 : Math.min(0.09, sstep(6, 14, turn.speed) * turn.speed * (0.42 / 90) / worldPerScreenX());
+  // the stone's whirl blows the plants about, and the fog rushing up lifts them
+  wind.e = vortex.e; wind.lift = vortex.lift;
+  wind.side = THREE.MathUtils.clamp(vortex.w, -9, 9) * 0.35 * drift;
+  wind.up = vortex.lift * 6.5 * drift;
+  plants.update(dt, t, wind);
+  sendZones(t);
   if (!state.reduce) {
     const sunK = 1 + 0.13 * noise3(t * 0.05, 1.7, 4.2);
-    spot.intensity = 30 * sunK; scatter.intensity = 1.3 * sunK; beamUniforms.uStrength.value = 0.26 * sunK;
+    spot.intensity = 30 * sunK; scatter.intensity = 1.3 * sunK; beamUniforms.uStrength.value = 0.26 * sunK * (1 + 0.35 * g);
     LIGHT_UNIFORMS.uKeyCol.value.copy(SUN_COLOR).multiplyScalar(1.15 * sunK);
   }
   composer.render(dt);
   if (!readySent && scansIn) { readySent = true; toApp({ t: 'ready' }); }
-  requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);

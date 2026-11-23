@@ -1,16 +1,17 @@
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { useEffect, useRef, useState } from 'react';
-import { type GestureResponderEvent, Platform, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { type GestureResponderEvent, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import Animated, {
   ReduceMotion, useAnimatedProps, useAnimatedStyle, useSharedValue, withDelay, withSpring, type SharedValue,
 } from 'react-native-reanimated';
 import Svg, { Defs, G, LinearGradient, Path, Stop, Text as SvgText } from 'react-native-svg';
 import { Glass, tap, useScale } from '@/components/Glass';
-import { Home, Nora, Scan, Work } from '@/components/Icons';
+import { Home, Nora, Plus, Work } from '@/components/Icons';
 import { Sym } from '@/components/Sym';
 import { router } from 'expo-router';
 import { useWorkOrb } from '@/work/useWorkOrb';
+import { Capture } from '@/capture/Capture';
 import { NoraOver, NoraUnder } from '@/nora/NoraHost';
 import { Ball, useTurn } from '@/nora/Sphere';
 import { noraUi, useNora } from '@/nora/state';
@@ -358,6 +359,8 @@ export function Dock({ bottom, width, aspects, onNotBuilt, onAspect, onHome, hid
   const left = (width - total) / 2, rowY = height - lift - BAR_H / 2;
   const homeAt = { x: left + SIDE / 2, y: rowY };
   const chatAt = { x: left + SIDE + G + w - Math.max(0, G - (48 - ICON) / 2) - 24, y: rowY };
+  const plusAt = { x: left + SIDE + G + Math.max(0, G - (48 - ICON) / 2) + 24, y: rowY }; // quick capture grows from here
+  const [capture, setCapture] = useState(false);
   const open = useSharedValue(0); // the dial
   const ringFade = useAnimatedStyle(() => ({ opacity: open.value > 0.001 ? 0 : 1 })); // the wedges take over
   const [pick, setPick] = useState(-1);
@@ -427,9 +430,8 @@ export function Dock({ bottom, width, aspects, onNotBuilt, onAspect, onHome, hid
           onPress={() => (onHome ? onHome() : noraUi.toggleHome())}><Sym name="house.fill" size={22} fallback={<Home />} /></SideOrb>
         <View style={[s.bar, { width: w, paddingHorizontal: Math.max(0, G - (48 - ICON) / 2) }]}>
           <Glass radius={BAR_H / 2} />
-          {/* no Scan on the web app; its slot stays so chat keeps its place right of the orb */}
-          {Platform.OS === 'web' ? <View style={{ width: 48, height: 48 }} />
-            : <Round label="Scan" onPress={() => onNotBuilt('Scan')}><Sym name="viewfinder" size={22} fallback={<Scan />} /></Round>}
+          {/* quick capture (src/capture): photos, water, habits, a task or a line, a voice note to Nora */}
+          <Round label="Capture" onPress={() => { noraUi.closeHome(); setCapture(true); }}><Sym name="plus" size={22} fallback={<Plus />} /></Round>
           <Round label="Chat with Nora" onPress={() => noraUi.openChat()}><Sym name="sparkle" size={22} fallback={<Nora />} /></Round>
         </View>
         <WorkOrb fan={fan} />
@@ -450,6 +452,8 @@ export function Dock({ bottom, width, aspects, onNotBuilt, onAspect, onHome, hid
         </View>
       </Animated.View>
       {fan.overlay}
+      {/* clear of the orb's ring, which rises above the bar */}
+      <Capture open={capture} from={plusAt} floor={cy - ARC_R - 12} onClose={() => setCapture(false)} />
       <NoraOver chat={chatAt} orb={{ x: cx, y: cy }} />
     </>
   );

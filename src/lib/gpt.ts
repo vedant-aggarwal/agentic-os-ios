@@ -129,6 +129,14 @@ let recovering = false;
 // open but idle (the keyboard's warm mic) is closed when another one starts; a busy one blocks it.
 type MicOwner = { me: object; busy: () => boolean; close: () => void };
 let openMic: MicOwner | null = null;
+
+// Opening or closing the mic switches iOS's audio session, and that moves the output volume, which the volume-button
+// watcher (lib/wispr.ts) reads as a button press: a phantom press rang Nora and started the PC's dictation when a
+// take started. Every switch is stamped here so the watcher can drop presses that are really the mic switching.
+let micSwitchAt = 0;
+const micSwitched = () => { micSwitchAt = Date.now(); };
+/** True while some recorder holds the mic, or within `ms` of the audio session switching for the mic. */
+export function micMoving(ms = 1500) { return Date.now() - micSwitchAt < ms || !!openMic?.busy(); }
 async function recover(skip?: string) {
   if (!gptAvailable || recovering) return;
   recovering = true;
@@ -192,8 +200,10 @@ export function useGptRecorder() {
     if (!streaming.current) {
       const perm = await audio.requestRecordingPermissionsAsync();
       if (!perm.granted) throw new Error('Allow the microphone for Agentic OS in Settings.');
+      micSwitched();
       await audio.setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true, allowsBackgroundRecording: true, shouldPlayInBackground: true });
       await stream.start();
+      micSwitched();
       streaming.current = true;
       openMic = { me, busy: () => !!cur.current, close: () => closeRef.current() };
     }
@@ -221,7 +231,8 @@ export function useGptRecorder() {
     streaming.current = false;
     if (openMic?.me === me) openMic = null;
     try { stream?.stop(); } catch {}
-    audio?.setAudioModeAsync({ allowsRecording: false }).catch(() => {});
+    micSwitched();
+    audio?.setAudioModeAsync({ allowsRecording: false }).catch(() => {}).finally(micSwitched);
     onCold.current?.();
   }, [stream, me]);
   useEffect(() => { closeRef.current = close; }, [close]);
@@ -235,7 +246,8 @@ export function useGptRecorder() {
     streaming.current = false;
     if (openMic?.me === me) openMic = null;
     try { stream?.stop(); } catch {}
-    audio?.setAudioModeAsync({ allowsRecording: false }).catch(() => {});
+    micSwitched();
+    audio?.setAudioModeAsync({ allowsRecording: false }).catch(() => {}).finally(micSwitched);
   }, [stream, close, me]);
 
   /** Stop and deliver: resolves with what the PC heard. */

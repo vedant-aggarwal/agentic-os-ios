@@ -1,7 +1,7 @@
 import { BlurView } from 'expo-blur';
 import { Image } from 'expo-image';
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
-import { BackHandler, Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, BackHandler, Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import Animated, {
   Easing, FadeIn, FadeOut, LinearTransition, ReduceMotion, runOnJS, useAnimatedStyle, useReducedMotion, useSharedValue, withDelay, withSpring, withTiming,
   type SharedValue,
@@ -12,30 +12,33 @@ import { Plus } from '@/components/Icons';
 import { Sym } from '@/components/Sym';
 import { Glyph, Icon } from '@/aspects/kit/controls';
 import { haptic, tint } from '@/aspects/kit/tokens';
-import { pickPhoto } from '@/aspects/body/pick';
-import { noraUi } from '@/nora/state';
+import { useDictate } from '@/nora/useDictate';
 import { ASPECT_COLOR, C, F } from '@/theme';
-import { useCapture } from './data';
+import { useCapture, type SmartItem } from './data';
 import {
   COLUMNS, dayMinute, focusFrame, FRAMES, frameOf, nowItems, tickOf, waterBehind, type FrameId, type NowItem, type TickId,
 } from './moments';
-import { BODY, BOOK, Chip, DROP, Field, FRAME_H, FRAME_W, Label, NowCard, QUICK, RollFrame, s as p, SPARK, Tap, TickRow, Toast, WaterRow, type Mode } from './parts';
+import {
+  BODY, BOOK, Chip, DROP, Field, Label, NowCard, PhotoTile, s as p, SlipRow, SmartButton, SPARK, STOP, Tap, TickRow, TILE_GAP, Toast, WaterRow, type Mode,
+} from './parts';
+import { takePhoto } from './shoot';
 
 // Quick capture: the dock's + opens one panel that logs anything the day asks for, in a tap or two. It grows out of
 // the + (which turns into its close button, still under the thumb), and holds, top to bottom:
-//   Photos   the day's roll: wake-up drink, body, face, then the five meals, scrolled to this hour's frame. A photo
-//            flies from the middle of the screen into its frame, so it is clear where it went.
+//   Photos   the day's slots, all eight in two rows: wake-up drink, body, face, then the five meals. A photo flies
+//            from the middle of the screen into its slot, so it is clear where it went. "Smart photo" takes any
+//            photo, the PC works out what it is and files it, and the picture flies from the button to that slot.
 //   Water    one mark per 250 ml of the target; +250 adds a glass.
-//   Self     Body, Mind and Soul side by side, each a short list of ticks.
+//   Self     Body, Mind and Soul side by side, each a short list of ticks; Clean's slip sits under it (held).
 //   Now      up to three actions for this hour, nearest the thumb.
 //   A line   add a task (area, today, tag Nora), or a journal line or a book page when one of those asked for it;
-//            the mic beside it talks to Nora (tap: chat with the mic on; hold: a voice note, sent on release).
+//            the mic beside it dictates into that line (the app's GPT dictation; nothing goes to Nora or the PC's
+//            typing). Tap to start, tap again to stop and edit; the arrow stops and saves in one tap.
 // It stays open after each capture, so several can go in one visit. Where each write lands: ./data.ts.
 
 const NORA = '#F0457A';
 const OPEN = { duration: 300, dampingRatio: 1, reduceMotion: ReduceMotion.System } as const;
 const FLY = { duration: 520, dampingRatio: 1, reduceMotion: ReduceMotion.System } as const;
-const GAP = 10; // between frames
 const hmNow = () => { const d = new Date(); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 const roundHm = (hm: string) => { const [h, m] = hm.split(':').map(Number); const t = h * 60 + Math.floor(m / 5) * 5; return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`; };
 const shiftHm = (hm: string, d: number) => { const [h, m] = hm.split(':').map(Number); const t = (h * 60 + m + d + 1440) % 1440; return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`; };
@@ -62,7 +65,7 @@ export function Capture({ open, from, floor, onClose }: {
 }
 
 type Rect = { x: number; y: number; w: number; h: number };
-type Flight = { key: number; uri: string; frame: FrameId; to: Rect };
+type Flight = { key: number; uri: string; frame: FrameId; to: Rect; /** where it starts (the smart button); else the middle */ from?: Rect };
 
 function Surface({ p: pv, open, from, floor, onClose }: {
   p: SharedValue<number>; open: boolean; from: { x: number; y: number }; floor: number; onClose: () => void;
@@ -71,10 +74,15 @@ function Surface({ p: pv, open, from, floor, onClose }: {
   const { width, height } = useWindowDimensions();
   const reduce = useReducedMotion();
   const d = useCapture();
-  const [toast, setToast] = useState<string | null>(null);
-  const say = useCallback((t: string | null) => setToast(t), []);
-  useEffect(() => { if (!toast) return; const id = setTimeout(() => setToast(null), 2200); return () => clearTimeout(id); }, [toast]);
-  const fail = useCallback((e: unknown) => { haptic.warn(); setToast((e as Error).message); }, []);
+  type Note = { text: string; action?: { label: string; onPress: () => void } | null; n: number };
+  const [toast, setToast] = useState<Note | null>(null);
+  const notes = useRef(0);
+  const say = useCallback((t: string | null, action?: Note['action']) => setToast(t ? { text: t, action: action ?? null, n: ++notes.current } : null), []);
+  // an undo stays long enough to reach for
+  useEffect(() => { if (!toast) return; const id = setTimeout(() => setToast(null), toast.action ? 6000 : 2200); return () => clearTimeout(id); }, [toast]);
+  const fail = useCallback((e: unknown) => { haptic.warn(); say((e as Error).message); }, [say]);
+  const alive = useRef(true);
+  useEffect(() => () => { alive.current = false; }, []);
 
   // ── the moment ──
   const [minute, setMinute] = useState(dayMinute);
@@ -123,18 +131,35 @@ function Surface({ p: pv, open, from, floor, onClose }: {
   const [tagNora, setTagNora] = useState(false);
   const input = useRef<ComponentRef<typeof TextInput>>(null);
   const toTask = useCallback(() => { setMode({ kind: 'task' }); setText(''); }, []);
+  // the mic: GPT dictation into this line, the same streamed path as Nora's composer, and nothing else
+  const dict = useDictate();
+  const talking = dict.state !== 'idle';
+  const join = (a: string, b: string) => (a.trim() ? `${a.trim()} ${b}` : b);
+  useEffect(() => { if (dict.error) { say(dict.error); dict.clearError(); } }, [dict, say]);
+  const micTap = async () => {
+    if (dict.state === 'finishing') return;
+    if (dict.state === 'idle') {
+      if (mode.kind === 'wake') toTask();
+      input.current?.blur();
+      void dict.start();
+      return;
+    }
+    const words = await dict.stop();
+    if (words) setText((t) => join(t, words));
+  };
   const ask = (m: Mode) => { setMode(m); setText(''); setTimeout(() => input.current?.focus(), 60); };
 
   const submit = async () => {
-    const v = text.trim();
+    let v = text.trim();
+    if (dict.state === 'recording') { const words = await dict.stop(); v = words ? join(v, words) : v; }
     if (!v || busy) return;
     setBusy(true);
     try {
       if (mode.kind === 'journal') {
         await d.journalLine(v); haptic.medium(); say("In today's journal"); toTask(); input.current?.blur();
       } else if (mode.kind === 'page') {
-        const n = Math.round(Number(v));
-        if (!Number.isFinite(n) || n < 0) throw new Error('A page number, like 142.');
+        const n = Math.round(Number(v.replace(/[^0-9.]/g, '')));
+        if (!v.match(/\d/) || !Number.isFinite(n) || n < 0) throw new Error('A page number, like 142.');
         say(await d.page(n)); haptic.medium(); toTask(); input.current?.blur();
       } else {
         say(await d.task({ title: v, area, today: due, tagNora })); haptic.medium(); setText(''); setTagNora(false);
@@ -175,33 +200,23 @@ function Surface({ p: pv, open, from, floor, onClose }: {
   };
 
   // ── photos ──
-  const rollRef = useRef<ComponentRef<typeof ScrollView>>(null);
-  const rollW = useRef(0);
   const frameRefs = useRef<Partial<Record<FrameId, ComponentRef<typeof View> | null>>>({});
   const [flight, setFlight] = useState<Flight | null>(null);
   const flights = useRef(0);
   const [landed, setLanded] = useState<{ frame: FrameId | null; n: number }>({ frame: null, n: 0 });
-  const scrollTo = useCallback((id: FrameId, animated: boolean) => {
-    // the frame sits third from the left, frames lined up with the panel's edge, the earlier ones a swipe back
-    const i = FRAMES.findIndex((f) => f.id === id);
-    const max = FRAMES.length * (FRAME_W + GAP) - GAP + 36 - rollW.current;
-    rollRef.current?.scrollTo({ x: Math.max(0, Math.min(max, (i - 2) * (FRAME_W + GAP))), animated });
-  }, []);
-  const measure = (id: FrameId) => new Promise<Rect | null>((res) => {
-    const v = frameRefs.current[id];
+  const rectOf = (v: ComponentRef<typeof View> | null | undefined) => new Promise<Rect | null>((res) => {
     if (!v) return res(null);
     v.measureInWindow((x, y, w, h) => res(w ? { x, y, w, h } : null));
   });
+  const measure = (id: FrameId) => rectOf(frameRefs.current[id]);
 
   const shoot = async (id: FrameId) => {
     const f = frameOf(id);
     let picked;
-    try { picked = await pickPhoto(); } catch (e) { fail(e); return; }
+    try { picked = await takePhoto(); } catch (e) { fail(e); return; }
     if (!picked) return;
     const uri = typeof picked.uri === 'string' ? picked.uri : URL.createObjectURL(picked.uri);
     if (!reduce) {
-      scrollTo(id, false);
-      await new Promise((r) => setTimeout(r, 40));
       const to = await measure(id);
       if (to) setFlight({ key: ++flights.current, uri, frame: id, to });
     }
@@ -212,6 +227,41 @@ function Surface({ p: pv, open, from, floor, onClose }: {
     setLanded((l) => ({ frame: id, n: l.n + 1 }));
     haptic.success();
   }, []);
+
+  // the smart photo: picked, read by the PC, filed; the picture waits in the button, then flies to its slot
+  const smartRef = useRef<ComponentRef<typeof View>>(null);
+  const [reading, setReading] = useState<string | null>(null);
+  const smart = async () => {
+    if (reading) return;
+    let picked;
+    try { picked = await takePhoto(); } catch (e) { fail(e); return; }
+    if (!picked) return;
+    const uri = typeof picked.uri === 'string' ? picked.uri : URL.createObjectURL(picked.uri);
+    setReading(uri);
+    try {
+      const it = await untilRead(await d.smart(picked, focus), d.smartGet, () => alive.current);
+      if (!alive.current) return;
+      if (it.status === 'reading') { say('Still reading it. It files itself; check back in a minute.'); return; }
+      if (it.status !== 'filed') { haptic.warn(); say(it.said ?? "Couldn't place that photo."); return; }
+      const frame = it.frame && FRAMES.some((f) => f.id === it.frame) ? (it.frame as FrameId) : null;
+      const from = frame && !reduce ? await rectOf(smartRef.current) : null;
+      const to = frame && !reduce ? await measure(frame) : null;
+      d.smartFiled(it, uri);
+      if (frame && from && to) setFlight({ key: ++flights.current, uri, frame, to, from });
+      else haptic.success();
+      const done = it;
+      say(it.said ?? 'Filed', it.canUndo ? { label: 'Undo', onPress: () => { setToast(null); void d.smartUndo(done).then(() => say('Taken back'), fail); } } : null);
+    } catch (e) { fail(e); } finally { if (alive.current) setReading(null); }
+  };
+
+  // ── Clean: a slip, held to log, with an undo ──
+  const slipped = async () => {
+    haptic.warn();
+    try {
+      const id = await d.slip();
+      say('Slip logged. The run starts again.', { label: 'Undo', onPress: () => { setToast(null); void d.unslip(id).then(() => say('Slip taken back'), fail); } });
+    } catch (e) { fail(e); }
+  };
 
   const tapFrame = (id: FrameId) => {
     const st = d.frames[id];
@@ -227,11 +277,10 @@ function Surface({ p: pv, open, from, floor, onClose }: {
     void tick(n.id);
   };
 
-  const filled = FRAMES.filter((f) => d.frames[f.id].status !== 'empty').length;
   const tag = mode.kind === 'journal' ? { text: 'Journal', color: ASPECT_COLOR.soul } : mode.kind === 'page' ? { text: 'Book', color: ASPECT_COLOR.mind } : null;
   const placeholder = mode.kind === 'journal' ? 'A line for today' : mode.kind === 'page' ? (d.book ? `Page in ${d.book.title}` : 'Page') : 'Add a task';
   // composing: the panel steps back to the line (and its chips) while the field has focus or holds words
-  const composing = typing || (mode.kind !== 'wake' && text.length > 0);
+  const composing = typing || talking || (mode.kind !== 'wake' && text.length > 0);
   const showAll = !composing;
 
   return (
@@ -247,16 +296,21 @@ function Surface({ p: pv, open, from, floor, onClose }: {
         <ScrollView bounces={false} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={[st.body, composing && mode.kind !== 'task' && st.bodyEmpty]}>
           {showAll ? (
             <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(120)} style={st.sections}>
-              <View>
-                <View style={st.pad}><Label right={`${filled} of ${FRAMES.length}`}>Photos</Label></View>
-                <ScrollView ref={rollRef} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={st.roll}
-                  snapToInterval={FRAME_W + GAP} decelerationRate="fast"
-                  onLayout={(e) => { rollW.current = e.nativeEvent.layout.width; scrollTo(focus, false); }}>
-                  {FRAMES.map((f) => (
-                    <RollFrame key={f.id} ref={(r) => { frameRefs.current[f.id] = r; }} frame={f} st={d.frames[f.id]} focus={f.id === focus}
-                      hidden={flight?.frame === f.id} landed={landed.frame === f.id ? landed.n : 0} onPress={() => tapFrame(f.id)} />
+              <View style={st.pad}>
+                <View style={st.photosHead}>
+                  <Text style={p.label}>Photos</Text>
+                  <SmartButton ref={smartRef} reading={reading} onPress={() => { void smart(); }} />
+                </View>
+                <View style={st.grid}>
+                  {[FRAMES.slice(0, 4), FRAMES.slice(4)].map((row, r) => (
+                    <View key={r} style={st.gridRow}>
+                      {row.map((f) => (
+                        <PhotoTile key={f.id} ref={(x) => { frameRefs.current[f.id] = x; }} frame={f} st={d.frames[f.id]} focus={f.id === focus}
+                          hidden={flight?.frame === f.id} landed={landed.frame === f.id ? landed.n : 0} onPress={() => tapFrame(f.id)} />
+                      ))}
+                    </View>
                   ))}
-                </ScrollView>
+                </View>
               </View>
 
               <View style={st.pad}>
@@ -274,6 +328,9 @@ function Surface({ p: pv, open, from, floor, onClose }: {
                       const meta = id === 'wake' ? d.wakeAt : id === 'book' && d.book ? `p. ${d.book.page}` : id === 'clean' && d.cleanDay != null ? `Day ${d.cleanDay}` : null;
                       return <TickRow key={id} label={t.label} meta={meta} hint={id === 'night' ? 'Routine' : undefined} color={ASPECT_COLOR[c.aspect]} done={d.doneTicks.has(id)} onPress={() => { void tick(id); }} />;
                     })}
+                    {c.aspect === 'soul' && d.cleanDay != null ? (
+                      <SlipRow onConfirm={() => { void slipped(); }} onTap={() => say('Hold Slipped to log a slip.')} />
+                    ) : null}
                   </View>
                 ))}
               </View>
@@ -309,9 +366,10 @@ function Surface({ p: pv, open, from, floor, onClose }: {
           ) : (
             <Field ref={input} value={text} onChange={setText} onSubmit={() => { void submit(); }} placeholder={placeholder} tag={tag}
               onTag={() => { toTask(); input.current?.blur(); }} onFocus={() => setTyping(true)} onBlur={() => setTyping(false)}
-              keyboard={mode.kind === 'page' ? 'number-pad' : 'default'} busy={busy} />
+              keyboard={mode.kind === 'page' ? 'number-pad' : 'default'} busy={busy || dict.state === 'finishing'}
+              live={talking ? (dict.live || '') : null} />
           )}
-          <Mic onClose={onClose} />
+          <Mic state={dict.state} onPress={() => { void micTap(); }} />
         </View>
       </Animated.View>
 
@@ -323,7 +381,7 @@ function Surface({ p: pv, open, from, floor, onClose }: {
       </Pressable>
 
       {flight ? <FlightLayer key={flight.key} f={flight} width={width} height={height} onLand={onLand} /> : null}
-      <View pointerEvents="none" style={[st.toastAt, { top: insets.top + 8 }]}><Toast text={toast} /></View>
+      <View pointerEvents="box-none" style={[st.toastAt, { top: insets.top + 8 }]}><Toast key={toast?.n} text={toast?.text ?? null} action={toast?.action} /></View>
     </View>
   );
 }
@@ -363,44 +421,50 @@ function WakeLine({ hm, onMove, onDone }: { hm: string; onMove: (d: number) => v
   );
 }
 
-/** Nora's mic: tap opens her chat listening; hold records a voice note that goes when the finger lifts. */
-function Mic({ onClose }: { onClose: () => void }) {
-  const held = useRef(false);
-  const v = useSharedValue(0);
-  const ring = useAnimatedStyle(() => ({ opacity: v.value, transform: [{ scale: 1 + 0.12 * v.value }] }));
+/** Asks the PC again every 1.5 s until it has read the photo, `give` ms pass, or the panel has gone. */
+async function untilRead(first: SmartItem, get: (id: string) => Promise<SmartItem>, alive: () => boolean, give = 240_000) {
+  let it = first;
+  const t0 = Date.now();
+  while (it.status === 'reading' && alive() && Date.now() - t0 < give) {
+    await new Promise((r) => setTimeout(r, 1500));
+    it = await get(it.id);
+  }
+  return it;
+}
+
+/** The line's mic: a tap starts dictating into the line, a tap stops it. It talks to no one. */
+function Mic({ state, onPress }: { state: 'idle' | 'recording' | 'finishing'; onPress: () => void }) {
+  const on = state !== 'idle';
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel="Talk to Nora" accessibilityHint="Tap to talk in her chat. Hold to send a voice note."
-      delayLongPress={280} hitSlop={6}
-      onPressIn={() => { v.set(withSpring(0.5, QUICK)); }}
-      onLongPress={() => { held.current = true; v.set(withSpring(1, QUICK)); haptic.medium(); noraUi.voiceNote(); }}
-      onPressOut={() => {
-        v.set(withSpring(0, QUICK));
-        if (held.current) { held.current = false; noraUi.voiceNoteSend(); onClose(); }
-      }}
-      onPress={() => { if (held.current) return; haptic.light(); onClose(); noraUi.openChat({ mic: true }); }}
-      style={st.mic}>
-      <Animated.View style={[StyleSheet.absoluteFill, st.micRing, ring]} />
-      <Icon name="mic" size={20} color={C.text} />
-    </Pressable>
+    <Tap label={on ? 'Stop dictating' : 'Dictate'} hint={on ? 'The words stay in the line to edit' : 'Talk instead of typing'} onPress={onPress} feel="light"
+      style={[st.mic, on && st.micOn]}>
+      {state === 'finishing' ? <ActivityIndicator size="small" color="#0B0C10" />
+        : on ? <Glyph sf="stop.fill" d={STOP} size={14} color="#0B0C10" filled /> : <Icon name="mic" size={20} color={C.text} />}
+    </Tap>
   );
 }
 
-/** The picked photo: it shows in the middle for a beat, then flies into its frame and the frame takes it. */
+/**
+ * The picked photo on its way to its slot: from the middle of the screen (shown for a beat first), or from the smart
+ * button's thumbnail once the PC has said where it goes. The slot takes it when it lands.
+ */
 function FlightLayer({ f, width, height, onLand }: { f: Flight; width: number; height: number; onLand: (id: FrameId) => void }) {
-  const w0 = Math.min(232, width * 0.58), h0 = (w0 * FRAME_H) / FRAME_W;
-  const x0 = (width - w0) / 2, y0 = height * 0.4 - h0 / 2;
-  const a = useSharedValue(0), k = useSharedValue(0);
+  const ratio = f.to.h / f.to.w;
+  const w0 = f.from ? f.from.w : Math.min(232, width * 0.58), h0 = w0 * ratio;
+  const x0 = f.from ? f.from.x : (width - w0) / 2, y0 = f.from ? f.from.y + f.from.h / 2 - h0 / 2 : height * 0.4 - h0 / 2;
+  const r0 = f.from ? 6 : 22;
+  const a = useSharedValue(f.from ? 1 : 0), k = useSharedValue(0);
   const end = f.to.w / w0;
   const dx = f.to.x + f.to.w / 2 - (x0 + w0 / 2), dy = f.to.y + f.to.h / 2 - (y0 + h0 / 2);
   useEffect(() => {
     a.set(withTiming(1, { duration: 180, easing: Easing.bezier(0.23, 1, 0.32, 1) }));
-    k.set(withDelay(420, withSpring(1, FLY, (done) => { if (done) runOnJS(onLand)(f.frame); })));
-  }, [a, k, f.frame, onLand]);
+    k.set(withDelay(f.from ? 0 : 420, withSpring(1, FLY, (done) => { if (done) runOnJS(onLand)(f.frame); })));
+  }, [a, k, f.frame, f.from, onLand]);
   const style = useAnimatedStyle(() => {
-    const sc = (1 + (end - 1) * k.value) * (0.94 + 0.06 * a.value);
+    const sc = (1 + (end - 1) * k.value) * (f.from ? 1 : 0.94 + 0.06 * a.value);
     return {
       opacity: a.value,
-      borderRadius: 22 + (14 / end - 22) * k.value,
+      borderRadius: r0 + (14 / end - r0) * k.value,
       transform: [{ translateX: dx * k.value }, { translateY: dy * k.value }, { scale: sc }],
     };
   });
@@ -424,7 +488,9 @@ const st = StyleSheet.create({
   bodyEmpty: { paddingTop: 0 },
   sections: { gap: 22 },
   pad: { paddingHorizontal: 18 },
-  roll: { paddingHorizontal: 18, gap: GAP },
+  photosHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  grid: { gap: TILE_GAP },
+  gridRow: { flexDirection: 'row', gap: TILE_GAP },
   columns: { flexDirection: 'row', gap: 12 },
   column: { flex: 1, minWidth: 0 },
   colHead: { fontFamily: F.semibold, fontSize: 13, lineHeight: 18, marginBottom: 6 },
@@ -432,7 +498,7 @@ const st = StyleSheet.create({
   chips: { paddingHorizontal: 18, gap: 8 },
   line: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingTop: 14, paddingBottom: 12 },
   mic: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.07)' },
-  micRing: { borderRadius: 24, backgroundColor: tint(NORA, 0.32), borderWidth: 1, borderColor: tint(NORA, 0.7) },
+  micOn: { backgroundColor: C.text },
   wake: { paddingLeft: 16 },
   wakeLabel: { fontFamily: F.medium, fontSize: 15, lineHeight: 20, color: C.muted, marginRight: 4 },
   wakeTime: { fontFamily: F.semibold, fontSize: 17, lineHeight: 22, color: C.text, minWidth: 50, textAlign: 'center' },

@@ -3,7 +3,7 @@ import * as Haptics from 'expo-haptics';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, Platform } from 'react-native';
 import { api, ApiError } from './api';
-import { type DictateTo, gptAvailable, useGptRecorder } from './gpt';
+import { type DictateTo, gptAvailable, micMoving, useGptRecorder } from './gpt';
 
 // The phone's volume buttons drive Wispr Flow on the PC (server: POST /pc/keys).
 //   Hold volume up                 hold Wispr's talk keys; let go and it stops and pastes
@@ -166,6 +166,10 @@ export function useWispr(enabled: boolean, nora?: NoraKeys) {
   // ---- volume steps ----
   const onStep = useCallback((button: 'up' | 'down') => {
     const st = g.current;
+    // another part of the app opening or closing the mic moves the volume too (a dictation in Nora's chat or the
+    // capture panel): those are not presses, and never ring Nora or start the PC's dictation. Our own take is exempt,
+    // since a held talk lives on its repeat steps.
+    if (!recording.current && st.mode === 'idle' && micMoving()) return;
     const now = Date.now();
     if (st.mode === 'idle') { st.t0 = now; st.ticks = []; }
     if (st.ticks.length < 60) st.ticks.push(now - st.t0);

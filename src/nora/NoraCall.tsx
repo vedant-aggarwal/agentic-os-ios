@@ -7,6 +7,7 @@ import { Button, Press, SURF, t } from '@/aspects/kit';
 import { useReveal } from '@/components/Reveal';
 import { clock } from '@/lib/nora';
 import { C } from '@/theme';
+import { CallTranscript, useHasTranscript } from './call/LiveTranscript';
 import { useCall } from './call/useCall';
 import { NGlyph, NORA, useElapsed } from './parts';
 import { Ball, useTurn } from './Sphere';
@@ -59,9 +60,17 @@ function CallBody({ ask }: { ask: CallAsk | null }) {
             : c.talk === 'speaking' ? 'Speaking' : 'Listening';
   const failed = c.phase === 'failed';
   const showSpeaker = c.mode === 'relay' || c.mode === 'sim';
+  // both sides' words streaming from the PC (call/liveText.ts): her sphere shrinks and the transcript takes the room
+  const words = useHasTranscript(c.callId) && !failed;
+  const canHide = c.mode === 'follow' && c.phase !== 'ended';
 
   return (
     <View style={[s.fill, { paddingTop: insets.top + 24, paddingBottom: Math.max(insets.bottom, 16) + 24 }]}>
+      {canHide ? (
+        <Press label="Hide the call screen. The call stays on" onPress={c.hide} style={s.hide} wrap={[s.hideWrap, { top: insets.top + 16 }]}>
+          <Text style={t.label}>Hide</Text>
+        </Press>
+      ) : null}
       <View style={s.head}>
         <Text accessibilityRole="header" style={[t.title2, s.centre]}>Nora</Text>
         <Text style={[t.label, t.num, s.centre]}>
@@ -69,13 +78,13 @@ function CallBody({ ask }: { ask: CallAsk | null }) {
         </Text>
       </View>
 
-      <View style={s.stage}>
-        <Orb t={turn} level={c.level} dim={failed || c.phase === 'ended'} />
+      <View style={words ? s.stageSmall : s.stage}>
+        <Orb t={turn} level={c.level} dim={failed || c.phase === 'ended'} r={words ? 40 : R} />
         <Text accessibilityLiveRegion="polite" style={[t.strong, s.centre, c.talk === 'thinking' && c.phase === 'live' && { color: NORA }]}>{word}</Text>
       </View>
 
-      <View style={s.words}>
-        {failed ? (
+      <View style={words ? s.wordsLive : s.words}>
+        {words ? <CallTranscript callId={c.callId} /> : failed ? (
           <>
             <Text style={[t.body, s.centre]}>{c.error}</Text>
             <View style={s.failRow}>
@@ -118,14 +127,14 @@ function CallBody({ ask }: { ask: CallAsk | null }) {
 }
 
 /** Her sphere: it swells a little with her voice; a thin ring rides out with it while she speaks. */
-function Orb({ t: turn, level, dim }: { t: SharedValue<number>; level: SharedValue<number>; dim: boolean }) {
+function Orb({ t: turn, level, dim, r = R }: { t: SharedValue<number>; level: SharedValue<number>; dim: boolean; r?: number }) {
   const reduce = useReducedMotion();
   const grow = useAnimatedStyle(() => ({ opacity: dim ? 0.4 : 1, transform: [{ scale: reduce ? 1 : 1 + level.value * 0.07 }] }));
   const ring = useAnimatedStyle(() => ({ opacity: dim ? 0 : level.value * 0.7, transform: [{ scale: 1.08 + (reduce ? 0 : level.value * 0.2) }] }));
   return (
-    <View style={s.orbBox} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-      <Animated.View style={[s.ring, ring]} />
-      <Animated.View style={[s.ball, grow]}><Ball t={turn} r={R} /></Animated.View>
+    <View style={[s.orbBox, { width: r * 2 + 48, height: r * 2 + 48 }]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      <Animated.View style={[s.ring, { width: r * 2, height: r * 2, borderRadius: r }, ring]} />
+      <Animated.View style={[s.ball, { width: r * 2, height: r * 2, borderRadius: r }, grow]}><Ball t={turn} r={r} /></Animated.View>
     </View>
   );
 }
@@ -152,6 +161,10 @@ const s = StyleSheet.create({
   ball: { width: R * 2, height: R * 2, borderRadius: R, boxShadow: '0 16px 40px rgba(0,0,0,0.5)' },
   ring: { position: 'absolute', width: R * 2, height: R * 2, borderRadius: R, borderWidth: 2, borderColor: NORA },
   words: { minHeight: 132, gap: 8, justifyContent: 'flex-start', paddingBottom: 24 },
+  stageSmall: { alignItems: 'center', gap: 4, paddingTop: 8 },
+  wordsLive: { flex: 1, paddingBottom: 16 },
+  hideWrap: { position: 'absolute', left: 16, zIndex: 2 },
+  hide: { minHeight: 44, minWidth: 64, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
   failRow: { flexDirection: 'row', justifyContent: 'center', gap: 12, paddingTop: 16 },
   controls: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingHorizontal: 8 },
   ctl: { width: 80, alignItems: 'center', gap: 8 },

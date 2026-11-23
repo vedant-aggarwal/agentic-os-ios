@@ -2,6 +2,8 @@ import { useEffect } from 'react';
 import { DEMO } from '@/lib/demo';
 import { onLink } from '@/lib/links';
 import { demoMode, noraDemo } from '@/lib/noraDemo';
+import { LiveCallCard } from './call/LiveTranscript';
+import { demoLiveText, useLiveTextSocket } from './call/liveText';
 import { NoraCall } from './NoraCall';
 import { NoraChat } from './NoraChat';
 import { NoraHome } from './NoraHome';
@@ -27,7 +29,8 @@ function useNoraLinks() {
     const id = setTimeout(() => {
       if (m === 'chat' || m === 'empty' || m === 'fail') noraUi.openChat();
       else if (m === 'home' || m === 'home-empty' || m === 'home-fail') noraUi.openHome();
-      else if (m === 'call' || m === 'call-fail') noraUi.call();
+      else if (m === 'call' || m === 'call-fail') { noraUi.call(); if (m === 'call') demoLiveText(); }
+      else if (m === 'live') demoLiveText(); // the live card over Today, as when a SIM-line call is on
       else if (m === 'ring') { noraDemo.ring('Your client call is in 15 minutes'); noraUi.openChat(); }
     }, 600);
     return () => clearTimeout(id);
@@ -42,8 +45,10 @@ export function NoraUnder({ home }: { home: P }) {
 
 /** Chat and calls, drawn after the dock, over everything. */
 export function NoraOver({ chat, orb }: { chat: P; orb: P }) {
+  useLiveTextSocket(); // both sides' words while a call runs (call/liveText.ts)
   return (
     <>
+      <LiveCallCard />
       <NoraChat origin={chat} />
       <NoraCall origin={orb} />
     </>

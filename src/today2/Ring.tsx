@@ -66,14 +66,14 @@ export function Ring({ parts }: { parts: RingPart[] }) {
   }, [full, glow, pop]);
   const c = parts[0]?.color ?? '#FFFFFF';
   const lit = parts.length > 1 ? 0.5 / parts.length + 0.12 : 0.62;
-  const st = useAnimatedStyle(() => ({
-    transform: [{ scale: pop.value }],
-    boxShadow: `0 0 ${9 * glow.value}px ${tint(c, lit * glow.value)}`,
-    borderRadius: SIZE / 2,
-  }));
+  // the glow is a fixed shadow faded in by opacity: worklets can't call tint(), so the colour is worked out here
+  const shadow = `0 0 9px ${tint(c, lit)}`;
+  const st = useAnimatedStyle(() => ({ transform: [{ scale: pop.value }] }));
+  const halo = useAnimatedStyle(() => ({ opacity: glow.value }));
   const span = 360 / Math.max(1, parts.length);
   return (
     <Animated.View style={[{ width: SIZE, height: SIZE }, st]}>
+      <Animated.View pointerEvents="none" style={[{ position: 'absolute', width: SIZE, height: SIZE, borderRadius: SIZE / 2, boxShadow: shadow }, halo]} />
       <View pointerEvents="none">
         <Svg width={SIZE} height={SIZE}>
           {parts.length <= 1

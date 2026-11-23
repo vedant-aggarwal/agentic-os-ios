@@ -53,8 +53,9 @@ export function Group({ children }: { children: ReactNode }) {
 const CHECK_LEN = 17;
 const APath = Animated.createAnimatedComponent(Path);
 
-export function Tick({ done, color, size = 26, label, onPress, disabled }: {
+export function Tick({ done, color, size = 26, label, onPress, disabled, passive }: {
   done: boolean; color: string; size?: number; label: string; onPress: () => void; disabled?: boolean;
+  /** drawn only: the parent (a whole tile) takes the tap */ passive?: boolean;
 }) {
   const v = useSharedValue(done ? 1 : 0), draw = useSharedValue(done ? 1 : 0);
   useEffect(() => {
@@ -63,9 +64,7 @@ export function Tick({ done, color, size = 26, label, onPress, disabled }: {
   }, [done, v, draw]);
   const fill = useAnimatedStyle(() => ({ opacity: v.value, transform: [{ scale: 0.55 + 0.45 * v.value }] }));
   const check = useAnimatedProps(() => ({ strokeDashoffset: CHECK_LEN * (1 - draw.value) }));
-  return (
-    <Pressable accessibilityRole="checkbox" accessibilityLabel={label} accessibilityState={{ checked: done, disabled: !!disabled }} hitSlop={9} disabled={disabled}
-      onPress={() => { if (done) haptic.light(); else haptic.medium(); onPress(); }}>
+  const ring = (
       <View style={{ width: size, height: size, borderRadius: size / 2, borderWidth: 1.5, borderColor: tint(color, done ? 1 : 0.5), overflow: 'hidden', opacity: disabled ? 0.45 : 1 }}>
         <Animated.View style={[StyleSheet.absoluteFill, { borderRadius: size / 2, backgroundColor: color }, fill]} />
         <Svg width={size - 3} height={size - 3} viewBox="0 0 24 24" style={StyleSheet.absoluteFill}>
@@ -73,6 +72,12 @@ export function Tick({ done, color, size = 26, label, onPress, disabled }: {
             strokeDasharray={CHECK_LEN} animatedProps={check} />
         </Svg>
       </View>
+  );
+  if (passive) return <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">{ring}</View>;
+  return (
+    <Pressable accessibilityRole="checkbox" accessibilityLabel={label} accessibilityState={{ checked: done, disabled: !!disabled }} hitSlop={9} disabled={disabled}
+      onPress={() => { if (done) haptic.light(); else haptic.medium(); onPress(); }}>
+      {ring}
     </Pressable>
   );
 }

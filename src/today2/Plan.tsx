@@ -2,7 +2,7 @@ import { useCallback, useState, type ReactNode } from 'react';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Line } from 'react-native-svg';
 import { pickPhoto } from '@/aspects/body/pick';
-import { t, tint } from '@/aspects/kit/tokens';
+import { haptic, t, tint } from '@/aspects/kit/tokens';
 import { WaterRow } from '@/capture/parts';
 import { frameOf, type FrameId } from '@/capture/moments';
 import type { BodyToday } from '@/lib/body';
@@ -265,13 +265,14 @@ export function Plan({ d, body, now, onOpen, onToggleTask, say, onHome }: {
       <Section key="leave" label="Habits to leave" parts={[{ color: A.soul, ...p }]} finished={p.done === p.total}>
         <View style={st.tiles}>
           {items.map((i) => (
-            <View key={i.id} style={[st.leave, d.on(i.id) && { backgroundColor: tint(A.soul, 0.1) }]}>
+            <Pressable key={i.id} accessibilityRole="checkbox" accessibilityState={{ checked: d.on(i.id) }} accessibilityLabel={`${i.name}, kept today`}
+              onPress={() => { haptic.medium(); check(i.id); }} style={({ pressed }) => [st.leave, d.on(i.id) && { backgroundColor: tint(A.soul, 0.1) }, pressed && { transform: [{ scale: 0.97 }] }]}>
               <View style={st.appTop}>
                 <Text style={[t.caption]}>{i.reason}</Text>
-                <Tick done={d.on(i.id)} color={A.soul} size={22} label={`${i.name}, kept today`} onPress={() => check(i.id)} />
+                <Tick done={d.on(i.id)} color={A.soul} size={22} label={`${i.name}, kept today`} onPress={() => check(i.id)} passive />
               </View>
               <Text numberOfLines={2} style={st.leaveName}>{i.name}</Text>
-            </View>
+            </Pressable>
           ))}
         </View>
       </Section>
@@ -324,15 +325,18 @@ export function Plan({ d, body, now, onOpen, onToggleTask, say, onHome }: {
 function Habit({ name, big, unit, done, color, onTick, onOpen, foot }: {
   name: string; big: string; unit?: string; done: boolean; color: string; onTick: () => void; onOpen: () => void; foot?: ReactNode;
 }) {
+  // the whole tile ticks; holding it opens the habit's page
   return (
-    <View style={[st.habit, done && { backgroundColor: tint(color, 0.1) }]}>
+    <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: done }} accessibilityLabel={name} accessibilityHint="Hold to open"
+      onPress={() => { haptic.medium(); onTick(); }} onLongPress={() => { haptic.success(); onOpen(); }} delayLongPress={400}
+      style={({ pressed }) => [st.habit, done && { backgroundColor: tint(color, 0.1) }, pressed && { transform: [{ scale: 0.97 }] }]}>
       <View style={st.appTop}>
-        <Text onPress={onOpen} style={st.habitBig} numberOfLines={1}>{big}{unit ? <Text style={t.caption}>{` ${unit}`}</Text> : null}</Text>
-        <Tick done={done} color={color} size={22} label={`${name}${done ? ', done' : ''}`} onPress={onTick} />
+        <Text style={st.habitBig} numberOfLines={1}>{big}{unit ? <Text style={t.caption}>{` ${unit}`}</Text> : null}</Text>
+        <Tick done={done} color={color} size={22} label={`${name}${done ? ', done' : ''}`} onPress={onTick} passive />
       </View>
-      <Text onPress={onOpen} numberOfLines={1} style={st.habitName}>{name}</Text>
+      <Text numberOfLines={1} style={st.habitName}>{name}</Text>
       {foot ?? <View style={{ height: 16 }} />}
-    </View>
+    </Pressable>
   );
 }
 

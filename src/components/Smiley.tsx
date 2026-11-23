@@ -112,7 +112,6 @@ export function Smiley({ size = 30, settleMs = 0, active = true, shadow = true, 
       if (p && v.every((x, i) => Math.abs(x - p[i]) < 0.003)) return;
       scheduleOnRN(onPet, v[0], v[1], v[2], v[3], v[4], v[5], v[6]);
     },
-    [onPet],
   );
   useEffect(() => { setState({ sad, reduce }); }, [sad, reduce, setState]);
 
@@ -136,7 +135,6 @@ export function Smiley({ size = 30, settleMs = 0, active = true, shadow = true, 
       if (p && g.x === p.x && g.y === p.y && g.active === p.active) return;
       scheduleOnRN(onGaze, g.x, g.y, g.active);
     },
-    [onGaze],
   );
 
   // rubs, reactions and hearts

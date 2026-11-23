@@ -5,9 +5,11 @@ import { makeMutable, withDelay, withSequence, withTiming } from 'react-native-r
 import { DEMO } from '@/lib/demo';
 import { useGet } from '@/lib/mod';
 
-// The mood smiley is a small pet. Rub it (a finger moving over the mood button) and it closes its eyes, grins,
-// blushes and purrs, hearts float up, and it stays happy for a while after. Leave the mood unlogged and it gets
-// sadder by the hour: drooping eyes, worried brows, a frown, then a tear. Logging a mood is what cheers it for good.
+// The mood pet: a small golden furball drawn live in 3D (pet-scene/, shown by components/Smiley). Rub it (a finger
+// moving over the mood button) and it shuts its eyes, leans into the finger and purrs, hearts float up, and it stays
+// happy for about a minute after. Leave the mood unlogged and it gets sadder by the hour: ears down, heavy lids, a
+// wobbly frown, then tears. Logging a mood is what cheers it for good. This file is its shared state: the values
+// below, and the events (rubs, reactions, hearts) the views that draw it listen to.
 
 /** Live pet state the smiley draws from. rub: a finger is rubbing it now (0..1). joy: happiness left from a rub. */
 export const pet = {
@@ -27,19 +29,31 @@ export const pet = {
 
 export type PetFace = 'happy' | 'excited' | 'calm' | 'proud' | 'concerned' | 'sad' | 'tired' | 'angry';
 
+/** What happens to the pet, for the views that draw it: a finger rubbing it (fx, fy -1..1 over it, dx the move in
+ *  pt), the finger lifting (strong: it was a proper rub), a passing reaction. Hearts go through onHeart. */
+export type PetEvent =
+  | { t: 'rub'; on: true; fx: number; fy: number; dx: number }
+  | { t: 'rub'; on: false; strong: boolean }
+  | { t: 'react'; face: PetFace };
+const events = new Set<(e: PetEvent) => void>();
+export function onPetEvent(fn: (e: PetEvent) => void) { events.add(fn); return () => { events.delete(fn); }; }
+const emit = (e: PetEvent) => { for (const fn of events) fn(e); };
+
 /** A few hearts in a row, as if it can't contain itself. */
 export function heartBurst(n = 4, gap = 180) {
   for (let i = 0; i < n; i++) setTimeout(() => { for (const fn of hearts) fn(); }, i * gap);
 }
 
-/** A passing expression on top of where the logger has it: a beam, a worried look, a frown, a yawn. */
+/** A passing expression on top of where the logger has it: a beam, a worried look, a frown, a yawn. The scene plays
+ *  the reaction itself (a hop, a sigh, a huff); the pulses here colour the mood under it for a moment. */
 export function petReact(face: PetFace) {
+  emit({ t: 'react', face });
   const pulse = (v: typeof pet.joy, to: number, hold = 1800) => v.set(withSequence(withTiming(to, { duration: 220 }), withDelay(hold, withTiming(0, { duration: 900 }))));
   if (face === 'happy' || face === 'proud') { pulse(pet.joy, 1); heartBurst(face === 'proud' ? 2 : 3); buzz(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)); }
   else if (face === 'excited') { pulse(pet.joy, 1, 2400); heartBurst(5, 140); buzz(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)); }
   else if (face === 'concerned' || face === 'sad') { pulse(pet.worry, face === 'sad' ? 1 : 0.8, 2600); buzz(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft)); }
   else if (face === 'angry') { pulse(pet.anger, 0.9, 1600); buzz(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Rigid)); }
-  else if (face === 'tired') { pulse(pet.worry, 0.3, 1600); }
+  // calm and tired: the sigh and the yawn are the whole reaction
 }
 
 /** Hand the face to the mood logger (on) or give it back to his real mood (off). */
@@ -49,7 +63,7 @@ export function petDrive(on: boolean) {
 }
 
 const BUTTON = 52; // the round mood button the finger rubs
-let energy = 0, lastMove = 0, lastRubEnd = 0, purr: ReturnType<typeof setInterval> | null = null;
+let energy = 0, lastMove = 0, lastRubEnd = 0, purrAt = 0, purr: ReturnType<typeof setInterval> | null = null;
 const hearts = new Set<() => void>();
 let heartTimer: ReturnType<typeof setInterval> | null = null;
 const buzz = (f: () => Promise<void>) => { if (Platform.OS !== 'web') f().catch(() => {}); };
@@ -58,10 +72,15 @@ const buzz = (f: () => Promise<void>) => { if (Platform.OS !== 'web') f().catch(
 export function onHeart(fn: () => void) { hearts.add(fn); return () => { hearts.delete(fn); }; }
 
 export function rubStart() {
-  energy = 0; lastMove = Date.now();
+  energy = 0; lastMove = purrAt = Date.now();
   pet.rub.set(withTiming(1, { duration: 160 }));
-  // a purr: soft ticks while the finger keeps moving
-  purr = setInterval(() => { if (Date.now() - lastMove < 140) buzz(() => Haptics.selectionAsync()); }, 150);
+  emit({ t: 'rub', on: true, fx: pet.fx.get(), fy: pet.fy.get(), dx: 0 });
+  // a purr: rrrr... rrrr..., a burst of soft ticks on each breath, while the finger keeps at it
+  purr = setInterval(() => {
+    const now = Date.now();
+    if (now - lastMove > 400) return;
+    if (((now - purrAt) % 1100) / 1100 < 0.55) buzz(() => Haptics.selectionAsync());
+  }, 75);
   heartTimer = setInterval(() => { if (Date.now() - lastMove < 260) for (const fn of hearts) fn(); }, 340);
   for (const fn of hearts) fn();
 }
@@ -72,9 +91,11 @@ export function rubMove(dx: number, dy: number, x: number, y: number) {
   if (d < 0.5) return;
   lastMove = Date.now();
   energy += d;
-  pet.fx.set(Math.max(-1, Math.min(1, (x - BUTTON / 2) / (BUTTON / 2))));
-  pet.fy.set(Math.max(-1, Math.min(1, (y - BUTTON / 2) / (BUTTON / 2))));
+  const fx = Math.max(-1, Math.min(1, (x - BUTTON / 2) / (BUTTON / 2)));
+  const fy = Math.max(-1, Math.min(1, (y - BUTTON / 2) / (BUTTON / 2)));
+  pet.fx.set(fx); pet.fy.set(fy);
   pet.joy.set(Math.min(1, pet.joy.get() + d / 240));
+  emit({ t: 'rub', on: true, fx, fy, dx });
 }
 
 export function rubEnd() {
@@ -83,6 +104,7 @@ export function rubEnd() {
   if (heartTimer) clearInterval(heartTimer);
   purr = heartTimer = null;
   lastRubEnd = Date.now();
+  emit({ t: 'rub', on: false, strong: energy > 40 });
   pet.rub.set(withTiming(0, { duration: 320 }));
   pet.fx.set(withTiming(0, { duration: 400 })); pet.fy.set(withTiming(0, { duration: 400 }));
   if (energy > 40) {

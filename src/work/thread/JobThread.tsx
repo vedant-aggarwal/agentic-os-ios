@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Backdrop } from '@/components/Backdrop';
 import { EdgeBlur } from '@/components/EdgeBlur';
 import { tap } from '@/components/Glass';
+import { FolderContext } from '@/components/Linked';
 import { Notice } from '@/components/Notice';
 import { SignIn } from '@/components/SignIn';
 import { ApiError } from '@/lib/api';
@@ -186,8 +187,10 @@ export function JobThread({ id }: { id: string }) {
     );
   } else {
     body = (
+      <FolderContext.Provider value={job.folder}>
       <ThreadList rows={rows} job={job} top={headerRoom} bottom={composerH} more={stream.more} older={stream.older}
         onOlder={stream.loadOlder} permBusy={permBusy} onAnswer={answer} onOpenDiff={openDiff} />
+      </FolderContext.Provider>
     );
   }
 

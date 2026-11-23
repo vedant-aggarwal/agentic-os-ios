@@ -4,6 +4,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { FileViewer } from '@/components/FileViewer';
 import { startAlarms } from '@/lib/alarms';
 import { startCalls } from '@/lib/calls';
 import '@/lib/log'; // sends phone-side errors to the PC log
@@ -36,6 +37,7 @@ export default function RootLayout() {
       <StatusBar style="light" />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: C.scene } }} />
       {WorkSheets ? <WorkSheets /> : null}
+      <FileViewer />
     </GestureHandlerRootView>
   );
 }

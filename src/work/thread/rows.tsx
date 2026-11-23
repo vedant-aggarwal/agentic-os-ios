@@ -3,6 +3,7 @@ import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, View } from
 import Animated, {
   cancelAnimation, Easing, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withTiming, ZoomIn,
 } from 'react-native-reanimated';
+import { Linked } from '@/components/Linked';
 import { Sym } from '@/components/Sym';
 import { C, F } from '@/theme';
 import type { Engine, PermOption } from '../types';
@@ -39,7 +40,7 @@ export const UserRow = memo(function UserRow({ row }: { row: R<'user'> }) {
   const { shown } = row;
   return (
     <View style={s.userWrap}>
-      {shown.text ? <View style={s.user}><Text selectable style={s.userText}>{shown.text}</Text></View> : null}
+      {shown.text ? <View style={s.user}><Text selectable style={s.userText}><Linked text={shown.text} /></Text></View> : null}
       {shown.tasks.map((t, i) => <Text key={i} style={s.from} numberOfLines={2}><Text style={s.fromLabel}>Task </Text>{t}</Text>)}
       {shown.idea ? <Text style={s.from} numberOfLines={2}><Text style={s.fromLabel}>Idea </Text>{shown.idea}</Text> : null}
     </View>
@@ -162,7 +163,7 @@ export const PlanRow = memo(function PlanRow({ row }: { row: R<'plan'> }) {
                 <View style={[s.boxRing, { borderColor: LIVE }]}>{row.live ? <Pulse size={6} /> : null}</View>
               ) : <View style={s.boxRing} />}
             </View>
-            <Text style={[s.planText, e.status === 'completed' && s.planDone, e.status === 'in_progress' && s.planNow]}>{e.content}</Text>
+            <Text style={[s.planText, e.status === 'completed' && s.planDone, e.status === 'in_progress' && s.planNow]}><Linked text={e.content} /></Text>
           </View>
         ))}
       </View>

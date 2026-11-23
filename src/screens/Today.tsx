@@ -38,6 +38,8 @@ import DeskToday from '@/desk/DeskToday';
 import { useNora } from '@/nora/state';
 import { useDesktop } from '@/desk/store';
 import { preloadPages, WARM } from '@/aspects/registry';
+import { DEMO } from '@/lib/demo';
+import { PetLab } from '@/pet/PetLab';
 
 // Volume down: a press rings Nora (not again while a call is up), a hold records a voice note to her chat.
 const NORA_KEYS: NoraKeys = {
@@ -47,7 +49,13 @@ const NORA_KEYS: NoraKeys = {
 };
 
 // A desktop browser gets its own layout (src/desk); phones and narrow windows keep this one.
+// dev, web sample mode only: `?demo&petlab` opens the mood pet's test page (src/pet/PetLab)
+const PET_LAB = DEMO && new URLSearchParams(location.search).has('petlab');
 export default function Today() {
+  return PET_LAB ? <PetLab /> : <TodayScreen />;
+}
+
+function TodayScreen() {
   // While Today sits on screen, get every aspect page ready so the first tap opens drawn: their reads in one round
   // trip (each request through the tunnel costs most of a second), and each page's code.
   useEffect(() => {
@@ -171,7 +179,7 @@ function PhoneToday() {
       {/* the same blur under the top bar, dense at the screen's top edge */}
       <EdgeBlur edge="top" height={insets.top + TOP_GAP + TOP_H + 28} strength={30} curve={2} />
       {/* on web the bar would sit over Nora's chat header */}
-      {native || !noraOpen ? <TopBar top={insets.top} width={width} live={live} onMic={() => { setClosedLive(false); setMicOpen(true); }}
+      {native || !noraOpen ? <TopBar top={insets.top} width={width} live={live} petActive={!aspect} onMic={() => { setClosedLive(false); setMicOpen(true); }}
         onRemote={() => setRemoteOpen(true)} onRemoteHold={() => setPcTab('media')}
         onVoices={() => setVoicesOpen(true)} onFiles={() => setFilesOpen(true)} onAccount={() => setAccountOpen(true)} onMood={setMoodFrom} /> : null}
       {/* an aspect page grows out of the orb, over Today and its top bar; the dock stays above it */}

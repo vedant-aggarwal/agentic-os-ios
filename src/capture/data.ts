@@ -242,8 +242,35 @@ export function useCapture() {
         tickHabit(/meditat/i, false);
         return 'Meditation taken off';
       }
+      case 'wake': {
+        if (on) return null; // logging goes through wake(), with its time
+        await putCheck('wake', false);
+        return 'Wake-up taken off';
+      }
+      case 'journal': {
+        if (on) return null; // writing goes through journalLine()
+        const all = (journal.items ?? []).filter((x) => x.date === day && x.text?.trim());
+        const mine = all.filter((x) => (x as { source?: string }).source === 'capture');
+        if (!mine.length) throw new Error('Written in Growth. Change it there.');
+        for (const x of mine) await journal.remove(x.id);
+        if (mine.length === all.length) tickHabit(/journal/i, false);
+        invalidate('/mod/soul/journal');
+        return 'Journal line taken off';
+      }
+      case 'book': {
+        if (on) return null; // logging goes through page()
+        for (const x of (sessions.items ?? []).filter((x) => x.date === day && x.kind === 'reading')) await sessions.remove(x.id);
+        invalidate('/mod/mind/');
+        return 'Reading taken off';
+      }
       case 'clean': {
-        if (!on) return null; // a pledge stands for the day
+        if (!on) {
+          if (DEMO) { await fakeWait(300); setDemoClean({ ...demoClean, pledged: false } as CleanNow); return 'Pledge taken back'; }
+          await api('/mod/soul/clean/pledge', { method: 'DELETE' });
+          invalidate('/mod/soul/clean');
+          tickHabit(/clean/i, false);
+          return 'Pledge taken back';
+        }
         if (cleanData && !cleanData.setup) throw new Error('Start Clean in Soul first.');
         if (DEMO) { await fakeWait(300); setDemoClean({ ...demoClean, pledged: true } as CleanNow); return 'Pledged for today'; }
         await api('/mod/soul/clean/pledge', { method: 'POST', body: {} });

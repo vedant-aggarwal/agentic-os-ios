@@ -163,11 +163,12 @@ function Surface({ p: pv, open, from, floor, onClose }: {
   // ── ticks ──
   const tick = async (id: TickId) => {
     const t = tickOf(id);
-    if (t.kind === 'time') return void wake();
-    if (t.kind === 'line') return ask({ kind: 'journal' });
-    if (t.kind === 'page') { if (!d.book) { fail(new Error('No book open. Pick one in Mind > Read.')); return; } return ask({ kind: 'page' }); }
     const on = !d.doneTicks.has(id);
-    if (id === 'clean' && !on) { say('Pledged for today'); return; }
+    // a ticked one, whatever its kind, unticks on a tap
+    if (on && t.kind === 'time') return void wake();
+    if (on && t.kind === 'line') return ask({ kind: 'journal' });
+    if (on && t.kind === 'page') { if (!d.book) { fail(new Error('No book open. Pick one in Mind > Read.')); return; } return ask({ kind: 'page' }); }
+    if (!on && id === 'wake' && mode.kind === 'wake') toTask();
     if (id === 'clean' && !d.cleanReady) { fail(new Error('Start Clean in Soul first.')); return; }
     if (on) haptic.medium(); else haptic.light();
     try { const msg = await d.toggle(id, on); if (msg) say(msg); } catch (e) { fail(e); }

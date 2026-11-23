@@ -77,17 +77,21 @@ const MARCH = /* glsl */ `
     float an = uSwirl + uShear*(1.6/(r + 0.5) - 0.8) + h*uE*1.3;
     float ca = cos(an), sa = sin(an);
     vec2 sp = vec2(ca*q.x - sa*q.z, sa*q.x + ca*q.z);
-    vec3 np = vec3(sp.x*0.36, h*mix(0.45, 0.2, uE) - uRise, sp.y*0.36) + vec3(uTime*0.008, 0.0, uTime*0.005);
+    vec3 np = vec3(sp.x*0.36, h*mix(0.45, 0.2, uE) - uRise, sp.y*0.36) + vec3(uTime*0.012, 0.0, uTime*0.007);
+    // a slow, larger noise bends the lookup, so the fog curls into wisps and tongues instead of even puffs
+    vec2 wq = vec2(texture(tNoise, np*0.45 + vec3(0.21, uTime*0.004, 0.83)).r, texture(tNoise, np*0.45 + vec3(0.61, 0.13 - uTime*0.003, 0.37)).r) - 0.5;
+    np.xz += wq*0.42;
     float n = texture(tNoise, np).r;
-    if (fine) n = n*0.62 + texture(tNoise, np*2.7 + vec3(0.37, 0.11, 0.73)).r*0.38;
-    // a dense layer over the floor with a billowing top; the whirl thins it as it draws it up
-    float hh = h - (n - 0.5)*0.8;
-    float layer = exp(-max(hh - 0.7, 0.0)*6.0)*smoothstep(-0.15, 0.08, h)*smoothstep(R, 1.9, r)*(1.0 - 0.55*uE);
+    if (fine) n = n*0.6 + texture(tNoise, np*2.9 + vec3(0.37, 0.11, 0.73)).r*0.4;
+    // a thin layer hugging the floor with a torn, billowing top that leaves the stone's shoulders clear; the whirl
+    // thins it as it draws it up
+    float hh = h - (n - 0.5)*1.15;
+    float layer = exp(-max(hh - 0.42, 0.0)*7.0)*smoothstep(-0.15, 0.06, h)*smoothstep(R, 1.9, r)*(1.0 - 0.55*uE);
     // ...into two streamers spiralling up round the stone, turning with it, with clear air between them
     float arm = 0.5 + 0.5*sin(atan(sp.y, sp.x)*2.0 - h*2.6 + n*4.0);
     float wall = exp(-pow((r - 1.2 - 0.18*h)/(0.32 + 0.14*h), 2.0))*exp(-max(h - 0.2, 0.0)*0.9)*smoothstep(-0.1, 0.25, h);
     float base = max(layer, wall*smoothstep(0.5, 0.9, arm)*uE*0.9);
-    float d = base*clamp(0.3 + (n - 0.5)*2.4 + base*0.45, 0.0, 1.0);
+    float d = base*smoothstep(0.36, 0.7, n + base*0.12);                  // clear gaps between the wisps
     float left = 1.0 - uLift;                             // what is still here as it goes up
     return d*left*left*left;
   }
@@ -119,7 +123,7 @@ const MARCH = /* glsl */ `
     float jit = fract(52.9829189*fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
     float t = ta + dl*jit;
     // light scattered toward the eye: a little forward-peaked, as fine water droplets scatter it
-    float cosT = dot(-rd, uKeyDir), g = 0.3;
+    float cosT = dot(-rd, uKeyDir), g = 0.45;
     float ph = (1.0 - g*g)/pow(1.0 + g*g - 2.0*g*cosT, 1.5);
     vec3 S = vec3(0.0); float T = 1.0;
     for (int i = 0; i < STEPS; i++) {
@@ -134,7 +138,7 @@ const MARCH = /* glsl */ `
           float sh = rock(p, L, 0.93).y > 0.0 ? 0.06 : 1.0;   // the stone's shadow in the shaft
           lit = cone*sh*exp(-dens(p + L*0.22, false)*2.6);
         }
-        vec3 col = uAmb*(0.55 + 0.45*clamp(p.y + 1.15, 0.0, 1.0)) + uKeyCol*lit*ph*uShaft;
+        vec3 col = uAmb*(0.6 + 0.4*clamp(p.y + 1.15, 0.0, 1.0)) + uKeyCol*lit*ph*uShaft;  // cold blue-grey in the shade, warm only in the shaft
         float a = 1.0 - exp(-d*uDens*dl);
         S += T*a*col;
         T *= 1.0 - a;
@@ -153,12 +157,12 @@ export function createFog({ renderer, camera, light, floorTex, rockY }) {
 
   const u = {
     ...light,
-    tNoise: { value: noiseVolume(32) }, tFloor: { value: floorTex }, tDepth: { value: null },
+    tNoise: { value: noiseVolume(48) }, tFloor: { value: floorTex }, tDepth: { value: null },
     uNear: { value: camera.near }, uFar: { value: camera.far },
     uProjInv: { value: new THREE.Matrix4() }, uCamWorld: { value: new THREE.Matrix4() }, uCamPos: { value: new THREE.Vector3() },
     uTime: { value: 0 }, uSwirl: { value: 0 }, uShear: { value: 0 }, uE: { value: 0 }, uLift: { value: 0 }, uRise: { value: 0 },
-    uDens: { value: 3.4 }, uTop: { value: 0 }, uRockY: { value: rockY }, uShaft: { value: 1.15 },
-    uAmb: { value: new THREE.Color(0.026, 0.03, 0.04) },
+    uDens: { value: 4.2 }, uTop: { value: 0 }, uRockY: { value: rockY }, uShaft: { value: 0.85 },
+    uAmb: { value: new THREE.Color(0.05, 0.062, 0.085) },
   };
   const marchQuad = new FullScreenQuad(new THREE.ShaderMaterial({
     uniforms: u, depthTest: false, depthWrite: false,

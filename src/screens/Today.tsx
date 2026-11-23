@@ -18,6 +18,7 @@ import { PcControls, type PcTab } from '@/components/PcControls';
 import { useAgent } from '@/lib/agent';
 import { micCenter, pillCenter, TOP_GAP, TOP_H, TopBar } from '@/components/TopBar';
 import { api, signOut } from '@/lib/api';
+import { DEMO } from '@/lib/demo';
 import { gazeTouch } from '@/lib/gaze';
 import { useToday } from '@/lib/useToday';
 import { useBody } from '@/lib/body';
@@ -82,11 +83,18 @@ function PhoneToday() {
   const [micOpen, setMicOpen] = useState(false); // opened by tapping the PC mic button
   const [voicesOpen, setVoicesOpen] = useState(false); // the top bar's waveform button
   const [accountOpen, setAccountOpen] = useState(false); // the top bar's person button
-  const [moodFrom, setMoodFrom] = useState<{ x: number; y: number } | null>(null); // the mood logger, flying out of the smiley at this point
+  // the mood logger, flying out of the smiley at this point (dev, web sample mode: `?demo&mood=1` opens it on load,
+  // as the web top bar has no mood button)
+  const [moodFrom, setMoodFrom] = useState<{ x: number; y: number } | null>(() =>
+    DEMO && new URLSearchParams(location.search).get('mood') === '1' ? { x: width - 102, y: insets.top + 32 } : null);
   const [filesOpen, setFilesOpen] = useState(false); // the top bar's To PC button
   const [remoteOpen, setRemoteOpen] = useState(false); // the top bar's Remote PC button: the PC's screen, full screen
   const [pcTab, setPcTab] = useState<PcTab | null>(null); // hold Remote PC: media remote and power
   const [heroOn, setHeroOn] = useState(true); // the 3D hero renders only while some of it is on screen
+  // dev, web sample mode only: window.__mood() opens the mood logger (for driving it from a test browser)
+  useEffect(() => {
+    if (DEMO) (window as unknown as { __mood?: (x?: number, y?: number) => void }).__mood = (x, y) => setMoodFrom({ x: x ?? width - 102, y: y ?? insets.top + 32 });
+  }, [width, insets.top]);
   // volume up drives Wispr on the PC while Today is up; volume down is Nora's (a press calls, a hold is a voice note)
   const native = Platform.OS !== 'web'; // the web app has no PC controls: no Wispr, no PC agent
   const mic = useWispr(!!t.view && native, NORA_KEYS);
@@ -154,7 +162,7 @@ function PhoneToday() {
         scrollEventThrottle={100}
         onScroll={(e) => { const on = e.nativeEvent.contentOffset.y < insets.top + HERO_H; if (on !== heroOn) setHeroOn(on); }}
         refreshControl={<RefreshControl refreshing={t.refreshing} onRefresh={() => { t.refresh(); reloadBody(); }} tintColor={C.muted} />}>
-        <Hero view={v} top={insets.top} topBar={TOP_GAP + TOP_H} active={heroOn && !aspect} />
+        <Hero view={v} top={insets.top} topBar={TOP_GAP + TOP_H} active={heroOn && !aspect && !moodFrom} />
 
         <View style={[s.sheet, { paddingBottom: insets.bottom + 140 }]}>
           <NowCard moment={v.moment} onDone={toggle} />

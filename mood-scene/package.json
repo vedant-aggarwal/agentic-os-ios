@@ -1,0 +1,6 @@
+{
+  "name": "mood-scene",
+  "private": true,
+  "description": "Mood logger field: the pool of water, rendered in a WebView. `bun build.mjs` writes src/mood/poolHtml.ts.",
+  "scripts": { "build": "bun build.mjs" }
+}

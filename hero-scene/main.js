@@ -3,7 +3,8 @@
 // gravity, up to that aspect's share done; a full one overflows and leaks down its side onto the stone.
 // A sideways drag turns the whole boulder with real weight; flicks add up until it is a blur and the fog round its
 // foot (fog.js) is thrown up out of the cave. It slows on its own and settles with one crystal facing you, which the
-// app names. Ivy hangs from the roof (plants.js): drag it to swing it, too hard and it snaps, then grows back.
+// app names. Pothos hangs from the roof (plants.js): touch it and its leaves fold shut, drag it to swing it, too
+// hard and it snaps, then grows back. Fireflies drift about the cave and scatter from your finger and the spin.
 // Runs in a WebView (phone) or an iframe (web build). Messages: see recv() and toApp().
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -1377,7 +1378,7 @@ function setBg() {
 }
 setBg();
 
-const plants = createPlants({ scene, camera, haptic: (k) => toApp({ t: 'haptic', k }), reduce: () => state.reduce });
+const plants = createPlants({ scene, camera, haptic: (k) => toApp({ t: 'haptic', k }), reduce: () => state.reduce, sunFrom, sunColor: '#FFD7AE', px: PX });
 
 // ── framing: the tallest tip just under the app's top bar, the stone's top about two thirds down ────────────
 const PITCH = 0.17;

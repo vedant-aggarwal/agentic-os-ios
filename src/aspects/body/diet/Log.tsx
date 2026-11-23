@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Text, View } from 'react-native';
-import { invalidate, upload } from '@/lib/mod';
+import { Image } from 'expo-image';
+import { fileSource, invalidate, upload } from '@/lib/mod';
 import { Button, Card, Chip, dayOf, Field, Section, Sheet, Skeleton, Stepper, t, useAspect } from '@/aspects/kit';
-import { addMeal, B, estimate, putDoc, removeDoc, setTargets, useDiet, useGym, type Estimate, type MealRow, type Recent } from '../api';
+import { addMeal, B, estimate, filePath, putDoc, removeDoc, setTargets, useDiet, useGym, type Estimate, type MealRow, type Recent } from '../api';
 import { canPick, pickPhoto } from '../pick';
 import { s as u, useSeen } from '../ui';
 
@@ -102,6 +103,8 @@ function EditBody({ meal, onClose }: { meal: MealRow; onClose: () => void }) {
   };
   return (
     <>
+      {/* the photo this meal was logged with (a photo sent from the app, or `agentos body log-meal --photo`) */}
+      {meal.photo ? <Image source={fileSource(filePath(meal.photo))} style={[u.thumb, { width: '100%', height: 200 }]} contentFit="cover" accessibilityLabel={`Photo of ${meal.name}`} /> : null}
       <Field label="Name" value={name} onChangeText={setName} />
       <Stepper label="Protein" value={protein} onChange={setProtein} step={1} min={0} max={300} format={(v) => `${v} g protein`} />
       <Stepper label="Calories" value={kcal} onChange={setKcal} step={10} min={0} max={5000} format={(v) => `${v} kcal`} />

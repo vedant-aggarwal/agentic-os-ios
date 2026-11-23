@@ -60,7 +60,7 @@ export async function loadToken() {
 }
 export async function setToken(v: string | null) {
   if (WEB) { token = v ? COOKIE : null; told(); return; }
-  token = v; await store.set(v); share(v);
+  token = v; await store.set(v); share(v); told();
 }
 /** The Bearer token to send, or null. On web the cookie carries the session, so there is none to send. */
 export const currentToken = () => (token === COOKIE ? null : token);

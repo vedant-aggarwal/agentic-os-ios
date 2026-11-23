@@ -1,5 +1,6 @@
 import { useEffect, useSyncExternalStore } from 'react';
-import { API, api, ApiError, currentToken, refusal, STAGE, unreachable } from './api';
+import { API, api, ApiError, currentToken, onAuth, refusal, STAGE, unreachable } from './api';
+import { kv } from '@/work/kv';
 import { DEMO } from './demo';
 
 // The phone's side of the server's module store (server/modules/_collection.ts). Every aspect module keeps its
@@ -12,7 +13,9 @@ import { DEMO } from './demo';
 //   - a collection is fetched once and shared by every component that uses it; later pulls ask only for changes
 //   - writes show at once and go to the PC in order; if the PC refuses, the record goes back and the call rejects
 //   - ids are made here, so a write that is sent twice is the same write
-// Nothing is kept on disk yet: with the PC unreachable a page shows what it last loaded this session.
+//   - the last copy of every collection and read is kept on the device (kv: SQLite on the phone, localStorage on
+//     web). A page draws it at once, then asks the PC only for what changed. Every request crosses the tunnel, which
+//     costs about half a second from India, so a page that waited for the PC felt slow even when the PC was quick.
 
 /** Fields the store owns on every record. */
 export type Doc = { id: string; created_at?: string; updated_at?: string; deleted_at?: string | null };
@@ -22,6 +25,7 @@ export type Draft<T extends Doc> = Omit<T, keyof Doc> & { id?: string };
 type Snap = { items: Doc[] | null; error: string | null; busy: boolean };
 type Entry = {
   map: Map<string, Doc>; cursor: string | null; loaded: boolean; error: string | null; busy: boolean; at: number;
+  hydrated: Promise<void>; // the device's copy, read once before the first pull
   snap: Snap; subs: Set<() => void>; inflight: Promise<void> | null;
   stamps: Map<string, number>; // the last updated_at this phone gave each record, so the next is always later
   writing: Map<string, number>; // records with writes on their way; a pull must not put an older copy back
@@ -31,22 +35,70 @@ type Entry = {
 const STALE = 30_000; // a mounted page re-pulls a collection older than this
 const entries = new Map<string, Entry>();
 
+// ── the device's copy ───────────────────────────────────────────────────────────────────────────────────────
+const SAVED = 'mod:v1:'; // + "c:<module>/<collection>" or "g:<path>"
+const INDEX = 'mod:v1:index';
+const saveTimers = new Map<string, ReturnType<typeof setTimeout>>();
+let index: Set<string> | null = null;
+async function remember(key: string) {
+  if (!index) { try { index = new Set(JSON.parse((await kv.get(INDEX)) ?? '[]') as string[]); } catch { index = new Set(); } }
+  if (index.has(key)) return;
+  index.add(key);
+  await kv.set(INDEX, JSON.stringify([...index]));
+}
+/** Write `value()` to the device a moment after the last change, so a burst of writes saves once. */
+function save(key: string, value: () => unknown) {
+  if (DEMO) return;
+  clearTimeout(saveTimers.get(key));
+  saveTimers.set(key, setTimeout(() => {
+    saveTimers.delete(key);
+    try { void kv.set(SAVED + key, JSON.stringify(value())).then(() => remember(key)).catch(() => {}); } catch {}
+  }, 400));
+}
+async function saved<T>(key: string): Promise<T | null> {
+  if (DEMO) return null;
+  try { const raw = await kv.get(SAVED + key); return raw ? (JSON.parse(raw) as T) : null; } catch { return null; }
+}
+/** Keep any read on the device (Today keeps its day here): `keep('today', payload)`, then `kept('today')` next launch. */
+export const keep = (key: string, value: unknown) => save(`k:${key}`, () => value);
+export const kept = <T,>(key: string) => saved<T>(`k:${key}`);
+/** Signing out: forget every saved copy, on the device and in memory. */
+export async function forgetSaved() {
+  saveTimers.forEach(clearTimeout); saveTimers.clear();
+  try {
+    const keys = index ?? new Set(JSON.parse((await kv.get(INDEX)) ?? '[]') as string[]);
+    await Promise.all([...keys].map((k) => kv.del(SAVED + k)));
+    await kv.del(INDEX);
+  } catch {}
+  index = new Set();
+  entries.clear();
+  gets.clear();
+}
+
 function entryOf(key: string): Entry {
   let e = entries.get(key);
   if (!e) {
-    e = {
-      map: new Map(), cursor: null, loaded: false, error: null, busy: false, at: 0,
+    const fresh: Entry = {
+      map: new Map(), cursor: null, loaded: false, error: null, busy: false, at: 0, hydrated: Promise.resolve(),
       snap: { items: null, error: null, busy: false }, subs: new Set(), inflight: null,
       stamps: new Map(), writing: new Map(), tails: new Map(),
     };
+    fresh.hydrated = saved<{ items: Doc[]; cursor: string | null }>(`c:${key}`).then((c) => {
+      if (!c || fresh.loaded) return; // the PC answered first
+      for (const d of c.items) fresh.map.set(d.id, d);
+      fresh.cursor = c.cursor; fresh.loaded = true; // at stays 0: still stale, so the page pulls the changes
+      publish(fresh, key, false);
+    });
+    e = fresh;
     entries.set(key, e);
   }
   return e;
 }
 
-function publish(e: Entry) {
+function publish(e: Entry, key?: string, persist = true) {
   e.snap = { items: e.loaded ? [...e.map.values()] : null, error: e.error, busy: e.busy };
   for (const fn of e.subs) fn();
+  if (persist && key && e.loaded) save(`c:${key}`, () => ({ items: [...e.map.values()], cursor: e.cursor }));
 }
 
 /** A new record id: time-ordered, unique enough for one person's phone, inside the server's id rules. */
@@ -64,9 +116,10 @@ function pull(mod: string, coll: string): Promise<void> {
     return Promise.resolve();
   }
   e.busy = true;
-  publish(e);
+  publish(e, undefined, false);
   e.inflight = (async () => {
     try {
+      await e.hydrated; // a pull with the saved cursor asks only for what changed
       const r = await api<{ items: Doc[]; cursor: string }>(pathOf(mod, coll) + (e.cursor != null ? `?since=${e.cursor}` : ''));
       for (const d of r.items) {
         if (e.writing.has(d.id)) continue;
@@ -77,7 +130,7 @@ function pull(mod: string, coll: string): Promise<void> {
       e.error = (err as Error).message; // what was loaded before stays on screen
     } finally {
       e.inflight = null; e.busy = false;
-      publish(e);
+      publish(e, `${mod}/${coll}`);
     }
   })();
   return e.inflight;
@@ -114,10 +167,10 @@ async function putDoc<T extends Doc>(mod: string, coll: string, input: Draft<T>)
   return enqueue(e, id, async () => {
     try {
       const r = await api<{ item: T }>(pathOf(mod, coll, id), { method: 'PUT', body: doc });
-      if (e.map.get(id) === doc) { e.map.set(id, r.item); publish(e); } // unless a newer local write is already showing
+      if (e.map.get(id) === doc) { e.map.set(id, r.item); publish(e, `${mod}/${coll}`); } // unless a newer local write is already showing
       return r.item;
     } catch (err) {
-      if (e.map.get(id) === doc) { if (prev) e.map.set(id, prev); else e.map.delete(id); publish(e); }
+      if (e.map.get(id) === doc) { if (prev) e.map.set(id, prev); else e.map.delete(id); publish(e, `${mod}/${coll}`); }
       throw err;
     }
   });
@@ -132,8 +185,9 @@ async function removeDoc(mod: string, coll: string, id: string): Promise<void> {
   return enqueue(e, id, async () => {
     try {
       await api(pathOf(mod, coll, id), { method: 'DELETE' });
+      publish(e, `${mod}/${coll}`); // saved only once the PC has it, so the device never keeps a write the PC refused
     } catch (err) {
-      if (prev && !e.map.has(id)) { e.map.set(id, prev); publish(e); }
+      if (prev && !e.map.has(id)) { e.map.set(id, prev); publish(e, `${mod}/${coll}`); }
       throw err;
     }
   });
@@ -193,12 +247,21 @@ export function collection<T extends Doc>(mod: string, coll: string) {
 
 // ── computed reads: a module's own GET routes (a summary, today's plan) ─────────────────────────────────────
 type GetSnap = { data: unknown; error: string | null; busy: boolean };
-type GetEntry = { snap: GetSnap; subs: Set<() => void>; inflight: Promise<void> | null; at: number };
+type GetEntry = { snap: GetSnap; subs: Set<() => void>; inflight: Promise<void> | null; at: number; hydrated: Promise<void> };
 const gets = new Map<string, GetEntry>();
 
 function getOf(path: string): GetEntry {
   let g = gets.get(path);
-  if (!g) { g = { snap: { data: null, error: null, busy: false }, subs: new Set(), inflight: null, at: 0 }; gets.set(path, g); }
+  if (!g) {
+    const fresh: GetEntry = { snap: { data: null, error: null, busy: false }, subs: new Set(), inflight: null, at: 0, hydrated: Promise.resolve() };
+    fresh.hydrated = saved<unknown>(`g:${path}`).then((data) => {
+      if (data == null || fresh.snap.data != null) return;
+      fresh.snap = { ...fresh.snap, data };
+      for (const fn of fresh.subs) fn();
+    });
+    g = fresh;
+    gets.set(path, g);
+  }
   return g;
 }
 
@@ -213,6 +276,7 @@ function fetchGet(path: string): Promise<void> {
       const data = await api<unknown>(path);
       g.at = Date.now();
       set({ data, error: null, busy: false });
+      save(`g:${path}`, () => data);
     } catch (err) {
       set({ data: g.snap.data, error: (err as Error).message, busy: false });
     } finally {
@@ -299,3 +363,6 @@ export function fileSource(path: string): { uri: string; headers?: Record<string
 }
 
 export { ApiError };
+
+// signed out (or the session expired): nothing of his stays on the device
+onAuth((signedIn) => { if (!signedIn) void forgetSaved(); });

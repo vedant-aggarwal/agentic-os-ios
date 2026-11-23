@@ -35,9 +35,16 @@ import { C, F, type AspectKey } from '@/theme';
 import DeskToday from '@/desk/DeskToday';
 import { useNora } from '@/nora/state';
 import { useDesktop } from '@/desk/store';
+import { preloadPages } from '@/aspects/registry';
 
 // A desktop browser gets its own layout (src/desk); phones and narrow windows keep this one.
 export default function Today() {
+  // Web loads each aspect page as its own file: fetch them while Today sits idle, so the first tap opens at once.
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const t = setTimeout(preloadPages, 1500);
+    return () => clearTimeout(t);
+  }, []);
   return useDesktop() ? <DeskToday /> : <PhoneToday />;
 }
 

@@ -23,7 +23,11 @@ import { FRAMES, MEAL_SLOT, type Frame, type FrameId, type TickId } from './mome
 //   book page      POST /mod/mind/read/sitting { book, to_page }, the Read page's "Log a sitting"
 //   journal        a Growth journal entry (Soul's Journal habit ticks itself from it)
 //   meditation     a Soul sit of 10 minutes
-//   clean          POST /mod/soul/clean/pledge, today's pledge
+//   clean          POST /mod/soul/clean/pledge, today's pledge (DELETE takes it back)
+//   slipped        POST /mod/soul/clean/slip { id, at }: the run restarts; POST /mod/soul/clean/slip/<id>/undo takes it back
+//   smart photo    POST /mod/capture/smart-photo?id= (raw image): the PC reads it and files it where it belongs (a meal
+//                  with its photo in Diet, the photo vault, the wake-up drink, a reading sitting); the panel polls
+//                  GET /mod/capture/smart-photo/<id> and offers POST .../undo
 //   task           POST /tasks { title, area, due }; "Tag Nora" also sends her the task in chat
 // A Soul habit whose title matches (journal, meditat, clean, sugar) is ticked as well, so the core habits stay in step.
 
@@ -34,7 +38,14 @@ type Entry = Doc & { date: string; text: string };
 type Habit = Doc & { title: string; archived?: boolean };
 
 // ── the photos taken here today, kept on the device so the roll survives closing the app ────────────────────────────
-export type Shot = { id?: string; path?: string; uri?: string; state: 'sending' | 'sent' | 'failed'; error?: string; at: string };
+export type Shot = { id?: string; path?: string; uri?: string; state: 'sending' | 'sent' | 'failed'; error?: string; at: string;
+  /** filed by the smart photo: what the frame says under its label until the page's own read shows it */ filed?: string };
+/** What the PC made of a smart photo (server: modules/capture.ts). */
+export type SmartItem = {
+  id: string; status: 'reading' | 'filed' | 'unsure' | 'failed' | 'undone'; kind: string | null;
+  frame: FrameId | 'salad' | null; tick: TickId | null; said: string | null; canUndo: boolean; photo: string;
+  meal?: { protein: number } | null; page?: number | null;
+};
 type Roll = { day: string; shots: Partial<Record<FrameId, Shot>> };
 const KEY = 'capture:v1:roll';
 let roll: Roll = { day: today(), shots: {} };
@@ -91,6 +102,7 @@ function demoDiet(): Diet {
   };
 }
 const DEMO_CLEAN = { setup: true, day: 12, pledged: false } as unknown as CleanNow;
+const SLOT_WORD: Record<string, string> = { breakfast: 'Breakfast', salad: 'Salad', lunch: 'Lunch', snack: 'Snack', dinner: 'Dinner' };
 const DEMO_READ = { reading: [{ id: 'b1', title: 'Deep Work', author: 'Cal Newport', pages: 296, page: 118, status: 'reading' }] } as unknown as ReadView;
 
 const fakeWait = (ms = 700) => new Promise((r) => setTimeout(r, ms));
@@ -112,6 +124,7 @@ export function useCapture() {
 
   const [demoDietState, setDemoDiet] = useState<Diet | null>(() => (DEMO ? demoDiet() : null));
   const [demoClean, setDemoClean] = useState(DEMO_CLEAN);
+  const [demoSmart] = useState(() => new Map<string, SmartItem>());
   const dietData = DEMO ? demoDietState : diet.data;
   const cleanData = DEMO ? demoClean : clean.data;
   const book = (DEMO ? DEMO_READ : read.data)?.reading?.[0] ?? null;
@@ -162,6 +175,7 @@ export function useCapture() {
       const meal = meals.find((m) => m.slot === MEAL_SLOT[f.id]);
       const ph = shot?.id ? photos.find((p) => p.id === shot.id) : undefined;
       if (meal) { out[f.id] = { src: local ?? (meal.photo ? thumb(meal.photo) : null), status: 'logged', note: `${meal.protein} g protein` }; continue; }
+      if (shot?.filed) { out[f.id] = { src: local ?? withAuth(shot.path), status: 'logged', note: shot.filed }; continue; }
       if (shot?.id) {
         const src = local ?? thumb(shot.id);
         if (ph?.status === 'failed') out[f.id] = { src, status: 'failed', note: ph.error ? 'Not read' : "Didn't read" };
@@ -318,6 +332,62 @@ export function useCapture() {
     return o.tagNora ? 'Task added. Nora has it.' : 'Task added';
   }
 
+  // ── Clean: a slip, and taking it back ──
+  /** Logs a slip now: the run starts again (days kept stay kept). Resolves with the id the undo needs. */
+  async function slip() {
+    const id = `cap-${Date.now().toString(36)}`;
+    if (DEMO) { await fakeWait(300); setDemoClean((c) => ({ ...c, day: 0 } as CleanNow)); return id; }
+    const r = await api<{ id: string }>('/mod/soul/clean/slip', { method: 'POST', body: { id, at: stamp() } });
+    invalidate('/mod/soul/');
+    return r.id ?? id;
+  }
+  async function unslip(id: string) {
+    if (DEMO) { await fakeWait(250); setDemoClean((c) => ({ ...c, day: 12 } as CleanNow)); return; }
+    await api(`/mod/soul/clean/slip/${encodeURIComponent(id)}/undo`, { method: 'POST', body: {} });
+    invalidate('/mod/soul/');
+  }
+
+  // ── the smart photo: one photo, the PC decides where it goes ──
+  async function smart(p: Picked, at: FrameId): Promise<SmartItem> {
+    const id = `sp_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    if (!DEMO) return (await upload<{ item: SmartItem }>(`/mod/capture/smart-photo?id=${id}`, p.uri, p.type)).item;
+    // the demo has no PC: it reads the photo as whatever this hour's frame is
+    const f = FRAMES.find((x) => x.id === at)!;
+    const item: SmartItem = f.kind === 'meal'
+      ? { id, status: 'filed', kind: 'meal', frame: f.id, tick: null, said: `Filed as ${SLOT_WORD[f.id] ?? f.label}, 32 g protein`, canUndo: true, photo: `demo/${id}`, meal: { protein: 32 } }
+      : { id, status: 'filed', kind: f.id, frame: f.id, tick: f.id === 'drink' ? 'drink' : null, said: `Filed as ${f.id === 'drink' ? 'Wake-up drink, ticked' : `${f.label}, in the photo vault`}`, canUndo: true, photo: `demo/${id}` };
+    demoSmart.set(id, { ...item, status: 'reading' });
+    setTimeout(() => demoSmart.set(id, item), 1400);
+    return { ...item, status: 'reading' };
+  }
+  async function smartGet(id: string): Promise<SmartItem> {
+    if (DEMO) return demoSmart.get(id) ?? Promise.reject(new Error('Gone.'));
+    return (await api<{ item: SmartItem }>(`/mod/capture/smart-photo/${encodeURIComponent(id)}`)).item;
+  }
+  /** Shows a filed smart photo at once, before the pages' own reads catch up. */
+  function smartFiled(it: SmartItem, uri: string | undefined) {
+    const frame = it.frame && FRAMES.some((f) => f.id === it.frame) ? (it.frame as FrameId) : null;
+    if (frame) {
+      const note = it.kind === 'meal' && it.meal ? `${it.meal.protein} g protein` : FRAMES.find((f) => f.id === frame)!.kind === 'vault' ? 'Kept' : 'Filed';
+      putShot(frame, { uri, path: it.photo, state: 'sent', filed: note, at: stamp() });
+    }
+    if (DEMO) {
+      if (it.kind === 'meal' && frame) setDemoDiet((d) => (d ? { ...d, meals: [...d.meals, { ...d.meals[0], id: `m_${it.id}`, name: 'Lunch', slot: MEAL_SLOT[frame]!, protein: it.meal?.protein ?? 0, photo: null }] } : d));
+      return;
+    }
+    invalidate('/mod/body/'); invalidate('/mod/soul/'); invalidate('/mod/mind/');
+    void checks.refresh(); void sessions.refresh();
+  }
+  async function smartUndo(it: SmartItem) {
+    if (!DEMO) await api(`/mod/capture/smart-photo/${encodeURIComponent(it.id)}/undo`, { method: 'POST', body: {} });
+    else await fakeWait(250);
+    const frame = it.frame && FRAMES.some((f) => f.id === it.frame) ? (it.frame as FrameId) : null;
+    if (frame) putShot(frame, null);
+    if (DEMO) { if (it.kind === 'meal') setDemoDiet((d) => (d ? { ...d, meals: d.meals.filter((m) => m.id !== `m_${it.id}`) } : d)); return; }
+    invalidate('/mod/body/'); invalidate('/mod/soul/'); invalidate('/mod/mind/');
+    void checks.refresh(); void sessions.refresh();
+  }
+
   const areaOptions = useMemo(() => areas.map((a) => ({ ...a, aspect: (areaAspects[a.slug]?.[0] ?? null) as AspectKey | null })), [areas, areaAspects]);
 
   return {
@@ -327,7 +397,7 @@ export function useCapture() {
     cleanReady: !cleanData || cleanData.setup,
     book: book ? { title: book.title, page: book.page, pages: book.pages } : null,
     areas: areaOptions,
-    photo, addWater, toggle, wake, journalLine, page, task,
+    photo, addWater, toggle, wake, journalLine, page, task, slip, unslip, smart, smartGet, smartFiled, smartUndo,
     retry: (f: FrameId) => putShot(f, null),
   };
 }

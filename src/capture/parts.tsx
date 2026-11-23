@@ -1,10 +1,10 @@
 import { Image } from 'expo-image';
 import { forwardRef, useEffect, useRef, type ComponentRef, type ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View, type KeyboardTypeOptions } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View, type KeyboardTypeOptions } from 'react-native';
 import Animated, {
-  FadeIn, FadeOut, ReduceMotion, useAnimatedProps, useAnimatedStyle, useReducedMotion, useSharedValue, withSequence, withSpring, withTiming,
+  Easing, FadeIn, FadeOut, ReduceMotion, useAnimatedProps, useAnimatedStyle, useReducedMotion, useSharedValue, withSequence, withSpring, withTiming,
 } from 'react-native-reanimated';
-import Svg, { Path } from 'react-native-svg';
+import Svg, { Circle, Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 import { useScale } from '@/components/Glass';
 import { Glyph, Icon } from '@/aspects/kit/controls';
 import { haptic, SURF, tint } from '@/aspects/kit/tokens';
@@ -24,6 +24,9 @@ const SETTLE = { duration: 340, dampingRatio: 0.78, reduceMotion: ReduceMotion.S
 export const DROP = 'M12 3.5c-3 4-6 7.4-6 10.6a6 6 0 0 0 12 0c0-3.2-3-6.6-6-10.6z';
 export const BOOK = 'M5 4.5h5.5A2.5 2.5 0 0 1 13 7v13a2 2 0 0 0-2-2H5zM19 4.5h-3.5A2.5 2.5 0 0 0 13 7v13a2 2 0 0 1 2-2h4z';
 export const SPARK = 'M12 3l1.9 5.6L19.5 10.5l-5.6 1.9L12 18l-1.9-5.6L4.5 10.5l5.6-1.9z';
+const CAMERA = 'M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1zM12 17a4 4 0 1 0 0-8a4 4 0 0 0 0 8z';
+const RESTART = 'M5 12a7 7 0 1 0 2.05-4.95M5 4.5v3.2h3.2';
+export const STOP = 'M7.5 7.5h9v9h-9z';
 
 /** Tappable with the panel's press: a quick dip, no bounce, and the haptic named. */
 export function Tap({ label, hint, onPress, onLongPress, children, style, disabled, feel = 'light', role = 'button', state, hitSlop }: {
@@ -51,49 +54,91 @@ export function Label({ children, right }: { children: string; right?: string | 
   );
 }
 
-// ── the roll ─────────────────────────────────────────────────────────────────────────────────────────────────────
-export const FRAME_W = 68;
-export const FRAME_H = 90;
-const FRAME_R = 14;
+// ── the photos ───────────────────────────────────────────────────────────────────────────────────────────────────
+/** The day's photo slots, all at once: two rows of four. */
+export const TILE_H = 60;
+const TILE_R = 14;
+export const TILE_GAP = 8;
 
 /**
- * One photo slot of the day. Empty it is a frame waiting with a camera mark; taken it holds the picture. The frame
- * for this hour wears the Body colour. While a picture flies in, `hidden` keeps the frame empty until it lands.
+ * One photo slot of the day. Empty it waits with a camera mark; taken it holds the picture with its name over a soft
+ * shade. The slot for this hour wears the Body colour. While a picture flies in, `hidden` keeps it empty until it lands.
  */
-export const RollFrame = forwardRef<ComponentRef<typeof View>, {
+export const PhotoTile = forwardRef<ComponentRef<typeof View>, {
   frame: Frame; st: FrameState; focus: boolean; hidden: boolean; landed: number; onPress: () => void;
-}>(function RollFrame({ frame, st, focus, hidden, landed, onPress }, ref) {
+}>(function PhotoTile({ frame, st, focus, hidden, landed, onPress }, ref) {
   const reduce = useReducedMotion();
   const pop = useSharedValue(1);
   const seen = useRef(landed);
   useEffect(() => {
     if (landed === seen.current) return;
     seen.current = landed;
-    if (!reduce) pop.set(withSequence(withTiming(1.07, { duration: 90 }), withSpring(1, SETTLE)));
+    if (!reduce) pop.set(withSequence(withTiming(1.06, { duration: 90 }), withSpring(1, SETTLE)));
   }, [landed, pop, reduce]);
   const popStyle = useAnimatedStyle(() => ({ transform: [{ scale: pop.value }] }));
   const filled = !!st.src && !hidden;
-  const done = filled || st.status === 'logged';
+  const logged = st.status === 'logged' && !filled && !hidden;
   const failed = st.status === 'failed';
   const words = `${frame.long} photo${st.status === 'empty' ? '' : `, ${st.note ?? st.status}`}`;
+  const note = hidden ? null : st.note;
   return (
-    <Tap label={words} onPress={onPress} feel="light" style={s.frameWrap}>
-      <Animated.View ref={ref} collapsable={false} style={[s.frame, focus && !filled && { borderColor: tint(BODY, 0.55), backgroundColor: tint(BODY, 0.07) }, popStyle]}>
-        {filled ? (
-          <Animated.View entering={reduce ? FadeIn.duration(200) : undefined} style={StyleSheet.absoluteFill}>
-            <Image source={st.src} style={[StyleSheet.absoluteFill, { opacity: st.status === 'sending' || failed ? 0.5 : 1 }]} contentFit="cover" transition={0} accessibilityIgnoresInvertColors />
-          </Animated.View>
-        ) : st.status === 'logged' ? (
-          // logged without a picture (typed, or a recent meal again): done, and a photo can still go in
-          <View style={[StyleSheet.absoluteFill, s.loggedFill]}><Icon name="check" size={20} color={BODY} /></View>
-        ) : (
-          <Glyph sf="camera" d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1zM12 17a4 4 0 1 0 0-8a4 4 0 0 0 0 8z"
-            size={20} color={focus ? BODY : 'rgba(255,255,255,0.22)'} />
-        )}
-        {st.status === 'sending' && !hidden ? <View style={s.sendBar}><Sweep /></View> : null}
-      </Animated.View>
-      <Text numberOfLines={1} style={[s.frameLabel, (focus || done) && { color: C.text }]}>{frame.label}</Text>
-      <Text numberOfLines={1} style={[s.frameNote, failed && { color: C.danger }, st.status === 'ready' && { color: BODY }]}>{hidden ? ' ' : st.note ?? ' '}</Text>
+    // Tap puts its style on the view inside its Pressable, so the share of the row is taken by this outer view.
+    <View style={s.tileWrap}>
+      <Tap label={words} onPress={onPress} feel="light">
+        <Animated.View ref={ref} collapsable={false}
+          style={[s.tile, focus && !filled && !logged && { borderColor: tint(BODY, 0.55), backgroundColor: tint(BODY, 0.07) }, logged && s.loggedFill, popStyle]}>
+          {filled ? (
+            <Animated.View entering={reduce ? FadeIn.duration(200) : undefined} style={StyleSheet.absoluteFill}>
+              <Image source={st.src} style={[StyleSheet.absoluteFill, { opacity: st.status === 'sending' || failed ? 0.5 : 1 }]} contentFit="cover" transition={0} accessibilityIgnoresInvertColors />
+              <Shade />
+            </Animated.View>
+          ) : (
+            <View style={s.tileMark}>
+              {logged ? <Icon name="check" size={16} color={BODY} />
+                : <Glyph sf="camera" d={CAMERA} size={16} color={focus ? BODY : 'rgba(255,255,255,0.24)'} />}
+            </View>
+          )}
+          <View style={s.tileText}>
+            <Text numberOfLines={1} style={[s.tileLabel, (focus || filled || logged) && { color: C.text }]}>{frame.label}</Text>
+            {note ? <Text numberOfLines={1} style={[s.tileNote, filled && { color: 'rgba(255,255,255,0.78)' }, failed && { color: C.danger }, st.status === 'ready' && { color: BODY }]}>{note}</Text> : null}
+          </View>
+          {st.status === 'sending' && !hidden ? <View style={s.sendBar}><Sweep /></View> : null}
+        </Animated.View>
+      </Tap>
+    </View>
+  );
+});
+
+/** The shade under a photo's name, so white text reads on any picture. */
+function Shade() {
+  return (
+    <Svg style={StyleSheet.absoluteFill} width="100%" height="100%" preserveAspectRatio="none" viewBox="0 0 10 10" pointerEvents="none">
+      <Defs>
+        <LinearGradient id="shade" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0.2" stopColor="#000" stopOpacity="0" />
+          <Stop offset="1" stopColor="#000" stopOpacity="0.7" />
+        </LinearGradient>
+      </Defs>
+      <Rect x="0" y="0" width="10" height="10" fill="url(#shade)" />
+    </Svg>
+  );
+}
+
+/**
+ * The smart photo: one button for any photo; the PC works out what it is and files it. While it reads, the picture
+ * waits in the button, and from there it flies to wherever it was filed.
+ */
+export const SmartButton = forwardRef<ComponentRef<typeof View>, { reading: string | null; onPress: () => void }>(function SmartButton({ reading, onPress }, ref) {
+  return (
+    <Tap label={reading ? 'Smart photo, reading it' : 'Smart photo'} hint="Pick any photo; it is filed where it belongs" onPress={onPress} disabled={!!reading} feel="light"
+      style={[s.smart, reading && { opacity: 1 }]}>
+      {reading ? (
+        <View ref={ref} collapsable={false} style={s.smartThumb}>
+          <Image source={{ uri: reading }} style={StyleSheet.absoluteFill} contentFit="cover" transition={0} accessibilityIgnoresInvertColors />
+        </View>
+      ) : <Glyph sf="sparkles" d={SPARK} size={14} color={BODY} filled />}
+      <Text style={s.smartText}>{reading ? 'Reading' : 'Smart photo'}</Text>
+      {reading ? <ActivityIndicator size="small" color={BODY} style={s.smartSpin} /> : null}
     </Tap>
   );
 });
@@ -110,8 +155,8 @@ function Sweep() {
     const id = setInterval(loop, 950);
     return () => { on = false; clearInterval(id); };
   }, [x, reduce]);
-  const st = useAnimatedStyle(() => ({ transform: [{ translateX: -FRAME_W * 0.5 + x.value * FRAME_W * 1.2 }] }));
-  return <Animated.View style={[s.sweep, reduce ? { width: FRAME_W, opacity: 0.6 } : st]} />;
+  const st = useAnimatedStyle(() => ({ transform: [{ translateX: -40 + x.value * 110 }] }));
+  return <Animated.View style={[s.sweep, reduce ? { width: '100%', opacity: 0.6 } : st]} />;
 }
 
 // ── water ────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -183,6 +228,44 @@ export function TickRow({ label, meta, color, done, onPress, disabled, hint }: {
   );
 }
 
+const HOLD_MS = 650;
+const RING = 2 * Math.PI * 10;
+const ACircle = Animated.createAnimatedComponent(Circle);
+
+/**
+ * Clean's slip, next to its tick: logged by holding, so a brush past it does nothing. The ring draws round while the
+ * finger stays; let go early and it runs back. A plain tap only says how.
+ */
+export function SlipRow({ onConfirm, onTap }: { onConfirm: () => void; onTap: () => void }) {
+  const v = useSharedValue(0);
+  const fired = useRef(false);
+  const ring = useAnimatedProps(() => ({ strokeDashoffset: RING * (1 - v.value) }));
+  const p = useScale(0.96);
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel="Slipped" accessibilityHint="Hold to log a slip. The run starts again."
+      delayLongPress={HOLD_MS}
+      onPressIn={() => { fired.current = false; p.set(p.to); v.set(withTiming(1, { duration: HOLD_MS, easing: Easing.linear })); }}
+      onPressOut={() => { p.set(1); if (!fired.current) v.set(withTiming(0, { duration: 200, easing: Easing.bezier(0.23, 1, 0.32, 1) })); }}
+      onLongPress={() => { fired.current = true; v.set(withTiming(0, { duration: 260 })); onConfirm(); }}
+      onPress={() => { if (!fired.current) onTap(); }}>
+      <Animated.View style={[s.tick, p.style]}>
+        <View style={s.slipRing}>
+          <Svg width={22} height={22} viewBox="0 0 24 24" style={StyleSheet.absoluteFill}>
+            <Circle cx={12} cy={12} r={10} stroke="rgba(255,255,255,0.16)" strokeWidth={1.5} fill="none" />
+            <ACircle cx={12} cy={12} r={10} stroke={C.danger} strokeWidth={2} fill="none" strokeLinecap="round"
+              strokeDasharray={RING} animatedProps={ring} transform="rotate(-90 12 12)" />
+          </Svg>
+          <Glyph sf="arrow.counterclockwise" d={RESTART} size={12} color={C.muted} />
+        </View>
+        <View style={s.tickText}>
+          <Text numberOfLines={1} style={[s.tickLabel, { color: C.textSoft }]}>Slipped</Text>
+          <Text numberOfLines={1} style={s.tickMeta}>Hold</Text>
+        </View>
+      </Animated.View>
+    </Pressable>
+  );
+}
+
 // ── now ──────────────────────────────────────────────────────────────────────────────────────────────────────────
 /** One of the moment's actions: big enough to hit without looking, its mark in the colour of what it logs. */
 export function NowCard({ title, sub, color, glyph, onPress }: {
@@ -208,7 +291,9 @@ export type Mode = { kind: 'task' } | { kind: 'journal' } | { kind: 'page' } | {
 export const Field = forwardRef<ComponentRef<typeof TextInput>, {
   value: string; onChange: (v: string) => void; onSubmit: () => void; placeholder: string; tag: { text: string; color: string } | null;
   onTag: () => void; onFocus: () => void; onBlur: () => void; keyboard: KeyboardTypeOptions; busy: boolean;
-}>(function Field({ value, onChange, onSubmit, placeholder, tag, onTag, onFocus, onBlur, keyboard, busy }, ref) {
+  /** dictating: the words so far, shown in place of the input ('' while nothing is heard yet) */ live?: string | null;
+}>(function Field({ value, onChange, onSubmit, placeholder, tag, onTag, onFocus, onBlur, keyboard, busy, live = null }, ref) {
+  const talking = live != null;
   return (
     <View style={s.field}>
       {tag ? (
@@ -218,11 +303,17 @@ export const Field = forwardRef<ComponentRef<typeof TextInput>, {
           <Icon name="close" size={12} color={tag.color} />
         </Pressable>
       ) : null}
-      <TextInput ref={ref} value={value} onChangeText={onChange} onSubmitEditing={onSubmit} placeholder={placeholder}
-        placeholderTextColor={C.faint} keyboardType={keyboard} returnKeyType="done" submitBehavior="submit" editable={!busy}
-        onFocus={onFocus} onBlur={onBlur} selectionColor={BODY} keyboardAppearance="dark" style={s.input}
-        accessibilityLabel={placeholder} />
-      {value.trim() ? (
+      {talking ? (
+        <Text numberOfLines={1} ellipsizeMode="head" accessibilityLiveRegion="polite" style={[s.input, s.live, !live && !value.trim() && { color: C.faint }]}>
+          {value.trim() ? `${value.trim()} ` : ''}{live || (value.trim() ? '' : 'Listening')}
+        </Text>
+      ) : (
+        <TextInput ref={ref} value={value} onChangeText={onChange} onSubmitEditing={onSubmit} placeholder={placeholder}
+          placeholderTextColor={C.faint} keyboardType={keyboard} returnKeyType="done" submitBehavior="submit" editable={!busy}
+          onFocus={onFocus} onBlur={onBlur} selectionColor={BODY} keyboardAppearance="dark" style={s.input}
+          accessibilityLabel={placeholder} />
+      )}
+      {value.trim() || live ? (
         <Tap label="Save" onPress={onSubmit} feel="medium" style={s.send} disabled={busy}>
           <Icon name="arrowUp" size={18} color={INK} />
         </Tap>
@@ -242,33 +333,49 @@ export function Chip({ text, on, color, onPress, glyph }: { text: string; on: bo
   );
 }
 
-/** The panel's own status line, over its top edge. */
-export function Toast({ text }: { text: string | null }) {
+/** The panel's own status line, over its top edge; with an action (Undo) it can be tapped. */
+export function Toast({ text, action }: { text: string | null; action?: { label: string; onPress: () => void } | null }) {
   if (!text) return null;
   return (
-    <Animated.View key={text} entering={FadeIn.duration(140)} exiting={FadeOut.duration(140)} pointerEvents="none" accessibilityLiveRegion="polite" style={s.toast}>
-      <Text style={s.toastText}>{text}</Text>
+    <Animated.View key={text} entering={FadeIn.duration(140)} exiting={FadeOut.duration(140)} pointerEvents={action ? 'auto' : 'none'}
+      accessibilityLiveRegion="polite" style={[s.toast, action && s.toastWithAction]}>
+      <Text style={[s.toastText, action && s.toastTextShrink]} numberOfLines={2}>{text}</Text>
+      {action ? (
+        <Pressable accessibilityRole="button" accessibilityLabel={action.label} onPress={action.onPress} hitSlop={10} style={s.toastAction}>
+          <Text style={s.toastActionText}>{action.label}</Text>
+        </Pressable>
+      ) : null}
     </Animated.View>
   );
 }
 
 export const s = StyleSheet.create({
   num: { fontVariant: ['tabular-nums'] },
-  labelRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 },
+  labelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, minHeight: 18 },
   label: { fontFamily: F.semibold, fontSize: 13, lineHeight: 18, color: C.muted },
   labelRight: { fontFamily: F.medium, fontSize: 13, lineHeight: 18, color: C.faint },
 
-  frameWrap: { width: FRAME_W },
-  frame: {
-    width: FRAME_W, height: FRAME_H, borderRadius: FRAME_R, borderCurve: 'continuous', overflow: 'hidden',
-    alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.045)',
-    borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.10)',
+  tileWrap: { flex: 1, minWidth: 0 },
+  tile: {
+    height: TILE_H, borderRadius: TILE_R, borderCurve: 'continuous', overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.045)', borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.10)',
   },
-  frameLabel: { marginTop: 8, fontFamily: F.medium, fontSize: 13, lineHeight: 16, color: C.muted },
-  frameNote: { fontFamily: F.regular, fontSize: 11, lineHeight: 14, color: C.faint },
-  loggedFill: { alignItems: 'center', justifyContent: 'center', backgroundColor: tint(BODY, 0.1) },
+  tileMark: { paddingTop: 8, paddingLeft: 8 },
+  tileText: { position: 'absolute', left: 8, right: 6, bottom: 6 },
+  tileLabel: { fontFamily: F.medium, fontSize: 12, lineHeight: 15, color: C.muted },
+  tileNote: { fontFamily: F.regular, fontSize: 10, lineHeight: 12, color: C.faint },
+  loggedFill: { backgroundColor: tint(BODY, 0.1), borderColor: tint(BODY, 0.22) },
+  smart: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, height: 28, paddingLeft: 10, paddingRight: 12, borderRadius: 14,
+    backgroundColor: tint(BODY, 0.14),
+  },
+  smartThumb: { width: 26, height: 20, borderRadius: 6, overflow: 'hidden', marginLeft: -4, backgroundColor: SURF.track },
+  smartText: { fontFamily: F.semibold, fontSize: 13, lineHeight: 16, color: BODY },
+  smartSpin: { transform: [{ scale: 0.7 }], marginRight: -4 },
+  slipRing: { width: 22, height: 22, alignItems: 'center', justifyContent: 'center' },
+  live: { lineHeight: 48, color: C.text },
   sendBar: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 2, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.12)' },
-  sweep: { width: FRAME_W * 0.5, height: 2, backgroundColor: BODY },
+  sweep: { width: 40, height: 2, backgroundColor: BODY },
 
   waterRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 44 },
   waterText: { width: 84 },
@@ -317,4 +424,8 @@ export const s = StyleSheet.create({
     backgroundColor: 'rgba(30,31,35,0.96)', boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
   },
   toastText: { fontFamily: F.medium, fontSize: 14, lineHeight: 20, color: C.text },
+  toastWithAction: { flexDirection: 'row', alignItems: 'center', gap: 14, maxWidth: 360, paddingRight: 8 },
+  toastTextShrink: { flexShrink: 1 },
+  toastAction: { height: 32, paddingHorizontal: 12, borderRadius: 10, justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.10)' },
+  toastActionText: { fontFamily: F.semibold, fontSize: 14, lineHeight: 18, color: BODY },
 });

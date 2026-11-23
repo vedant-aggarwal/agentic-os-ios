@@ -47,6 +47,8 @@ export function useCall(ask: CallAsk | null, onClosed: () => void) {
 
   const modeRef = useRef<Mode>('none');
   const ringId = useRef(ask?.incomingId ?? null); // the ring he answered, also on the system call screen
+  const keepOn = useRef(false); // closed with Hide: the call goes on elsewhere (its audio isn't on this screen)
+  const [liveId, setLiveId] = useState<string | null>(null);
   const go = useCallback((p: Phase) => {
     phaseRef.current = p; setPhase(p);
     if ((p === 'ended' || p === 'failed') && ringId.current) void endSystemCall(ringId.current);
@@ -77,7 +79,7 @@ export function useCall(ask: CallAsk | null, onClosed: () => void) {
         else if (Date.now() - since > 30_000) { clearInterval(id); setError("She couldn't pick up. Try again."); go('failed'); }
         return;
       }
-      callId.current = call.id;
+      callId.current = call.id; setLiveId(call.id);
       if (call.connected && phaseRef.current === 'connecting') { started(Date.now() - call.seconds * 1000); go('live'); }
       setMuted(call.muted);
       if (call.handoff) setTalk('thinking');
@@ -126,7 +128,7 @@ export function useCall(ask: CallAsk | null, onClosed: () => void) {
       if (can === 'relay') { try { joined = !!(await relayModule()!.current()); } catch {} }
       if (!alive) return;
       if (live && !joined && (ask.follow || ask.incomingId || can === 'none')) {
-        way('follow'); callId.current = live.id;
+        way('follow'); callId.current = live.id; setLiveId(live.id);
         if (live.connected) { started(Date.now() - live.seconds * 1000); go('live'); }
         follow(isAlive, live.id);
         return;
@@ -141,7 +143,7 @@ export function useCall(ask: CallAsk | null, onClosed: () => void) {
         const subs = [
           m.addListener('state', (e) => {
             if (!alive) return;
-            if (e.callId) callId.current = e.callId;
+            if (e.callId) { callId.current = e.callId; setLiveId(e.callId); }
             if (typeof e.speaker === 'boolean') setSpeaker(e.speaker);
             if (e.state === 'ready') { started(); go('live'); }
             if (e.state === 'ended' && phaseRef.current !== 'ended' && phaseRef.current !== 'failed') {
@@ -177,7 +179,7 @@ export function useCall(ask: CallAsk | null, onClosed: () => void) {
               if (v > 0.06) setTalk('speaking'); else setTalk((x) => (x === 'speaking' ? 'listening' : x));
             },
           }, isAlive);
-          callId.current = rtc.current.callId;
+          callId.current = rtc.current.callId; setLiveId(rtc.current.callId);
           const id = setTimeout(() => { if (alive && !t0Ref.current) fail("Her voice couldn't connect. Try again, or check the network."); }, 15_000);
           stops.current.push(() => clearTimeout(id));
         } catch (e) { if (alive) fail(errText(e)); }
@@ -196,7 +198,7 @@ export function useCall(ask: CallAsk | null, onClosed: () => void) {
       if (speakT.current) clearTimeout(speakT.current);
       rtc.current?.close();
       const id = callId.current;
-      if (phaseRef.current !== 'ended' && phaseRef.current !== 'failed') {
+      if (phaseRef.current !== 'ended' && phaseRef.current !== 'failed' && !keepOn.current) {
         if (modeRef.current === 'relay') relayModule()?.stop(); // also while it's still connecting
         if (id) nora.endCall(id).catch(() => {});
       }
@@ -219,6 +221,9 @@ export function useCall(ask: CallAsk | null, onClosed: () => void) {
     setTimeout(onClosed, 1400);
   }, [go, lvl, mode, onClosed]);
 
+  /** Follow mode only: close the screen and leave the call on (its audio runs on the SIM line or the lock screen). */
+  const hide = useCallback(() => { keepOn.current = true; onClosed(); }, [onClosed]);
+
   const setMute = useCallback((m: boolean) => {
     setMuted(m);
     if (mode === 'webrtc') rtc.current?.mute(m);
@@ -239,5 +244,5 @@ export function useCall(ask: CallAsk | null, onClosed: () => void) {
     relayModule()?.setSpeaker(on);
   }, [speaker]);
 
-  return { phase, talk, her, his, t0, muted, speaker, error, mode, lasted, level, end, toggleMute, toggleSpeaker };
+  return { phase, talk, her, his, t0, muted, speaker, error, mode, lasted, level, end, hide, toggleMute, toggleSpeaker, callId: liveId };
 }

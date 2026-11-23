@@ -1,0 +1,3249 @@
+[
+  {
+    "id": "b01",
+    "slot": "breakfast",
+    "name": "Protein Overnight Oats (Greek yogurt + whey)",
+    "diet": "veg",
+    "protein_g": 26,
+    "kcal": 299,
+    "protein_estimated": false,
+    "time_min": 5,
+    "servings": 1,
+    "ingredients": [
+      {
+        "item": "Greek yogurt / hung curd",
+        "qty": "1/2 cup"
+      },
+      {
+        "item": "milk",
+        "qty": "1/4 cup"
+      },
+      {
+        "item": "vanilla whey",
+        "qty": "1/2 scoop (2 tbsp)"
+      },
+      {
+        "item": "rolled oats",
+        "qty": "1/2 cup"
+      },
+      {
+        "item": "sugar or jaggery",
+        "qty": "2 tsp"
+      },
+      {
+        "item": "vanilla extract",
+        "qty": "1/4 tsp"
+      },
+      {
+        "item": "salt",
+        "qty": "pinch"
+      },
+      {
+        "item": "fruit / nuts to top",
+        "qty": "optional"
+      }
+    ],
+    "steps": [
+      "Whisk yogurt, milk and whey until smooth",
+      "Stir in oats, sweetener, vanilla and salt",
+      "Cover and refrigerate at least 8 hours",
+      "Loosen with a splash of milk, top with fruit"
+    ],
+    "tags": [
+      "oats",
+      "whey",
+      "curd",
+      "overnight",
+      "no-cook",
+      "default-breakfast"
+    ],
+    "source_url": "https://www.wellplated.com/protein-oatmeal/"
+  },
+  {
+    "id": "b02",
+    "slot": "breakfast",
+    "name": "Paneer Bhurji",
+    "diet": "veg",
+    "protein_g": 19,
+    "kcal": 404,
+    "protein_estimated": true,
+    "time_min": 25,
+    "servings": 2,
+    "ingredients": [
+      {
+        "item": "paneer, crumbled",
+        "qty": "200 g"
+      },
+      {
+        "item": "oil",
+        "qty": "1.5 tbsp"
+      },
+      {
+        "item": "cumin seeds",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "onion, chopped",
+        "qty": "1/2 cup"
+      },
+      {
+        "item": "green chilli",
+        "qty": "1"
+      },
+      {
+        "item": "ginger garlic paste",
+        "qty": "1 tsp"
+      },
+      {
+        "item": "tomato, chopped",
+        "qty": "1/3 cup"
+      },
+      {
+        "item": "capsicum or peas",
+        "qty": "1/4 cup"
+      },
+      {
+        "item": "turmeric",
+        "qty": "1/8 tsp"
+      },
+      {
+        "item": "red chilli powder",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "garam masala",
+        "qty": "3/4 tsp"
+      },
+      {
+        "item": "salt",
+        "qty": "1/4 tsp"
+      },
+      {
+        "item": "coriander leaves",
+        "qty": "2 tbsp"
+      }
+    ],
+    "steps": [
+      "Fry cumin, onion and chilli till golden",
+      "Add ginger garlic paste, cook off raw smell",
+      "Add tomato, salt, turmeric; cook till mushy",
+      "Stir in chilli powder and garam masala",
+      "Add capsicum/peas and paneer, toss 2 min",
+      "Finish with coriander and lemon"
+    ],
+    "tags": [
+      "paneer",
+      "quick",
+      "roti",
+      "bread"
+    ],
+    "source_url": "https://www.indianhealthyrecipes.com/paneer-bhurji-recipe/"
+  },
+  {
+    "id": "b03",
+    "slot": "breakfast",
+    "name": "Egg Bhurji (Anda Bhurji)",
+    "diet": "egg",
+    "protein_g": 13,
+    "kcal": 251,
+    "protein_estimated": true,
+    "time_min": 20,
+    "servings": 2,
+    "ingredients": [
+      {
+        "item": "eggs",
+        "qty": "4"
+      },
+      {
+        "item": "oil",
+        "qty": "2 tbsp"
+      },
+      {
+        "item": "cumin seeds",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "onion, chopped",
+        "qty": "1/2 cup"
+      },
+      {
+        "item": "green chilli",
+        "qty": "1"
+      },
+      {
+        "item": "ginger garlic paste",
+        "qty": "3/4 tsp"
+      },
+      {
+        "item": "tomato, chopped",
+        "qty": "1 small"
+      },
+      {
+        "item": "garam masala",
+        "qty": "3/4 tsp"
+      },
+      {
+        "item": "red chilli powder",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "turmeric",
+        "qty": "1/8 tsp"
+      },
+      {
+        "item": "salt",
+        "qty": "1/4 tsp"
+      },
+      {
+        "item": "coriander leaves",
+        "qty": "2 tbsp"
+      }
+    ],
+    "steps": [
+      "Beat eggs with salt and turmeric",
+      "Splutter cumin in hot oil",
+      "Saute onion and chilli till golden, add ginger garlic",
+      "Cook tomato till soft",
+      "Pour in eggs, scramble, add masala and chilli",
+      "Take off heat when just set; garnish"
+    ],
+    "tags": [
+      "egg",
+      "quick",
+      "bread",
+      "roti"
+    ],
+    "source_url": "https://www.indianhealthyrecipes.com/egg-bhurji-andhra-egg-porutu/"
+  },
+  {
+    "id": "b04",
+    "slot": "breakfast",
+    "name": "Masala Omelette",
+    "diet": "egg",
+    "protein_g": 11,
+    "kcal": 276,
+    "protein_estimated": false,
+    "time_min": 5,
+    "servings": 1,
+    "ingredients": [
+      {
+        "item": "eggs",
+        "qty": "2"
+      },
+      {
+        "item": "onion, chopped",
+        "qty": "1 tbsp"
+      },
+      {
+        "item": "capsicum, chopped",
+        "qty": "1 tbsp"
+      },
+      {
+        "item": "tomato, chopped",
+        "qty": "1 tbsp"
+      },
+      {
+        "item": "green chilli",
+        "qty": "1"
+      },
+      {
+        "item": "coriander leaves",
+        "qty": "1 tbsp"
+      },
+      {
+        "item": "salt",
+        "qty": "1/8 tsp"
+      },
+      {
+        "item": "turmeric",
+        "qty": "pinch"
+      },
+      {
+        "item": "oil or butter",
+        "qty": "1 tbsp"
+      }
+    ],
+    "steps": [
+      "Mix chopped veg with salt and turmeric",
+      "Beat eggs till frothy and add veg",
+      "Heat oil on medium (not smoking)",
+      "Pour in eggs, cook till base sets",
+      "Flip and cook through; add pepper or chilli"
+    ],
+    "tags": [
+      "egg",
+      "quick",
+      "5-min"
+    ],
+    "source_url": "https://www.indianhealthyrecipes.com/omelette/"
+  },
+  {
+    "id": "b05",
+    "slot": "breakfast",
+    "name": "Moong Dal Chilla",
+    "diet": "vegan",
+    "protein_g": 17,
+    "kcal": 322,
+    "protein_estimated": true,
+    "time_min": 35,
+    "servings": 3,
+    "ingredients": [
+      {
+        "item": "yellow moong dal",
+        "qty": "1 cup"
+      },
+      {
+        "item": "cumin seeds",
+        "qty": "1 tsp"
+      },
+      {
+        "item": "ginger",
+        "qty": "1/2 inch"
+      },
+      {
+        "item": "green chilli",
+        "qty": "1"
+      },
+      {
+        "item": "turmeric",
+        "qty": "1/8 tsp"
+      },
+      {
+        "item": "salt",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "water",
+        "qty": "3/4 cup"
+      },
+      {
+        "item": "grated carrot or onion",
+        "qty": "3/4 cup"
+      },
+      {
+        "item": "coriander leaves",
+        "qty": "1/4 cup"
+      },
+      {
+        "item": "oil",
+        "qty": "2 tbsp"
+      }
+    ],
+    "steps": [
+      "Rinse dal, soak 15-20 min",
+      "Grind with cumin, ginger, chilli, turmeric and water",
+      "Mix in veg, coriander and salt",
+      "Spread a ladle thin on a hot tawa",
+      "Drizzle oil, flip when edges lift",
+      "Serve with green chutney or curd"
+    ],
+    "tags": [
+      "dal",
+      "moong",
+      "makes-10",
+      "short-soak"
+    ],
+    "source_url": "https://www.indianhealthyrecipes.com/moong-dal-chilla/"
+  },
+  {
+    "id": "b06",
+    "slot": "breakfast",
+    "name": "Besan Chilla",
+    "diet": "vegan",
+    "protein_g": 13,
+    "kcal": 343,
+    "protein_estimated": true,
+    "time_min": 20,
+    "servings": 2,
+    "ingredients": [
+      {
+        "item": "besan",
+        "qty": "1 cup (110 g)"
+      },
+      {
+        "item": "ajwain",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "salt",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "turmeric",
+        "qty": "1/8 tsp"
+      },
+      {
+        "item": "onion, chopped",
+        "qty": "3 tbsp"
+      },
+      {
+        "item": "tomato, chopped",
+        "qty": "3 tbsp"
+      },
+      {
+        "item": "green chilli",
+        "qty": "1"
+      },
+      {
+        "item": "ginger, grated",
+        "qty": "1 tsp"
+      },
+      {
+        "item": "coriander leaves",
+        "qty": "2 tbsp"
+      },
+      {
+        "item": "water",
+        "qty": "2/3-1 cup"
+      },
+      {
+        "item": "oil",
+        "qty": "2 tbsp"
+      }
+    ],
+    "steps": [
+      "Mix besan, ajwain, turmeric and salt",
+      "Add veg and water to a pourable batter",
+      "Grease a hot pan, lower to medium",
+      "Spread a ladle thin, oil the edges",
+      "Flip when edges lift; cook till golden",
+      "Serve with chutney or curd"
+    ],
+    "tags": [
+      "besan",
+      "quick",
+      "makes-4-5"
+    ],
+    "source_url": "https://www.indianhealthyrecipes.com/cheela-recipe/"
+  },
+  {
+    "id": "b07",
+    "slot": "breakfast",
+    "name": "Paneer Stuffed Besan Chilla",
+    "diet": "veg",
+    "protein_g": 17,
+    "kcal": 407,
+    "protein_estimated": true,
+    "time_min": 35,
+    "servings": 4,
+    "ingredients": [
+      {
+        "item": "besan",
+        "qty": "1.5 cup"
+      },
+      {
+        "item": "rava (suji)",
+        "qty": "1/4 cup"
+      },
+      {
+        "item": "curd",
+        "qty": "1/4 cup"
+      },
+      {
+        "item": "turmeric",
+        "qty": "1/4 tsp"
+      },
+      {
+        "item": "salt",
+        "qty": "3/4 tsp"
+      },
+      {
+        "item": "water",
+        "qty": "1 cup"
+      },
+      {
+        "item": "paneer, grated",
+        "qty": "1 cup"
+      },
+      {
+        "item": "carrot, chopped",
+        "qty": "1"
+      },
+      {
+        "item": "capsicum, chopped",
+        "qty": "1/2"
+      },
+      {
+        "item": "tomato, chopped",
+        "qty": "1"
+      },
+      {
+        "item": "sweet corn",
+        "qty": "3 tbsp"
+      },
+      {
+        "item": "coriander leaves",
+        "qty": "2 tbsp"
+      },
+      {
+        "item": "oil",
+        "qty": "to roast"
+      }
+    ],
+    "steps": [
+      "Blend batter ingredients smooth, rest 10 min",
+      "Mix paneer and veg for the stuffing",
+      "Spread a thin chilla on a hot pan",
+      "Add 1 tsp oil, cover and cook on low",
+      "Spread stuffing, warm briefly",
+      "Roll tight; serve with green chutney"
+    ],
+    "tags": [
+      "besan",
+      "paneer",
+      "makes-10"
+    ],
+    "source_url": "https://hebbarskitchen.com/wprm_print/besan-chilla-recipe-paneer-stuffed-besan-ka-cheela"
+  },
+  {
+    "id": "b08",
+    "slot": "breakfast",
+    "name": "Paneer Paratha",
+    "diet": "veg",
+    "protein_g": 19,
+    "kcal": 479,
+    "protein_estimated": true,
+    "time_min": 50,
+    "servings": 4,
+    "ingredients": [
+      {
+        "item": "whole wheat atta",
+        "qty": "2 cups (250 g)"
+      },
+      {
+        "item": "salt",
+        "qty": "1/4 tsp"
+      },
+      {
+        "item": "oil",
+        "qty": "1 tbsp"
+      },
+      {
+        "item": "water",
+        "qty": "1/2-3/4 cup"
+      },
+      {
+        "item": "paneer, grated",
+        "qty": "250 g"
+      },
+      {
+        "item": "coriander leaves",
+        "qty": "3 tbsp"
+      },
+      {
+        "item": "green chilli",
+        "qty": "1-2"
+      },
+      {
+        "item": "Kashmiri chilli powder",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "garam masala",
+        "qty": "3/4 tsp"
+      },
+      {
+        "item": "roasted cumin powder",
+        "qty": "3/4 tsp"
+      },
+      {
+        "item": "amchur",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "ghee",
+        "qty": "2-3 tbsp"
+      }
+    ],
+    "steps": [
+      "Knead a soft dough, rest 20-30 min",
+      "Mix paneer with herbs and spices; divide in 8",
+      "Stuff each dough ball and seal",
+      "Roll gently to 4-5 inch discs",
+      "Cook on hot tawa with ghee till golden spots",
+      "Serve with curd, chutney or pickle"
+    ],
+    "tags": [
+      "paneer",
+      "atta",
+      "makes-8",
+      "weekend"
+    ],
+    "source_url": "https://www.indianhealthyrecipes.com/paneer-paratha/"
+  },
+  {
+    "id": "b09",
+    "slot": "breakfast",
+    "name": "Oats Peanut Butter Banana Smoothie",
+    "diet": "veg",
+    "protein_g": 22,
+    "kcal": 443,
+    "protein_estimated": false,
+    "time_min": 10,
+    "servings": 1,
+    "ingredients": [
+      {
+        "item": "rolled oats",
+        "qty": "1/4 cup"
+      },
+      {
+        "item": "banana",
+        "qty": "1 medium"
+      },
+      {
+        "item": "Greek yogurt / hung curd",
+        "qty": "1/2 cup"
+      },
+      {
+        "item": "milk",
+        "qty": "1/2 cup"
+      },
+      {
+        "item": "peanut butter",
+        "qty": "1 tbsp"
+      },
+      {
+        "item": "honey or maple syrup",
+        "qty": "1/2 tbsp"
+      },
+      {
+        "item": "cinnamon",
+        "qty": "1/4 tsp"
+      }
+    ],
+    "steps": [
+      "Add everything to a blender",
+      "Blend till smooth",
+      "Thin with milk if too thick",
+      "Serve straight away"
+    ],
+    "tags": [
+      "oats",
+      "curd",
+      "peanut",
+      "fruit",
+      "no-cook",
+      "add-whey-for-more"
+    ],
+    "source_url": "https://www.indianveggiedelight.com/oats-smoothie/"
+  },
+  {
+    "id": "s01",
+    "slot": "salad",
+    "name": "Soya Chunks Salad with Greek Yogurt Dressing",
+    "diet": "veg",
+    "protein_g": 22,
+    "kcal": 281,
+    "protein_estimated": false,
+    "time_min": 30,
+    "servings": 3,
+    "ingredients": [
+      {
+        "item": "soya chunks",
+        "qty": "1 cup"
+      },
+      {
+        "item": "oil",
+        "qty": "1 tsp"
+      },
+      {
+        "item": "red chilli powder",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "turmeric",
+        "qty": "1/4 tsp"
+      },
+      {
+        "item": "roasted cumin powder",
+        "qty": "1/4 tsp"
+      },
+      {
+        "item": "garam masala",
+        "qty": "1/4 tsp"
+      },
+      {
+        "item": "hung curd",
+        "qty": "1/4 cup"
+      },
+      {
+        "item": "paneer",
+        "qty": "1/4 cup"
+      },
+      {
+        "item": "coriander leaves",
+        "qty": "1/4 cup"
+      },
+      {
+        "item": "garlic",
+        "qty": "1 clove"
+      },
+      {
+        "item": "lemon juice",
+        "qty": "1 tbsp"
+      },
+      {
+        "item": "lettuce",
+        "qty": "1 cup"
+      },
+      {
+        "item": "onion",
+        "qty": "1/2 cup"
+      },
+      {
+        "item": "cucumber",
+        "qty": "1/2 cup"
+      },
+      {
+        "item": "cherry tomatoes",
+        "qty": "1/2 cup"
+      },
+      {
+        "item": "pumpkin + sunflower seeds",
+        "qty": "2-4 tbsp"
+      }
+    ],
+    "steps": [
+      "Soak chunks in hot salted water 15 min, squeeze dry",
+      "Pan-fry with spices 2-3 min till crisp",
+      "Blend curd, paneer, coriander, garlic, lemon for dressing",
+      "Combine veg, soya and seeds",
+      "Toss with dressing just before serving"
+    ],
+    "tags": [
+      "soya",
+      "curd",
+      "seeds",
+      "meal-prep"
+    ],
+    "source_url": "https://www.indianveggiedelight.com/wprm_print/soya-chunks-salad-recipe-with-greek-yogurt-dressing"
+  },
+  {
+    "id": "s02",
+    "slot": "salad",
+    "name": "Crispy Soya Granules Salad with Paneer Dressing",
+    "diet": "veg",
+    "protein_g": 18,
+    "kcal": 309,
+    "protein_estimated": false,
+    "time_min": 20,
+    "servings": 4,
+    "ingredients": [
+      {
+        "item": "cashews",
+        "qty": "2 tbsp"
+      },
+      {
+        "item": "garlic",
+        "qty": "6 cloves"
+      },
+      {
+        "item": "dried red chillies",
+        "qty": "4"
+      },
+      {
+        "item": "paneer",
+        "qty": "100 g"
+      },
+      {
+        "item": "lemon juice",
+        "qty": "4 tbsp"
+      },
+      {
+        "item": "garam masala",
+        "qty": "2 tsp total"
+      },
+      {
+        "item": "soya granules",
+        "qty": "1 cup"
+      },
+      {
+        "item": "oil",
+        "qty": "2 tbsp"
+      },
+      {
+        "item": "cumin seeds",
+        "qty": "1 tsp"
+      },
+      {
+        "item": "curry leaves",
+        "qty": "6"
+      },
+      {
+        "item": "chilli powder",
+        "qty": "1 tsp"
+      },
+      {
+        "item": "cucumber, diced",
+        "qty": "1.5 cups"
+      },
+      {
+        "item": "tomato, diced",
+        "qty": "1.5 cups"
+      },
+      {
+        "item": "carrot, grated",
+        "qty": "1.5 cups"
+      },
+      {
+        "item": "salt",
+        "qty": "to taste"
+      }
+    ],
+    "steps": [
+      "Blend paneer, cashews, garlic, chillies, lemon, masala with water",
+      "Soak granules 5 min, squeeze dry",
+      "Fry cumin and curry leaves, add granules and spices",
+      "Fry 8-10 min till crisp",
+      "Toss veg with half the granules and dressing",
+      "Top with remaining granules"
+    ],
+    "tags": [
+      "soya",
+      "paneer",
+      "meal-prep"
+    ],
+    "source_url": "https://www.cookwithkushi.com/wprm_print/protein-vegetarian-salad-with-soya-granules"
+  },
+  {
+    "id": "s03",
+    "slot": "salad",
+    "name": "High-Protein Kala Chana Salad",
+    "diet": "veg",
+    "protein_g": 26,
+    "kcal": 421,
+    "protein_estimated": false,
+    "time_min": 20,
+    "servings": 1,
+    "ingredients": [
+      {
+        "item": "kala chana, boiled",
+        "qty": "1 cup"
+      },
+      {
+        "item": "mixed sprouts",
+        "qty": "1/2 cup"
+      },
+      {
+        "item": "paneer or firm tofu, cubed",
+        "qty": "150 g"
+      },
+      {
+        "item": "cucumber, diced",
+        "qty": "1 cup"
+      },
+      {
+        "item": "tomato, diced",
+        "qty": "1 cup"
+      },
+      {
+        "item": "bell peppers, diced",
+        "qty": "1 cup"
+      },
+      {
+        "item": "chilli flakes",
+        "qty": "1/4 tsp"
+      },
+      {
+        "item": "black pepper",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "salt",
+        "qty": "to taste"
+      },
+      {
+        "item": "salad dressing",
+        "qty": "2-3 tbsp"
+      }
+    ],
+    "steps": [
+      "Dice cucumber, tomato and peppers",
+      "Combine veg, kala chana and sprouts",
+      "Add paneer or tofu cubes",
+      "Pour over dressing, season and toss",
+      "Serve now or chill"
+    ],
+    "tags": [
+      "chana",
+      "sprouts",
+      "paneer",
+      "vegan-with-tofu",
+      "needs-soak"
+    ],
+    "source_url": "https://mytastycurry.com/wprm_print/high-protein-kala-chana-salad-2"
+  },
+  {
+    "id": "s04",
+    "slot": "salad",
+    "name": "Roasted Paneer Salad",
+    "diet": "veg",
+    "protein_g": 14,
+    "kcal": 255,
+    "protein_estimated": true,
+    "time_min": 30,
+    "servings": 2,
+    "ingredients": [
+      {
+        "item": "paneer cubes",
+        "qty": "1 cup"
+      },
+      {
+        "item": "yogurt",
+        "qty": "1 tbsp"
+      },
+      {
+        "item": "salt",
+        "qty": "1/2 tsp total"
+      },
+      {
+        "item": "turmeric",
+        "qty": "1/8 tsp"
+      },
+      {
+        "item": "red chilli powder",
+        "qty": "1/4 tsp"
+      },
+      {
+        "item": "garam masala",
+        "qty": "1/4 tsp"
+      },
+      {
+        "item": "cumin + coriander powder",
+        "qty": "1/4 tsp each"
+      },
+      {
+        "item": "oil",
+        "qty": "1 tsp"
+      },
+      {
+        "item": "cucumber",
+        "qty": "1 cup"
+      },
+      {
+        "item": "carrot, grated",
+        "qty": "1/2 cup"
+      },
+      {
+        "item": "tomato",
+        "qty": "1/2 cup"
+      },
+      {
+        "item": "onion",
+        "qty": "1/4 cup"
+      },
+      {
+        "item": "mint + coriander",
+        "qty": "1/4 cup"
+      },
+      {
+        "item": "lemon juice",
+        "qty": "1 tsp"
+      }
+    ],
+    "steps": [
+      "Coat paneer in yogurt and spices",
+      "Roast at 200 C for 18-20 min (or tawa)",
+      "Mix chopped veg and herbs",
+      "Season veg with lemon, salt, pepper",
+      "Fold in slightly cooled paneer and serve"
+    ],
+    "tags": [
+      "paneer",
+      "oil-free-dressing",
+      "default-salad"
+    ],
+    "source_url": "https://everydaynourishingfoods.com/indian-roasted-paneer-salad/"
+  },
+  {
+    "id": "s05",
+    "slot": "salad",
+    "name": "Rajma (Kidney Bean) Salad",
+    "diet": "vegan",
+    "protein_g": 14,
+    "kcal": 264,
+    "protein_estimated": true,
+    "time_min": 30,
+    "servings": 2,
+    "ingredients": [
+      {
+        "item": "rajma, dry (soaked + boiled)",
+        "qty": "1/2 cup"
+      },
+      {
+        "item": "onion",
+        "qty": "1 cup"
+      },
+      {
+        "item": "tomato",
+        "qty": "1 cup"
+      },
+      {
+        "item": "green chilli",
+        "qty": "2 tsp"
+      },
+      {
+        "item": "coriander leaves",
+        "qty": "2 tbsp"
+      },
+      {
+        "item": "lemon juice",
+        "qty": "3 tsp"
+      },
+      {
+        "item": "olive oil",
+        "qty": "2 tsp"
+      },
+      {
+        "item": "roasted peanuts",
+        "qty": "2 tbsp"
+      }
+    ],
+    "steps": [
+      "Soak rajma overnight, pressure cook till soft, cool",
+      "Chop onion, tomato, chilli, coriander",
+      "Mix rajma with veg",
+      "Dress with lemon, oil and salt",
+      "Top with roasted peanuts"
+    ],
+    "tags": [
+      "rajma",
+      "peanut",
+      "needs-soak"
+    ],
+    "source_url": "https://slurrp.com/amp/recipes/healthy-red-kidney-bean-salad-rajma-1617380030"
+  },
+  {
+    "id": "s06",
+    "slot": "salad",
+    "name": "Boiled Egg Salad (hung curd)",
+    "diet": "egg",
+    "protein_g": 12,
+    "kcal": 135,
+    "protein_estimated": true,
+    "time_min": 25,
+    "servings": 2,
+    "ingredients": [
+      {
+        "item": "eggs, hard-boiled",
+        "qty": "3"
+      },
+      {
+        "item": "onion or spring onion",
+        "qty": "2 tbsp"
+      },
+      {
+        "item": "coriander leaves",
+        "qty": "2 tbsp"
+      },
+      {
+        "item": "garlic, minced",
+        "qty": "1 clove"
+      },
+      {
+        "item": "hung curd (instead of mayo)",
+        "qty": "3 tbsp"
+      },
+      {
+        "item": "black pepper",
+        "qty": "1/4-1/2 tsp"
+      },
+      {
+        "item": "chilli flakes",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "mustard",
+        "qty": "1 tsp"
+      },
+      {
+        "item": "dried herbs",
+        "qty": "1 tsp"
+      }
+    ],
+    "steps": [
+      "Boil eggs 10-12 min, rest, cool in cold water",
+      "Peel and chop into bite-size pieces",
+      "Add hung curd and remaining ingredients",
+      "Mix gently, adjust salt",
+      "Serve on toast or in a wrap"
+    ],
+    "tags": [
+      "egg",
+      "curd",
+      "quick"
+    ],
+    "source_url": "https://indianhealthyrecipes.com/egg-salad-recipe-egg-recipes-breakfast"
+  },
+  {
+    "id": "s07",
+    "slot": "salad",
+    "name": "Chana Chaat (Chickpea Salad)",
+    "diet": "vegan",
+    "protein_g": 10,
+    "kcal": 205,
+    "protein_estimated": true,
+    "time_min": 30,
+    "servings": 2,
+    "ingredients": [
+      {
+        "item": "kabuli chana, dry",
+        "qty": "1/2 cup"
+      },
+      {
+        "item": "onion, chopped",
+        "qty": "1 small"
+      },
+      {
+        "item": "tomato, chopped",
+        "qty": "1 small"
+      },
+      {
+        "item": "cucumber",
+        "qty": "1/4 cup"
+      },
+      {
+        "item": "coriander leaves",
+        "qty": "2 sprigs"
+      },
+      {
+        "item": "green chilli",
+        "qty": "1-2"
+      },
+      {
+        "item": "lemon juice or tamarind chutney",
+        "qty": "1-2 tbsp"
+      },
+      {
+        "item": "chaat masala",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "roasted cumin powder",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "salt",
+        "qty": "1/4 tsp"
+      }
+    ],
+    "steps": [
+      "Soak chana 6-8 hours",
+      "Pressure cook 3-4 whistles, drain and cool",
+      "Mix in salt, chaat masala, cumin, lemon",
+      "Add onion, tomato, cucumber, chilli, coriander",
+      "Add curd on top for extra protein (optional)"
+    ],
+    "tags": [
+      "chana",
+      "needs-soak",
+      "chaat"
+    ],
+    "source_url": "https://indianhealthyrecipes.com/chana-chat-chole-chat-chickpeas-salad-recipe/"
+  },
+  {
+    "id": "s08",
+    "slot": "salad",
+    "name": "Paneer aur Hare Chane ka Salad",
+    "diet": "veg",
+    "protein_g": 18,
+    "kcal": 311,
+    "protein_estimated": true,
+    "time_min": 20,
+    "servings": 2,
+    "ingredients": [
+      {
+        "item": "paneer cubes",
+        "qty": "1/2 cup"
+      },
+      {
+        "item": "hara chana, soaked + boiled",
+        "qty": "1.5 cups"
+      },
+      {
+        "item": "tomato, deseeded cubes",
+        "qty": "3/4 cup"
+      },
+      {
+        "item": "spring onion, chopped",
+        "qty": "1/2 cup"
+      },
+      {
+        "item": "lemon juice",
+        "qty": "2 tbsp"
+      },
+      {
+        "item": "black salt",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "roasted cumin, crushed",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "black pepper",
+        "qty": "to taste"
+      },
+      {
+        "item": "salt",
+        "qty": "to taste"
+      }
+    ],
+    "steps": [
+      "Soak and boil hara chana till just tender",
+      "Cube paneer and tomato, chop spring onion",
+      "Combine chana, paneer and veg",
+      "Season with lemon, black salt, cumin, pepper",
+      "Toss and serve"
+    ],
+    "tags": [
+      "paneer",
+      "chana",
+      "needs-soak"
+    ],
+    "source_url": "https://www.slurrp.com/amp/recipes/paneer-aur-hare-chane-ka-salad-healthy-salads-recipe-4611-1619092829"
+  },
+  {
+    "id": "l01",
+    "slot": "lunch",
+    "name": "Rajma Masala",
+    "diet": "vegan",
+    "protein_g": 12,
+    "kcal": 269,
+    "protein_estimated": false,
+    "time_min": 40,
+    "servings": 4,
+    "ingredients": [
+      {
+        "item": "rajma, dry",
+        "qty": "1 cup (200 g)"
+      },
+      {
+        "item": "oil",
+        "qty": "2-3 tbsp"
+      },
+      {
+        "item": "bay leaf",
+        "qty": "1"
+      },
+      {
+        "item": "cumin seeds",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "onion, chopped",
+        "qty": "1 cup"
+      },
+      {
+        "item": "green chilli",
+        "qty": "1"
+      },
+      {
+        "item": "ginger garlic paste",
+        "qty": "1.5 tsp"
+      },
+      {
+        "item": "tomato puree",
+        "qty": "1.5 cups"
+      },
+      {
+        "item": "Kashmiri chilli powder",
+        "qty": "1/2-1 tsp"
+      },
+      {
+        "item": "garam masala",
+        "qty": "1 tsp"
+      },
+      {
+        "item": "coriander powder",
+        "qty": "1.5 tsp"
+      },
+      {
+        "item": "cumin powder",
+        "qty": "3/4 tsp"
+      },
+      {
+        "item": "turmeric",
+        "qty": "1/4 tsp"
+      },
+      {
+        "item": "salt",
+        "qty": "1 tsp"
+      },
+      {
+        "item": "kasuri methi",
+        "qty": "1/2 tbsp"
+      }
+    ],
+    "steps": [
+      "Soak rajma 8-12 hours, rinse",
+      "Pressure cook 4-5 whistles till soft",
+      "Fry cumin, bay leaf, onion, chilli; add ginger garlic",
+      "Cook tomato puree till raw smell goes",
+      "Add spices, then rajma with stock; simmer 10-15 min",
+      "Finish with garam masala and kasuri methi"
+    ],
+    "tags": [
+      "rajma",
+      "needs-soak",
+      "rice",
+      "pair-with-curd"
+    ],
+    "source_url": "https://www.indianhealthyrecipes.com/rajma-recipe-rajma-masala-recipe/"
+  },
+  {
+    "id": "l02",
+    "slot": "lunch",
+    "name": "Chana Paneer Masala",
+    "diet": "veg",
+    "protein_g": 25,
+    "kcal": 408,
+    "protein_estimated": true,
+    "time_min": 35,
+    "servings": 2,
+    "ingredients": [
+      {
+        "item": "kabuli chana, dry",
+        "qty": "1/2 cup"
+      },
+      {
+        "item": "turmeric",
+        "qty": "1/8 tsp"
+      },
+      {
+        "item": "paneer",
+        "qty": "150 g"
+      },
+      {
+        "item": "onion",
+        "qty": "3/4 cup"
+      },
+      {
+        "item": "tomato",
+        "qty": "1.25 cups"
+      },
+      {
+        "item": "oil",
+        "qty": "2 tbsp"
+      },
+      {
+        "item": "cumin seeds",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "ginger garlic paste",
+        "qty": "1 tsp"
+      },
+      {
+        "item": "garam masala",
+        "qty": "1 tsp"
+      },
+      {
+        "item": "red chilli powder",
+        "qty": "3/4 tsp"
+      },
+      {
+        "item": "salt",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "kasuri methi",
+        "qty": "1/2 tsp"
+      }
+    ],
+    "steps": [
+      "Soak chana overnight, pressure cook 3 whistles",
+      "Fry cumin and ginger garlic paste",
+      "Saute onion till golden",
+      "Cook tomato 4-5 min, add spices and salt",
+      "Add chana with water, simmer 8-10 min",
+      "Add paneer and kasuri methi, cook 1 min"
+    ],
+    "tags": [
+      "paneer",
+      "chana",
+      "needs-soak",
+      "default-lunch"
+    ],
+    "source_url": "https://www.indianhealthyrecipes.com/chana-paneer-recipe-paneer-chana-masala/"
+  },
+  {
+    "id": "l03",
+    "slot": "lunch",
+    "name": "Soya Chunks Curry",
+    "diet": "vegan",
+    "protein_g": 20,
+    "kcal": 244,
+    "protein_estimated": false,
+    "time_min": 25,
+    "servings": 3,
+    "ingredients": [
+      {
+        "item": "soya chunks",
+        "qty": "1.25 cups"
+      },
+      {
+        "item": "oil",
+        "qty": "1.5-2 tbsp"
+      },
+      {
+        "item": "cumin seeds",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "curry leaves or bay leaf",
+        "qty": "1"
+      },
+      {
+        "item": "onion, chopped",
+        "qty": "1 cup"
+      },
+      {
+        "item": "green chilli",
+        "qty": "1"
+      },
+      {
+        "item": "ginger garlic paste",
+        "qty": "1.5 tsp"
+      },
+      {
+        "item": "tomatoes",
+        "qty": "1.5 cups"
+      },
+      {
+        "item": "coconut or cashews",
+        "qty": "1/4 cup or 10"
+      },
+      {
+        "item": "red chilli powder",
+        "qty": "3/4 tsp"
+      },
+      {
+        "item": "garam masala",
+        "qty": "3/4 tsp"
+      },
+      {
+        "item": "coriander powder",
+        "qty": "3/4 tsp"
+      },
+      {
+        "item": "salt",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "hot water",
+        "qty": "1.25 cups"
+      }
+    ],
+    "steps": [
+      "Soak chunks in boiling water, squeeze and rinse",
+      "Blend tomato and coconut to a paste",
+      "Fry cumin, curry leaves, onion, chilli till golden",
+      "Add ginger garlic, then tomato paste; cook thick",
+      "Add spices and soya, saute 3 min",
+      "Add hot water, simmer 5-8 min"
+    ],
+    "tags": [
+      "soya",
+      "cheap",
+      "rice",
+      "roti"
+    ],
+    "source_url": "https://www.indianhealthyrecipes.com/soya-chunks-curry-meal-maker-curry/"
+  },
+  {
+    "id": "l04",
+    "slot": "lunch",
+    "name": "Palak Paneer",
+    "diet": "veg",
+    "protein_g": 17,
+    "kcal": 438,
+    "protein_estimated": true,
+    "time_min": 45,
+    "servings": 2,
+    "ingredients": [
+      {
+        "item": "paneer, cubed",
+        "qty": "150 g"
+      },
+      {
+        "item": "spinach",
+        "qty": "100-120 g"
+      },
+      {
+        "item": "oil",
+        "qty": "2 tbsp"
+      },
+      {
+        "item": "green chillies",
+        "qty": "2"
+      },
+      {
+        "item": "onion, chopped",
+        "qty": "3/4 cup"
+      },
+      {
+        "item": "tomato",
+        "qty": "1/2 cup"
+      },
+      {
+        "item": "ginger garlic paste",
+        "qty": "3/4 tsp"
+      },
+      {
+        "item": "cashews",
+        "qty": "8-10"
+      },
+      {
+        "item": "garam masala",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "kasuri methi",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "salt",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "water",
+        "qty": "1 cup"
+      }
+    ],
+    "steps": [
+      "Saute chillies, cashews, spinach till wilted; cool",
+      "Blend to a smooth puree",
+      "Fry onion till golden, add ginger garlic",
+      "Cook tomato and salt, add garam masala",
+      "Add water and kasuri methi, then spinach puree",
+      "Stir in paneer, simmer briefly"
+    ],
+    "tags": [
+      "paneer",
+      "spinach",
+      "default-lunch"
+    ],
+    "source_url": "https://www.indianhealthyrecipes.com/palak-paneer-recipe-easy-paneer-recipes-step-by-step-pics/"
+  },
+  {
+    "id": "l05",
+    "slot": "lunch",
+    "name": "Paneer Jalfrezi",
+    "diet": "veg",
+    "protein_g": 18,
+    "kcal": 385,
+    "protein_estimated": true,
+    "time_min": 30,
+    "servings": 3,
+    "ingredients": [
+      {
+        "item": "paneer",
+        "qty": "250-300 g"
+      },
+      {
+        "item": "onion",
+        "qty": "1 medium"
+      },
+      {
+        "item": "tomato puree",
+        "qty": "1.5 cups"
+      },
+      {
+        "item": "bell peppers",
+        "qty": "1 cup"
+      },
+      {
+        "item": "green chilli",
+        "qty": "1"
+      },
+      {
+        "item": "ginger garlic paste",
+        "qty": "2 tsp"
+      },
+      {
+        "item": "oil",
+        "qty": "2-3 tbsp"
+      },
+      {
+        "item": "cumin seeds",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "Kashmiri chilli powder",
+        "qty": "1/2-1 tsp"
+      },
+      {
+        "item": "turmeric",
+        "qty": "1/4 tsp"
+      },
+      {
+        "item": "garam masala",
+        "qty": "1 tsp"
+      },
+      {
+        "item": "salt",
+        "qty": "3/4 tsp"
+      },
+      {
+        "item": "vinegar",
+        "qty": "3/4 tbsp"
+      },
+      {
+        "item": "kasuri methi",
+        "qty": "1 tsp"
+      }
+    ],
+    "steps": [
+      "Puree tomatoes, cut paneer into strips",
+      "Fry cumin and chilli, cook sliced onion 5 min",
+      "Add ginger garlic, spices and tomato; cook thick",
+      "Stir-fry peppers and diced onion 4-5 min",
+      "Add paneer and kasuri methi, cover 2-3 min",
+      "Serve with roti or rice"
+    ],
+    "tags": [
+      "paneer",
+      "default-lunch"
+    ],
+    "source_url": "https://www.indianhealthyrecipes.com/paneer-jalfrezi-recipe/"
+  },
+  {
+    "id": "l06",
+    "slot": "lunch",
+    "name": "Dal Fry",
+    "diet": "vegan",
+    "protein_g": 18,
+    "kcal": 355,
+    "protein_estimated": false,
+    "time_min": 35,
+    "servings": 3,
+    "ingredients": [
+      {
+        "item": "toor dal",
+        "qty": "1 cup"
+      },
+      {
+        "item": "water",
+        "qty": "2.5-3 cups"
+      },
+      {
+        "item": "oil or ghee",
+        "qty": "2 tbsp"
+      },
+      {
+        "item": "cumin seeds",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "mustard seeds",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "hing",
+        "qty": "1/8 tsp"
+      },
+      {
+        "item": "green chilli",
+        "qty": "1-2"
+      },
+      {
+        "item": "onion",
+        "qty": "1 medium"
+      },
+      {
+        "item": "ginger garlic paste",
+        "qty": "1 tsp"
+      },
+      {
+        "item": "tomato",
+        "qty": "1 large"
+      },
+      {
+        "item": "turmeric",
+        "qty": "1/4 tsp"
+      },
+      {
+        "item": "red chilli powder",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "garam masala",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "salt",
+        "qty": "3/4-1 tsp"
+      },
+      {
+        "item": "kasuri methi",
+        "qty": "1 tsp"
+      }
+    ],
+    "steps": [
+      "Pressure cook dal 2-3 whistles, mash",
+      "Temper cumin, mustard, hing in hot oil",
+      "Fry onion and chilli, add ginger garlic",
+      "Cook tomato with salt till soft",
+      "Add spices and dal, simmer with water",
+      "Finish with kasuri methi, coriander, lemon"
+    ],
+    "tags": [
+      "dal",
+      "cheap",
+      "rice"
+    ],
+    "source_url": "https://www.indianhealthyrecipes.com/dal-fry-recipe/"
+  },
+  {
+    "id": "l07",
+    "slot": "lunch",
+    "name": "Dhaba Style Egg Curry",
+    "diet": "egg",
+    "protein_g": 17,
+    "kcal": 500,
+    "protein_estimated": true,
+    "time_min": 40,
+    "servings": 2,
+    "ingredients": [
+      {
+        "item": "eggs, boiled",
+        "qty": "5"
+      },
+      {
+        "item": "oil",
+        "qty": "2 tbsp + 1 tsp"
+      },
+      {
+        "item": "onion, chopped",
+        "qty": "1.25 cups"
+      },
+      {
+        "item": "tomato, chopped",
+        "qty": "1 cup"
+      },
+      {
+        "item": "green chilli",
+        "qty": "1"
+      },
+      {
+        "item": "ginger garlic paste",
+        "qty": "1 tsp"
+      },
+      {
+        "item": "bay leaf, cinnamon, cardamom",
+        "qty": "1 each"
+      },
+      {
+        "item": "red chilli powder",
+        "qty": "1/2-1 tsp"
+      },
+      {
+        "item": "garam masala",
+        "qty": "1/2-1 tsp"
+      },
+      {
+        "item": "turmeric",
+        "qty": "1/8 tsp"
+      },
+      {
+        "item": "salt",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "water",
+        "qty": "1-1.25 cups"
+      },
+      {
+        "item": "cream or cashew paste",
+        "qty": "4 tbsp (optional)"
+      }
+    ],
+    "steps": [
+      "Prick boiled eggs, fry in 1 tsp oil till golden",
+      "Fry whole spices, then onion and chilli",
+      "Add ginger garlic, then tomato till mushy",
+      "Add powders and salt, saute",
+      "Add water, simmer till thick",
+      "Add eggs and kasuri methi; cream optional"
+    ],
+    "tags": [
+      "egg",
+      "rice",
+      "roti"
+    ],
+    "source_url": "https://www.indianhealthyrecipes.com/punjabi-egg-curry-anda-curry-dhaba-style/"
+  },
+  {
+    "id": "l08",
+    "slot": "lunch",
+    "name": "Soya Chunks Pulao",
+    "diet": "veg",
+    "protein_g": 15,
+    "kcal": 394,
+    "protein_estimated": true,
+    "time_min": 30,
+    "servings": 3,
+    "ingredients": [
+      {
+        "item": "soya chunks (small)",
+        "qty": "1 cup"
+      },
+      {
+        "item": "basmati rice, soaked",
+        "qty": "1 cup"
+      },
+      {
+        "item": "ghee",
+        "qty": "2 tbsp"
+      },
+      {
+        "item": "cumin",
+        "qty": "1 tsp"
+      },
+      {
+        "item": "whole spices",
+        "qty": "bay leaf, cinnamon, cloves, cardamom"
+      },
+      {
+        "item": "onion, sliced",
+        "qty": "1"
+      },
+      {
+        "item": "ginger garlic paste",
+        "qty": "1 tbsp"
+      },
+      {
+        "item": "green chillies",
+        "qty": "2"
+      },
+      {
+        "item": "turmeric",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "chilli powder",
+        "qty": "1 tsp"
+      },
+      {
+        "item": "garam masala",
+        "qty": "1 tsp"
+      },
+      {
+        "item": "tomato",
+        "qty": "1"
+      },
+      {
+        "item": "mixed veg (potato, carrot, peas, capsicum)",
+        "qty": "about 1.5 cups"
+      },
+      {
+        "item": "water",
+        "qty": "2 cups"
+      },
+      {
+        "item": "salt",
+        "qty": "1 tsp"
+      },
+      {
+        "item": "mint + coriander",
+        "qty": "2 tbsp each"
+      }
+    ],
+    "steps": [
+      "Boil soya in salted water 5 min, drain",
+      "Fry cumin and whole spices in ghee",
+      "Add onion, ginger garlic, chilli; cook",
+      "Add spices and tomato till mushy",
+      "Add veg and soya, then water, salt; boil",
+      "Add rice and herbs, cover and cook 20 min"
+    ],
+    "tags": [
+      "soya",
+      "one-pot",
+      "pair-with-raita"
+    ],
+    "source_url": "https://hebbarskitchen.com/soya-chunks-pulao-recipe-protein-rich/"
+  },
+  {
+    "id": "l09",
+    "slot": "lunch",
+    "name": "Chana Saag (Chana Palak)",
+    "diet": "vegan",
+    "protein_g": 15,
+    "kcal": 368,
+    "protein_estimated": true,
+    "time_min": 40,
+    "servings": 3,
+    "ingredients": [
+      {
+        "item": "kabuli chana, dry",
+        "qty": "1 cup"
+      },
+      {
+        "item": "spinach",
+        "qty": "4-5 cups"
+      },
+      {
+        "item": "coriander leaves",
+        "qty": "1/4 cup"
+      },
+      {
+        "item": "onion, chopped",
+        "qty": "1 cup"
+      },
+      {
+        "item": "ginger",
+        "qty": "3/4 inch"
+      },
+      {
+        "item": "garlic",
+        "qty": "2 cloves"
+      },
+      {
+        "item": "green chillies",
+        "qty": "1-2"
+      },
+      {
+        "item": "oil",
+        "qty": "2.5 tbsp"
+      },
+      {
+        "item": "tomato, chopped",
+        "qty": "1 cup"
+      },
+      {
+        "item": "garam masala",
+        "qty": "3/4 tsp"
+      },
+      {
+        "item": "salt",
+        "qty": "1 tsp"
+      },
+      {
+        "item": "water",
+        "qty": "1.5 cups"
+      }
+    ],
+    "steps": [
+      "Soak chana overnight, pressure cook 3-4 whistles",
+      "Saute ginger, garlic, chilli and onion till golden",
+      "Wilt spinach 2-3 min, cool and blend with coriander",
+      "Cook tomato and salt, add garam masala, chana, water",
+      "Simmer 5 min, stir in saag paste",
+      "Bubble 1-2 min and serve"
+    ],
+    "tags": [
+      "chana",
+      "spinach",
+      "needs-soak"
+    ],
+    "source_url": "https://www.indianhealthyrecipes.com/chana-saag/"
+  },
+  {
+    "id": "e01",
+    "slot": "evening_snack",
+    "name": "Mango Protein Lassi",
+    "diet": "veg",
+    "protein_g": 34,
+    "kcal": 355,
+    "protein_estimated": true,
+    "time_min": 5,
+    "servings": 1,
+    "ingredients": [
+      {
+        "item": "whey protein (mango or vanilla)",
+        "qty": "1 scoop"
+      },
+      {
+        "item": "mango, cubed",
+        "qty": "1"
+      },
+      {
+        "item": "mint leaves",
+        "qty": "1 handful"
+      },
+      {
+        "item": "fat-free curd / yogurt",
+        "qty": "200 ml"
+      },
+      {
+        "item": "ice",
+        "qty": "1 handful"
+      },
+      {
+        "item": "water",
+        "qty": "50 ml"
+      }
+    ],
+    "steps": [
+      "Add everything to a blender",
+      "Blend till smooth",
+      "Top with a pinch of cinnamon and mint"
+    ],
+    "tags": [
+      "whey",
+      "curd",
+      "fruit",
+      "post-workout",
+      "no-cook"
+    ],
+    "source_url": "https://myprotein.co.in/blog/recipe/high-protein-mango-lassi-worlds-kitchen"
+  },
+  {
+    "id": "e02",
+    "slot": "evening_snack",
+    "name": "Peanut Butter Whey Smoothie",
+    "diet": "veg",
+    "protein_g": 21,
+    "kcal": 291,
+    "protein_estimated": false,
+    "time_min": 12,
+    "servings": 1,
+    "ingredients": [
+      {
+        "item": "oats (soaked)",
+        "qty": "1/4 cup"
+      },
+      {
+        "item": "whey",
+        "qty": "4 tsp"
+      },
+      {
+        "item": "raisins",
+        "qty": "3"
+      },
+      {
+        "item": "almonds (soaked)",
+        "qty": "2"
+      },
+      {
+        "item": "jaggery",
+        "qty": "1/2 tbsp"
+      },
+      {
+        "item": "banana",
+        "qty": "1/3"
+      },
+      {
+        "item": "skimmed milk",
+        "qty": "1 cup"
+      },
+      {
+        "item": "water",
+        "qty": "1/4 glass"
+      },
+      {
+        "item": "peanut butter",
+        "qty": "1/2 tsp"
+      }
+    ],
+    "steps": [
+      "Soak almonds overnight and peel",
+      "Soak oats in water 4 hours",
+      "Blend everything till smooth",
+      "Serve chilled"
+    ],
+    "tags": [
+      "whey",
+      "milk",
+      "oats",
+      "post-workout"
+    ],
+    "source_url": "https://cult.fit/live/recipe/-peanut-butter-whey-smoothie/RECIPE67"
+  },
+  {
+    "id": "e03",
+    "slot": "evening_snack",
+    "name": "Chilli Soya Chunks",
+    "diet": "vegan",
+    "protein_g": 17,
+    "kcal": 295,
+    "protein_estimated": false,
+    "time_min": 30,
+    "servings": 3,
+    "ingredients": [
+      {
+        "item": "soya chunks",
+        "qty": "1 cup"
+      },
+      {
+        "item": "salt",
+        "qty": "1 tsp + 1 tsp"
+      },
+      {
+        "item": "corn flour",
+        "qty": "1/4 cup"
+      },
+      {
+        "item": "chilli powder",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "garam masala",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "oil",
+        "qty": "for frying + 2 tbsp"
+      },
+      {
+        "item": "ginger garlic, chopped",
+        "qty": "2 tbsp"
+      },
+      {
+        "item": "spring onion",
+        "qty": "4 tbsp"
+      },
+      {
+        "item": "onion",
+        "qty": "1/2"
+      },
+      {
+        "item": "capsicum",
+        "qty": "1/2"
+      },
+      {
+        "item": "green chillies",
+        "qty": "3"
+      },
+      {
+        "item": "chilli sauce",
+        "qty": "2 tbsp"
+      },
+      {
+        "item": "tomato sauce",
+        "qty": "2 tbsp"
+      },
+      {
+        "item": "vinegar",
+        "qty": "2 tbsp"
+      },
+      {
+        "item": "soy sauce",
+        "qty": "2 tsp"
+      }
+    ],
+    "steps": [
+      "Soak chunks in hot salted water 5 min, squeeze",
+      "Coat with corn flour and spices",
+      "Fry (or air-fry / pan-sear) till crisp",
+      "Saute ginger garlic, onion, capsicum, chillies",
+      "Add sauces, vinegar and salt",
+      "Toss in soya and spring onion"
+    ],
+    "tags": [
+      "soya",
+      "indo-chinese",
+      "air-fry-option"
+    ],
+    "source_url": "https://hebbarskitchen.com/soya-chilli-recipe-soyabean-chilly/"
+  },
+  {
+    "id": "e04",
+    "slot": "evening_snack",
+    "name": "Paneer Tikka",
+    "diet": "veg",
+    "protein_g": 13,
+    "kcal": 352,
+    "protein_estimated": false,
+    "time_min": 35,
+    "servings": 3,
+    "ingredients": [
+      {
+        "item": "paneer, cubed",
+        "qty": "200 g"
+      },
+      {
+        "item": "Greek yogurt / hung curd",
+        "qty": "6 tbsp"
+      },
+      {
+        "item": "mustard oil",
+        "qty": "1.5 tbsp"
+      },
+      {
+        "item": "onion",
+        "qty": "1 large"
+      },
+      {
+        "item": "capsicum (red + green)",
+        "qty": "2"
+      },
+      {
+        "item": "red chilli powder",
+        "qty": "1-1.5 tsp"
+      },
+      {
+        "item": "salt",
+        "qty": "1/2-3/4 tsp"
+      },
+      {
+        "item": "turmeric",
+        "qty": "1/4 tsp"
+      },
+      {
+        "item": "garam masala",
+        "qty": "1 tsp"
+      },
+      {
+        "item": "chaat masala",
+        "qty": "1 tsp"
+      },
+      {
+        "item": "kasuri methi",
+        "qty": "1 tsp"
+      },
+      {
+        "item": "ginger garlic paste",
+        "qty": "1.25 tsp"
+      }
+    ],
+    "steps": [
+      "Mix curd, spices, ginger garlic and oil",
+      "Coat veg, then paneer",
+      "Rest in fridge 1-2 hours, skewer",
+      "Air-fry 200 C 5+2 min, or tawa, or oven 230 C",
+      "Brush with marinade and finish"
+    ],
+    "tags": [
+      "paneer",
+      "curd",
+      "air-fry-option"
+    ],
+    "source_url": "https://www.indianhealthyrecipes.com/paneer-tikka-on-stove-top/"
+  },
+  {
+    "id": "e05",
+    "slot": "evening_snack",
+    "name": "Soya Chunks Cutlet (Soya Tikki)",
+    "diet": "vegan",
+    "protein_g": 12,
+    "kcal": 242,
+    "protein_estimated": true,
+    "time_min": 45,
+    "servings": 3,
+    "ingredients": [
+      {
+        "item": "soya chunks",
+        "qty": "1 cup"
+      },
+      {
+        "item": "turmeric",
+        "qty": "1/4 tsp"
+      },
+      {
+        "item": "chilli powder",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "cumin powder",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "garam masala",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "amchur",
+        "qty": "1 tsp"
+      },
+      {
+        "item": "salt",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "onion, chopped",
+        "qty": "1/2"
+      },
+      {
+        "item": "chilli-ginger-garlic paste",
+        "qty": "2 tbsp"
+      },
+      {
+        "item": "spring onion",
+        "qty": "2 tbsp"
+      },
+      {
+        "item": "roasted besan",
+        "qty": "1/2 cup"
+      },
+      {
+        "item": "oil",
+        "qty": "to shallow fry"
+      }
+    ],
+    "steps": [
+      "Soak soya in hot salted water 10 min, squeeze",
+      "Pulse coarsely in a mixer",
+      "Mix in spices, onion, paste, spring onion, besan",
+      "Shape into small tikkis with oiled hands",
+      "Shallow fry on low till golden both sides",
+      "Serve with curd and green chutney"
+    ],
+    "tags": [
+      "soya",
+      "besan",
+      "makes-9"
+    ],
+    "source_url": "https://hebbarskitchen.com/wprm_print/soya-chunks-cutlet-recipe-soya-tikki-high-protein-tikki"
+  },
+  {
+    "id": "e06",
+    "slot": "evening_snack",
+    "name": "Khaman Dhokla",
+    "diet": "vegan",
+    "protein_g": 11,
+    "kcal": 323,
+    "protein_estimated": false,
+    "time_min": 30,
+    "servings": 4,
+    "ingredients": [
+      {
+        "item": "besan",
+        "qty": "2 cups (220 g)"
+      },
+      {
+        "item": "fine semolina",
+        "qty": "2 tbsp"
+      },
+      {
+        "item": "water",
+        "qty": "1.25 cups"
+      },
+      {
+        "item": "citric acid",
+        "qty": "1 tsp"
+      },
+      {
+        "item": "sugar",
+        "qty": "3 tbsp + 1 tbsp"
+      },
+      {
+        "item": "salt",
+        "qty": "1-1.25 tsp"
+      },
+      {
+        "item": "oil",
+        "qty": "2 tbsp + 1 tbsp"
+      },
+      {
+        "item": "ginger, grated",
+        "qty": "1 tbsp"
+      },
+      {
+        "item": "green chillies",
+        "qty": "2 + 2"
+      },
+      {
+        "item": "turmeric",
+        "qty": "1/4 tsp"
+      },
+      {
+        "item": "Eno",
+        "qty": "1.5 tsp"
+      },
+      {
+        "item": "mustard seeds",
+        "qty": "1 tsp"
+      },
+      {
+        "item": "curry leaves",
+        "qty": "12"
+      }
+    ],
+    "steps": [
+      "Whisk water, citric acid, sugar, salt, oil, ginger, chilli, semolina",
+      "Sieve in besan and turmeric; whisk, rest 10 min",
+      "Add Eno, mix till frothy, pour into greased pan",
+      "Steam 18-20 min; cool",
+      "Temper mustard, curry leaves, chillies; add sugar water",
+      "Pour over sliced dhokla"
+    ],
+    "tags": [
+      "besan",
+      "steamed",
+      "makes-16-pieces"
+    ],
+    "source_url": "https://www.indianhealthyrecipes.com/khaman-dhokla/"
+  },
+  {
+    "id": "e07",
+    "slot": "evening_snack",
+    "name": "Paneer Sandwich",
+    "diet": "veg",
+    "protein_g": 10,
+    "kcal": 340,
+    "protein_estimated": true,
+    "time_min": 20,
+    "servings": 3,
+    "ingredients": [
+      {
+        "item": "brown bread",
+        "qty": "6 slices"
+      },
+      {
+        "item": "butter",
+        "qty": "1 tbsp"
+      },
+      {
+        "item": "paneer, crumbled",
+        "qty": "1/2 cup"
+      },
+      {
+        "item": "sauce",
+        "qty": "1 tbsp"
+      },
+      {
+        "item": "tomato, chopped",
+        "qty": "2 tbsp"
+      },
+      {
+        "item": "sweet corn",
+        "qty": "3 tbsp"
+      },
+      {
+        "item": "carrot, grated",
+        "qty": "1/4 cup"
+      },
+      {
+        "item": "cucumber",
+        "qty": "2 tbsp"
+      },
+      {
+        "item": "coriander leaves",
+        "qty": "2 tbsp"
+      },
+      {
+        "item": "green chilli",
+        "qty": "1"
+      },
+      {
+        "item": "salt",
+        "qty": "1/4 tsp"
+      },
+      {
+        "item": "green chutney or hung curd",
+        "qty": "2 tbsp"
+      }
+    ],
+    "steps": [
+      "Mix paneer, veg, chilli, coriander and salt",
+      "Add sauce and chaat masala or lemon",
+      "Butter bread outsides, spread chutney inside",
+      "Fill and close",
+      "Toast till golden"
+    ],
+    "tags": [
+      "paneer",
+      "quick",
+      "add-more-paneer-for-protein"
+    ],
+    "source_url": "https://www.indianhealthyrecipes.com/paneer-sandwich/"
+  },
+  {
+    "id": "e08",
+    "slot": "evening_snack",
+    "name": "Peanut Chaat",
+    "diet": "vegan",
+    "protein_g": 9,
+    "kcal": 200,
+    "protein_estimated": false,
+    "time_min": 10,
+    "servings": 1,
+    "ingredients": [
+      {
+        "item": "roasted unsalted peanuts",
+        "qty": "1/4 cup"
+      },
+      {
+        "item": "cucumber, diced",
+        "qty": "1/4 cup"
+      },
+      {
+        "item": "tomato, diced",
+        "qty": "1/4 cup"
+      },
+      {
+        "item": "red onion",
+        "qty": "2 tbsp"
+      },
+      {
+        "item": "green chilli",
+        "qty": "1/2"
+      },
+      {
+        "item": "coriander leaves",
+        "qty": "1 tbsp"
+      },
+      {
+        "item": "ginger",
+        "qty": "1 tsp"
+      },
+      {
+        "item": "cumin powder",
+        "qty": "1/8 tsp"
+      },
+      {
+        "item": "lemon juice",
+        "qty": "1 tsp"
+      },
+      {
+        "item": "chaat masala",
+        "qty": "pinch"
+      },
+      {
+        "item": "salt + pepper",
+        "qty": "pinch"
+      }
+    ],
+    "steps": [
+      "Chop the veg",
+      "Combine everything in a bowl",
+      "Toss and serve straight away"
+    ],
+    "tags": [
+      "peanut",
+      "no-cook",
+      "5-min"
+    ],
+    "source_url": "https://diabetesfoodhub.org/recipes/peanut-chaat"
+  },
+  {
+    "id": "e09",
+    "slot": "evening_snack",
+    "name": "Dry Chana Masala",
+    "diet": "vegan",
+    "protein_g": 9,
+    "kcal": 231,
+    "protein_estimated": false,
+    "time_min": 30,
+    "servings": 3,
+    "ingredients": [
+      {
+        "item": "cooked kabuli chana",
+        "qty": "2 cups (1 cup dry)"
+      },
+      {
+        "item": "oil",
+        "qty": "1 tbsp"
+      },
+      {
+        "item": "mustard + cumin seeds",
+        "qty": "1/2 tsp each"
+      },
+      {
+        "item": "green chilli",
+        "qty": "1"
+      },
+      {
+        "item": "curry leaves",
+        "qty": "1 sprig"
+      },
+      {
+        "item": "hing",
+        "qty": "pinch"
+      },
+      {
+        "item": "ginger garlic paste",
+        "qty": "1 tsp"
+      },
+      {
+        "item": "turmeric",
+        "qty": "1/8 tsp"
+      },
+      {
+        "item": "red chilli powder",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "garam masala",
+        "qty": "1 tsp"
+      },
+      {
+        "item": "salt",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "lemon",
+        "qty": "to finish"
+      }
+    ],
+    "steps": [
+      "Soak chana 8 hours, pressure cook",
+      "Splutter mustard, cumin, chilli, curry leaves, hing",
+      "Add ginger garlic, then chana",
+      "Stir in spices and salt, saute 1 min",
+      "Squeeze lemon and serve"
+    ],
+    "tags": [
+      "chana",
+      "needs-soak",
+      "meal-prep"
+    ],
+    "source_url": "https://www.indianhealthyrecipes.com/dry-channa-masala-masala-senagalu-easy-chole-recipe/"
+  },
+  {
+    "id": "d01",
+    "slot": "dinner",
+    "name": "Soya Chunks Dry Fry",
+    "diet": "vegan",
+    "protein_g": 24,
+    "kcal": 320,
+    "protein_estimated": true,
+    "time_min": 20,
+    "servings": 2,
+    "ingredients": [
+      {
+        "item": "soya chunks (small)",
+        "qty": "3/4-1 cup"
+      },
+      {
+        "item": "oil",
+        "qty": "2 tbsp"
+      },
+      {
+        "item": "cumin seeds",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "curry leaves",
+        "qty": "1 sprig"
+      },
+      {
+        "item": "hing",
+        "qty": "pinch"
+      },
+      {
+        "item": "onion, sliced",
+        "qty": "1 large"
+      },
+      {
+        "item": "green chillies",
+        "qty": "1-2"
+      },
+      {
+        "item": "ginger garlic paste",
+        "qty": "3/4-1 tsp"
+      },
+      {
+        "item": "tomatoes",
+        "qty": "2 medium"
+      },
+      {
+        "item": "turmeric",
+        "qty": "pinch"
+      },
+      {
+        "item": "red chilli powder",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "garam masala",
+        "qty": "1/2-3/4 tsp"
+      },
+      {
+        "item": "salt",
+        "qty": "to taste"
+      }
+    ],
+    "steps": [
+      "Boil soya 5 min, rinse, squeeze dry",
+      "Fry cumin, curry leaves, hing, chilli, onion",
+      "Add ginger garlic, cook off raw smell",
+      "Cook tomato, salt, turmeric till mushy",
+      "Add chilli powder, garam masala and soya; cover 3-5 min",
+      "Saute 2-3 min, garnish coriander"
+    ],
+    "tags": [
+      "soya",
+      "cheap",
+      "roti"
+    ],
+    "source_url": "https://www.indianhealthyrecipes.com/meal-maker-fry-soya-chunks-recipe-easy-side-dish-for-rice/"
+  },
+  {
+    "id": "d02",
+    "slot": "dinner",
+    "name": "Palak Tofu",
+    "diet": "vegan",
+    "protein_g": 18,
+    "kcal": 419,
+    "protein_estimated": true,
+    "time_min": 45,
+    "servings": 2,
+    "ingredients": [
+      {
+        "item": "extra firm tofu",
+        "qty": "200 g"
+      },
+      {
+        "item": "lemon juice",
+        "qty": "2 tbsp total"
+      },
+      {
+        "item": "Kashmiri chilli powder",
+        "qty": "1/4-1/2 tsp"
+      },
+      {
+        "item": "garam masala",
+        "qty": "1 tsp total"
+      },
+      {
+        "item": "cashews (soaked)",
+        "qty": "15"
+      },
+      {
+        "item": "coconut oil",
+        "qty": "2 tbsp"
+      },
+      {
+        "item": "onion",
+        "qty": "3/4 cup"
+      },
+      {
+        "item": "green chillies",
+        "qty": "1-2"
+      },
+      {
+        "item": "ginger",
+        "qty": "1/2 inch"
+      },
+      {
+        "item": "garlic",
+        "qty": "3 cloves"
+      },
+      {
+        "item": "tomato",
+        "qty": "1/2 cup"
+      },
+      {
+        "item": "spinach",
+        "qty": "120 g"
+      },
+      {
+        "item": "cumin powder",
+        "qty": "1/4 tsp"
+      },
+      {
+        "item": "salt",
+        "qty": "3/4 tsp"
+      },
+      {
+        "item": "kasuri methi",
+        "qty": "1 tsp"
+      }
+    ],
+    "steps": [
+      "Marinate tofu in lemon, salt, chilli, garam masala",
+      "Saute onion, ginger, garlic, chilli; add tomato",
+      "Wilt spinach 4-5 min, cool",
+      "Blend with cashews to a smooth puree",
+      "Simmer puree with spices and kasuri methi",
+      "Pan-fry tofu golden, add to gravy with lemon"
+    ],
+    "tags": [
+      "tofu",
+      "spinach",
+      "paneer-swap"
+    ],
+    "source_url": "https://www.indianhealthyrecipes.com/palak-tofu/"
+  },
+  {
+    "id": "d03",
+    "slot": "dinner",
+    "name": "Tofu Kadai",
+    "diet": "vegan",
+    "protein_g": 17,
+    "kcal": 272,
+    "protein_estimated": true,
+    "time_min": 30,
+    "servings": 2,
+    "ingredients": [
+      {
+        "item": "extra firm tofu, cubed",
+        "qty": "200-250 g"
+      },
+      {
+        "item": "tomatoes, pureed",
+        "qty": "1.5 cups"
+      },
+      {
+        "item": "onion, diced",
+        "qty": "3/4 cup"
+      },
+      {
+        "item": "bell peppers, diced",
+        "qty": "1 cup"
+      },
+      {
+        "item": "ginger",
+        "qty": "1 tsp"
+      },
+      {
+        "item": "curry leaves",
+        "qty": "1 sprig"
+      },
+      {
+        "item": "oil",
+        "qty": "2 tbsp"
+      },
+      {
+        "item": "Kashmiri chilli powder",
+        "qty": "1-1.5 tsp"
+      },
+      {
+        "item": "garam masala",
+        "qty": "1.5-2 tsp"
+      },
+      {
+        "item": "salt",
+        "qty": "1 tsp"
+      },
+      {
+        "item": "kasuri methi",
+        "qty": "1 tsp"
+      },
+      {
+        "item": "soy sauce",
+        "qty": "1 tbsp"
+      }
+    ],
+    "steps": [
+      "Press tofu and cube it",
+      "Fry curry leaves, ginger, spices, tomato till thick",
+      "Pan-fry tofu golden; set aside",
+      "Saute onion and peppers 3 min",
+      "Add tofu, soy sauce, salt, kasuri methi; simmer 3 min",
+      "Serve with roti or rice"
+    ],
+    "tags": [
+      "tofu",
+      "paneer-swap"
+    ],
+    "source_url": "https://www.indianhealthyrecipes.com/tofu-stir-fry-recipe/"
+  },
+  {
+    "id": "d04",
+    "slot": "dinner",
+    "name": "Tofu Bhurji",
+    "diet": "vegan",
+    "protein_g": 16,
+    "kcal": 281,
+    "protein_estimated": true,
+    "time_min": 25,
+    "servings": 2,
+    "ingredients": [
+      {
+        "item": "firm tofu",
+        "qty": "200 g"
+      },
+      {
+        "item": "oil",
+        "qty": "1.5 tbsp"
+      },
+      {
+        "item": "curry leaves",
+        "qty": "1 sprig"
+      },
+      {
+        "item": "onion, chopped",
+        "qty": "1/2 cup"
+      },
+      {
+        "item": "green chilli",
+        "qty": "1"
+      },
+      {
+        "item": "ginger garlic paste",
+        "qty": "1 tsp"
+      },
+      {
+        "item": "tomato, chopped",
+        "qty": "1/3 cup"
+      },
+      {
+        "item": "salt",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "turmeric",
+        "qty": "1/4 tsp"
+      },
+      {
+        "item": "Kashmiri chilli powder",
+        "qty": "1/4-1/2 tsp"
+      },
+      {
+        "item": "garam masala",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "cumin powder",
+        "qty": "1/4 tsp"
+      },
+      {
+        "item": "kasuri methi",
+        "qty": "1 tsp"
+      },
+      {
+        "item": "coriander leaves",
+        "qty": "2 tbsp"
+      }
+    ],
+    "steps": [
+      "Drain and crumble tofu by hand",
+      "Saute curry leaves, onion, chilli ~6 min",
+      "Add ginger garlic, then tomato, salt, turmeric",
+      "Add tofu, saute 6 min",
+      "Add spices and kasuri methi, 1-2 min",
+      "Garnish; serve with roti or toast"
+    ],
+    "tags": [
+      "tofu",
+      "quick",
+      "paneer-swap"
+    ],
+    "source_url": "https://www.indianhealthyrecipes.com/tofu-bhurji/"
+  },
+  {
+    "id": "d05",
+    "slot": "dinner",
+    "name": "Moong Dal Khichdi",
+    "diet": "veg",
+    "protein_g": 16,
+    "kcal": 463,
+    "protein_estimated": false,
+    "time_min": 35,
+    "servings": 2,
+    "ingredients": [
+      {
+        "item": "rice",
+        "qty": "1/2 cup"
+      },
+      {
+        "item": "yellow moong dal",
+        "qty": "1/2 cup"
+      },
+      {
+        "item": "ghee",
+        "qty": "1-2 tbsp + 1/2 tbsp"
+      },
+      {
+        "item": "cumin seeds",
+        "qty": "3/4-1 tsp"
+      },
+      {
+        "item": "bay leaf",
+        "qty": "1"
+      },
+      {
+        "item": "ginger, grated",
+        "qty": "3/4-1 tsp"
+      },
+      {
+        "item": "onion",
+        "qty": "1/4 cup"
+      },
+      {
+        "item": "green chilli",
+        "qty": "1"
+      },
+      {
+        "item": "tomato",
+        "qty": "1/2 cup"
+      },
+      {
+        "item": "turmeric",
+        "qty": "1/4 tsp"
+      },
+      {
+        "item": "salt",
+        "qty": "1/3 tsp"
+      },
+      {
+        "item": "hing",
+        "qty": "pinch"
+      },
+      {
+        "item": "water",
+        "qty": "3-4 cups"
+      },
+      {
+        "item": "mixed veg",
+        "qty": "optional"
+      }
+    ],
+    "steps": [
+      "Rinse rice and dal; soak 30 min if no cooker",
+      "Temper bay leaf, cumin, ginger, hing in ghee",
+      "Saute onion, chilli, tomato, veg, turmeric, salt",
+      "Add rice and dal, saute, add water",
+      "Pressure cook 2-5 whistles",
+      "Top with ghee; serve with curd"
+    ],
+    "tags": [
+      "dal",
+      "one-pot",
+      "light-dinner",
+      "pair-with-curd"
+    ],
+    "source_url": "https://www.indianhealthyrecipes.com/dal-khichdi-recipe/"
+  },
+  {
+    "id": "d06",
+    "slot": "dinner",
+    "name": "Egg Keema",
+    "diet": "egg",
+    "protein_g": 15,
+    "kcal": 324,
+    "protein_estimated": true,
+    "time_min": 40,
+    "servings": 2,
+    "ingredients": [
+      {
+        "item": "eggs, hard-boiled",
+        "qty": "4"
+      },
+      {
+        "item": "oil",
+        "qty": "2 tbsp"
+      },
+      {
+        "item": "whole spices",
+        "qty": "bay leaf, 2 cardamom, 2 cloves, cinnamon"
+      },
+      {
+        "item": "cumin",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "onion, chopped",
+        "qty": "3/4 cup"
+      },
+      {
+        "item": "green chilli",
+        "qty": "1"
+      },
+      {
+        "item": "tomato, chopped",
+        "qty": "1/2 cup"
+      },
+      {
+        "item": "ginger garlic paste",
+        "qty": "1 tsp"
+      },
+      {
+        "item": "red chilli powder",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "garam masala",
+        "qty": "1-1.25 tsp"
+      },
+      {
+        "item": "coriander powder",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "green peas",
+        "qty": "1/2 cup"
+      },
+      {
+        "item": "mint + coriander",
+        "qty": "1 handful"
+      },
+      {
+        "item": "salt",
+        "qty": "to taste"
+      }
+    ],
+    "steps": [
+      "Boil, cool and finely chop eggs",
+      "Fry whole spices and cumin",
+      "Cook onion golden, add ginger garlic and tomato",
+      "Add spices, then peas",
+      "Add a little water, salt and herbs; thicken",
+      "Fold in the chopped eggs"
+    ],
+    "tags": [
+      "egg",
+      "roti"
+    ],
+    "source_url": "https://www.indianhealthyrecipes.com/egg-keema-recipe/"
+  },
+  {
+    "id": "d07",
+    "slot": "dinner",
+    "name": "Soya Keema (Soya Granules)",
+    "diet": "vegan",
+    "protein_g": 14,
+    "kcal": 234,
+    "protein_estimated": true,
+    "time_min": 35,
+    "servings": 2,
+    "ingredients": [
+      {
+        "item": "soya granules",
+        "qty": "1/2 cup"
+      },
+      {
+        "item": "cauliflower, minced",
+        "qty": "1/2 cup"
+      },
+      {
+        "item": "tomatoes",
+        "qty": "1/2 cup"
+      },
+      {
+        "item": "bell pepper",
+        "qty": "1/8 cup"
+      },
+      {
+        "item": "green peas",
+        "qty": "1/8 cup"
+      },
+      {
+        "item": "onion",
+        "qty": "1/4-1/2 cup"
+      },
+      {
+        "item": "green chilli",
+        "qty": "1"
+      },
+      {
+        "item": "oil",
+        "qty": "2 tbsp"
+      },
+      {
+        "item": "ginger garlic paste",
+        "qty": "1 tbsp"
+      },
+      {
+        "item": "red chilli powder",
+        "qty": "1 tsp"
+      },
+      {
+        "item": "garam masala",
+        "qty": "1 tsp"
+      },
+      {
+        "item": "turmeric",
+        "qty": "1/8 tsp"
+      },
+      {
+        "item": "kasuri methi",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "cashew paste",
+        "qty": "2 tbsp"
+      },
+      {
+        "item": "whole spices",
+        "qty": "as listed"
+      }
+    ],
+    "steps": [
+      "Soak granules in hot water, rinse, squeeze dry",
+      "Temper whole spices in oil",
+      "Saute onion, add ginger garlic",
+      "Cook tomato, turmeric, chilli till mushy",
+      "Add soya, peas, cauliflower, pepper and a little water",
+      "Add kasuri methi, garam masala, cashew paste; simmer"
+    ],
+    "tags": [
+      "soya",
+      "roti",
+      "pav"
+    ],
+    "source_url": "https://www.indianhealthyrecipes.com/soya-keema/"
+  },
+  {
+    "id": "d08",
+    "slot": "dinner",
+    "name": "Moong Dal Tadka",
+    "diet": "vegan",
+    "protein_g": 13,
+    "kcal": 230,
+    "protein_estimated": true,
+    "time_min": 30,
+    "servings": 2,
+    "ingredients": [
+      {
+        "item": "yellow moong dal",
+        "qty": "1/2 cup"
+      },
+      {
+        "item": "onion",
+        "qty": "1/4 cup"
+      },
+      {
+        "item": "tomato",
+        "qty": "1/2 cup"
+      },
+      {
+        "item": "oil",
+        "qty": "1 tbsp + 1 tbsp"
+      },
+      {
+        "item": "cumin seeds",
+        "qty": "1 tsp total"
+      },
+      {
+        "item": "ginger",
+        "qty": "1 tsp"
+      },
+      {
+        "item": "green chilli",
+        "qty": "1"
+      },
+      {
+        "item": "curry leaves",
+        "qty": "4-5"
+      },
+      {
+        "item": "turmeric",
+        "qty": "1/8 tsp"
+      },
+      {
+        "item": "Kashmiri chilli powder",
+        "qty": "1/4 tsp"
+      },
+      {
+        "item": "garam masala",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "salt",
+        "qty": "1/2 tsp"
+      },
+      {
+        "item": "water",
+        "qty": "1.75 cups"
+      },
+      {
+        "item": "garlic",
+        "qty": "2-3 cloves"
+      },
+      {
+        "item": "dried red chilli",
+        "qty": "1"
+      }
+    ],
+    "steps": [
+      "Rinse and soak dal",
+      "Fry cumin, ginger, chilli, curry leaves, onion",
+      "Add tomato, salt and spices",
+      "Add dal and water; pressure cook 4-5 whistles",
+      "Mash, add kasuri methi and amchur",
+      "Pour garlic-chilli tadka over"
+    ],
+    "tags": [
+      "dal",
+      "light-dinner",
+      "pair-with-paneer"
+    ],
+    "source_url": "https://www.indianhealthyrecipes.com/moong-dal-recipe/"
+  }
+]

@@ -7,7 +7,6 @@ import { Backdrop, EdgeGlow } from '@/components/Backdrop';
 import { EdgeBlur } from '@/components/EdgeBlur';
 import { Dock, orbFromBottom } from '@/components/Dock';
 import { Notice } from '@/components/Notice';
-import { NowCard } from '@/components/NowCard';
 import { SignIn } from '@/components/SignIn';
 import { AccountSheet } from '@/components/AccountSheet';
 import { PcMicSheet } from '@/components/PcMicSheet';
@@ -22,7 +21,7 @@ import { gazeTouch } from '@/lib/gaze';
 import { useToday } from '@/lib/useToday';
 import { useBody } from '@/lib/body';
 import { startContactSync } from '@/lib/contacts';
-import { DayPlan } from '@/today/DayPlan';
+import { TodayPlan, TodayToast, useTodayToast } from '@/today2/TodayPlan';
 import { type NoraKeys, useWispr } from '@/lib/wispr';
 import { noraUi } from '@/nora/state';
 import { MoodLogger } from '@/mood/MoodLogger';
@@ -102,6 +101,7 @@ function PhoneToday() {
   const agent = useAgent(!!t.view && native);
   const noraOpen = useNora().chat;
   const b = useBody(!!t.view); // today's workout, water and protein, under the Body part of the plan
+  const tt = useTodayToast();
   const signedIn = !!t.view;
   useEffect(() => (signedIn ? startContactSync() : undefined), [signedIn]); // contacts to the PC, at most every 12 h (lib/contacts.ts)
   // A command is being taken or worked on (the Action button may have started it with the app shut): show it.
@@ -116,8 +116,7 @@ function PhoneToday() {
   const notBuilt = useCallback((what: string) => setLocal(`${what}: not built yet`), []);
   const { clearNotice } = t;
   const clear = useCallback(() => { setLocal(null); clearNotice(); }, [clearNotice]);
-  const { addWater, reload: reloadBody } = b;
-  const water = useCallback(async () => { const e = await addWater(); if (e) setLocal(e); }, [addWater]);
+  const { reload: reloadBody } = b;
   // Ticking a task here moves the goal it serves: Mission and Growth read it again.
   const { toggle: toggleTask } = t;
   const toggle = useCallback(async (id: string) => { await toggleTask(id); invalidate('/mod/mission/'); invalidate('/mod/growth/'); }, [toggleTask]);
@@ -151,13 +150,13 @@ function PhoneToday() {
 
   const v = t.view;
   const orb = orbFromBottom(insets.bottom);
-  const empty = !v.sections.length && !b.body;
   return (
     // every touch on Today is passed to the smiley, which looks toward the finger
     <View style={s.screen} {...gazeTouch}>
       <Backdrop orb={orb} />
       <ScrollView
         contentContainerStyle={{ flexGrow: 1 }}
+        contentOffset={{ x: 0, y: insets.top + HERO_H - 40 }}
         showsVerticalScrollIndicator={false}
         scrollEventThrottle={100}
         onScroll={(e) => { const on = e.nativeEvent.contentOffset.y < insets.top + HERO_H; if (on !== heroOn) setHeroOn(on); }}
@@ -165,9 +164,10 @@ function PhoneToday() {
         <Hero view={v} top={insets.top} topBar={TOP_GAP + TOP_H} active={heroOn && !aspect} />
 
         <View style={[s.sheet, { paddingBottom: insets.bottom + 140 }]}>
-          <NowCard moment={v.moment} onDone={toggle} />
-          <DayPlan sections={v.sections} body={b.body} onToggle={toggle} onOpen={openLink} onWater={water} />
-          {empty ? <Text style={s.emptyText}>Nothing due today or carried over. Add tasks with agentos on the PC.</Text> : null}
+          {t.state.status === 'ready' ? (
+            <TodayPlan today={t.state.today} life={t.state.life} areas={t.state.areas} body={b.body} say={tt.say} hide={tt.hide}
+              onOpen={openLink} onToggleTask={(id) => { void toggle(id); }} onHome={() => setAspect(null)} />
+          ) : null}
           <Pressable accessibilityRole="button" onPress={async () => { await signOut(); t.reload(); }} style={s.more}>
             <Text style={[s.moreText, { color: C.faint }]}>Sign out</Text>
           </Pressable>
@@ -190,6 +190,7 @@ function PhoneToday() {
       </LifeContext>
       <EdgeBlur height={insets.bottom + 150} strength={35} curve={2.6} />
       <EdgeGlow height={insets.bottom + 200} orb={orb} />
+      <TodayToast toast={tt.toast} bottom={insets.bottom + 112} />
       <Notice text={kbMic.state === 'recording' ? 'Listening for the keyboard. Swipe back to your app and talk.' : kbMic.error ?? local ?? t.notice} bottom={insets.bottom + 112} onClear={clear} />
       <Dock bottom={insets.bottom} width={width} aspects={v.aspects} onNotBuilt={notBuilt}
         onAspect={openAspect} onHome={aspect ? closeAspect : undefined} hidden={immersive} />

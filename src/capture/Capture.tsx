@@ -422,7 +422,7 @@ function WakeLine({ hm, onMove, onDone }: { hm: string; onMove: (d: number) => v
 }
 
 /** Asks the PC again every 1.5 s until it has read the photo, `give` ms pass, or the panel has gone. */
-async function untilRead(first: SmartItem, get: (id: string) => Promise<SmartItem>, alive: () => boolean, give = 240_000) {
+export async function untilRead(first: SmartItem, get: (id: string) => Promise<SmartItem>, alive: () => boolean, give = 240_000) {
   let it = first;
   const t0 = Date.now();
   while (it.status === 'reading' && alive() && Date.now() - t0 < give) {

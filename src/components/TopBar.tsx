@@ -1,9 +1,11 @@
 import { Pressable, StyleSheet, View } from 'react-native';
+import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
 import Animated from 'react-native-reanimated';
 import { Glass, lightTap, useScale } from '@/components/Glass';
 import { Account, PcMic, Remote, ToPc, Voices } from '@/components/Icons';
 import { Smiley } from '@/components/Smiley';
 import { Sym } from '@/components/Sym';
+import { justRubbed, rubEnd, rubMove, rubStart } from '@/lib/pet';
 
 // The top bar mirrors the Nora bar: the same glass. A pill holding the four PC actions takes about
 // two-thirds of the row; two floating round buttons (mood, account) share the rest. One gap G sets the row.
@@ -55,6 +57,25 @@ function RoundButton({ label, onPress, children }: { label: string; onPress: () 
   );
 }
 
+// The mood button: a tap logs a mood; a finger rubbing over it pets the smiley (lib/pet).
+function MoodButton({ onPress }: { onPress: () => void }) {
+  const rub = usePanGesture({
+    minDistance: 3,
+    runOnJS: true,
+    onActivate: () => rubStart(),
+    onUpdate: (e) => rubMove(e.changeX ?? 0, e.changeY ?? 0, e.x, e.y),
+    onDeactivate: () => rubEnd(),
+    onFinalize: () => rubEnd(),
+  });
+  return (
+    <GestureDetector gesture={rub}>
+      <View>
+        <RoundButton label="Log mood (rub to pet)" onPress={() => { if (!justRubbed()) onPress(); }}><Smiley size={30} /></RoundButton>
+      </View>
+    </GestureDetector>
+  );
+}
+
 export function TopBar({ top, width, live, onFiles, onMic, onRemote, onRemoteHold, onVoices, onAccount, onNotBuilt }: {
   top: number; width: number; live: boolean; onFiles: () => void; onMic: () => void; onRemote: () => void; onRemoteHold?: () => void; onVoices: () => void; onAccount: () => void; onNotBuilt: (what: string) => void;
 }) {
@@ -71,7 +92,7 @@ export function TopBar({ top, width, live, onFiles, onMic, onRemote, onRemoteHol
         <PillButton label="Remote PC (hold for media remote and power)" onPress={onRemote} onLongPress={onRemoteHold}><Sym name="cursorarrow.rays" size={OPTICAL.cursor} fallback={<Remote size={GLYPH} />} /></PillButton>
         <PillButton label="Voices" onPress={onVoices}><Sym name="waveform" size={OPTICAL.wave} fallback={<Voices size={GLYPH} />} /></PillButton>
       </View>
-      <RoundButton label="Log mood" onPress={() => onNotBuilt('Mood')}><Smiley size={30} /></RoundButton>
+      <MoodButton onPress={() => onNotBuilt('Mood')} />
       <RoundButton label="Your account" onPress={onAccount}><Sym name="person.fill" size={OPTICAL.person} fallback={<Account size={GLYPH + 2} />} /></RoundButton>
     </View>
   );

@@ -1436,8 +1436,11 @@ function frame() {
 // Flick it again while it spins and the flicks add up, until it is a blur and the fog goes up and out of the cave.
 // Once it has slowed it eases one crystal round to face you. While it spins fast the app hides the name and gets
 // haptic ticks instead, quicker and harder as it speeds up.
-const turn = { angle: 0, vel: 0, dragging: false, last: 0, moved: false, front: -1, free: 0, fv: 0, w: 0, speed: 0, prev: 0, fast: false, passF: -1, buzz: 0 };
-const R_TURN = 1.0; // a drag of this many world units turns it one radian
+const turn = { angle: 0, vel: 0, dragging: false, last: 0, moved: false, front: -1, free: 0, fv: 0, w: 0, speed: 0, prev: 0, fast: false, passF: -1, buzz: 0, pull: 0 };
+// It is heavy: a drag of this many world units turns it one radian at rest, and it gets easier to push once it is
+// moving. Each flick adds less the faster it already goes, so top speed takes a run of flicks, kept up.
+const R_TURN = 1.6;
+const FLICK_GAIN = 0.68, FLICK_MAX = 6.2;
 const W_MAX = 48, W_FAST = 6, W_SLOW = 4.5;
 function frontIndex() {
   let best = 0, bd = Infinity;
@@ -1451,14 +1454,17 @@ function worldPerScreenX() {
 }
 function down() {
   // the finger lands on it: what it was doing carries on under the finger for a moment, so a flick adds to it
-  turn.dragging = true; turn.moved = true; turn.free = turn.vel; turn.fv = 0; turn.last = performance.now();
+  turn.dragging = true; turn.moved = true; turn.free = turn.vel; turn.fv = 0; turn.pull = 0; turn.last = performance.now();
   toApp({ t: 'grab' });
 }
 function move(dx) {
   if (!turn.dragging) return;
   const now = performance.now(), dt = Math.max(1, now - turn.last) / 1000;
-  const dA = (dx * worldPerScreenX()) / R_TURN;
+  // the stone's weight: stiff from a standstill, freer once it has way on
+  const give = 0.55 + 0.45 * sstep(0, 15, Math.abs(turn.free));
+  const dA = (dx * worldPerScreenX()) / R_TURN * give;
   turn.angle += dA;
+  turn.pull += dA;
   turn.fv = lerp(turn.fv, dA / dt, 0.5);
   turn.last = now;
 }
@@ -1467,7 +1473,12 @@ function up(vx) {
   const since = performance.now() - turn.last;
   let vf = 0;
   if (since < 80) vf = typeof vx === 'number' ? (vx * worldPerScreenX()) / R_TURN : turn.fv;
-  turn.vel = THREE.MathUtils.clamp(turn.free + vf, -W_MAX, W_MAX);
+  // a flick adds a capped push, less the faster it already turns that way; against the spin it brakes in full
+  const cur = turn.free, same = Math.sign(vf) === Math.sign(cur) || Math.abs(cur) < 0.5;
+  const push = Math.sign(vf) * Math.min(Math.abs(vf) * FLICK_GAIN, FLICK_MAX) * (same ? 1 - 0.75 * Math.min(1, Math.abs(cur) / W_MAX) : 1.6);
+  turn.vel = THREE.MathUtils.clamp(cur + push, -W_MAX, W_MAX);
+  // a slow push that didn't get it going: it gives a little, then rocks back toward where it was
+  if (Math.abs(turn.vel) < 2.2 && Math.abs(turn.pull) > 0.05) turn.vel = THREE.MathUtils.clamp(-turn.pull * 3.2, -2.6, 2.6);
   turn.dragging = false;
 }
 function buzz() {
@@ -1481,14 +1492,14 @@ function updateTurn(dt) {
     // held: the spin it had dies away under the finger, fast if the finger is still
     const still = performance.now() - turn.last > 70;
     if (still) turn.fv *= Math.exp(-dt * 12);
-    turn.free *= Math.exp(-dt * (still ? 8 : 1.4));
+    turn.free *= Math.exp(-dt * (still ? 8 : 0.5));
     turn.angle += turn.free * dt;
   } else {
     const a = Math.abs(turn.vel);
     if (a > 1.3) {
       // friction: grippy when slow, so an ordinary flick settles in a couple of seconds; it runs freer when fast,
       // so a wild spin lasts
-      const dec = (0.7 + lerp(0.7, 0.14, sstep(6, 30, a)) * a) * dt;
+      const dec = (0.7 + lerp(0.45, 0.06, sstep(2, 18, a)) * a) * dt;
       turn.vel = Math.sign(turn.vel) * Math.max(0, a - dec);
       turn.angle += turn.vel * dt;
     } else {

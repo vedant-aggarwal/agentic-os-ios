@@ -10,7 +10,8 @@ import type { Task } from '@/lib/today';
 import { noraUi } from '@/nora/state';
 import { GymCard } from '@/today/GymCard';
 import { ASPECT_COLOR, C, F, type AspectKey } from '@/theme';
-import { count, MEALS, type CheckId, type Day } from './day';
+import { count, MEALS, type CheckId, type Day, type RoutineItem } from './day';
+import { EditActions, RoutineEditor } from './RoutineEdit';
 import { LineSheet, MealPopup, WakeDial } from './overlays';
 import { CardRow, Dots, Group, Link, NORA, NORA_TEXT, PhotoSlot, Row, Section, Segmented, settleOrder, SubLabel, Tick } from './parts';
 import type { RingPart } from './Ring';
@@ -32,6 +33,7 @@ export function Plan({ d, body, now, onOpen, onToggleTask, say, onHome }: {
   const [meal, setMeal] = useState<(typeof MEALS)[number] | null>(null);
   const [line, setLine] = useState<'journal' | 'page' | null>(null);
   const [order, setOrder] = useState<string[]>([]);
+  const [editing, setEditing] = useState<{ morning: RoutineItem[]; night: RoutineItem[] } | null>(null);
   const fail = useCallback((e: unknown) => say(e instanceof Error ? e.message : 'That didn’t save.'), [say]);
 
   const tick = useCallback(async (id: Parameters<Day['cap']['toggle']>[0], on: boolean) => {
@@ -88,16 +90,19 @@ export function Plan({ d, body, now, onOpen, onToggleTask, say, onHome }: {
     const woke = !!wakeHm, drink = cap.doneTicks.has('drink');
     const showDrink = woke || drink;
     const shower = d.mode('cold-shower') ?? 'cold';
-    const morning: { id: CheckId; title: string; sub?: string; photo?: FrameId }[] = [
-      { id: 'cold-shower', title: shower === 'hot' ? 'Hot shower' : 'Cold shower', photo: 'body' },
-      { id: 'ice-face', title: 'Ice-block face massage' },
-      { id: 'skincare-am', title: 'Skincare', sub: 'Toner, serum, face cream, lip balm, sunscreen', photo: 'face' },
-      { id: 'gua-sha', title: 'Facial lymphatic drainage', sub: 'Gua sha' },
-      { id: 'squint', title: 'Squint hold', sub: 'Eyes shut 5 s, 10 times' },
-    ];
-    const night: { id: CheckId; title: string }[] = [
-      { id: 'night-room', title: 'Clean my room' }, { id: 'night-teeth', title: 'Brush teeth' }, { id: 'night-skin', title: 'Skincare' },
-    ];
+    const PHOTO: Partial<Record<string, FrameId>> = { 'cold-shower': 'body', 'skincare-am': 'face' };
+    const morning: (RoutineItem & { photo?: FrameId })[] = d.routines.morning.map((m) => ({
+      ...m, photo: PHOTO[m.id],
+      title: m.id === 'cold-shower' && m.title === 'Cold shower' && shower === 'hot' ? 'Hot shower' : m.title,
+    }));
+    const night = d.routines.night;
+    const startEdit = () => { haptic.success(); setEditing({ morning: d.routines.morning, night: d.routines.night }); };
+    const saveEdit = () => {
+      if (!editing) return;
+      const clean = (l: RoutineItem[]) => l.map((x) => ({ ...x, title: x.title.trim(), sub: x.sub?.trim() || undefined })).filter((x) => x.title);
+      setEditing(null);
+      d.saveRoutines({ morning: clean(editing.morning), night: clean(editing.night) }).then(() => say('Routine saved'), fail);
+    };
     const flags = [woke, ...(showDrink ? [drink] : []), ...(body ? [d.gymDone] : []), ...morning.map((m) => d.on(m.id)), d.on('voice'), ...night.map((n) => d.on(n.id))];
     const p = count(flags, dueOf('body'));
     const evening = new Date(now + 5.5 * 3600_000).getUTCHours() >= 19;
@@ -112,7 +117,14 @@ export function Plan({ d, body, now, onOpen, onToggleTask, say, onHome }: {
       </View>
     );
     sections.push({ key: 'body', finished: p.total > 0 && p.done === p.total, node: (
-      <Section key="body" label="Body" parts={[{ color: A.body, ...p }]} finished={p.total > 0 && p.done === p.total} onOpen={() => onOpen('body')}>
+      <Section key="body" label="Body" parts={[{ color: A.body, ...p }]} finished={p.total > 0 && p.done === p.total} onOpen={() => onOpen('body')}
+        onLongPress={editing ? undefined : startEdit} right={editing ? <EditActions onCancel={() => setEditing(null)} onDone={saveEdit} /> : undefined}>
+        {editing ? (
+          <>
+            <RoutineEditor label="Morning routine" prefix="am" items={editing.morning} onChange={(l) => setEditing({ ...editing, morning: l })} />
+            <RoutineEditor label="Night routine" prefix="night" items={editing.night} onChange={(l) => setEditing({ ...editing, night: l })} />
+          </>
+        ) : <>
         {evening ? nightGroup : null}
         <Group>
           <Row first title={woke ? `Woke ${wakeHm}` : 'Wake up'} sub={woke ? 'Tap to change' : 'Log the time you got up'} done={woke && !showDrink ? true : false}
@@ -143,6 +155,7 @@ export function Plan({ d, body, now, onOpen, onToggleTask, say, onHome }: {
         </Group>
         {evening ? null : nightGroup}
         {cards('body', A.body)}
+        </>}
       </Section>
     ) });
   }

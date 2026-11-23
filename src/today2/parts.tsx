@@ -21,20 +21,27 @@ const QUICK = { duration: 260, dampingRatio: 1, reduceMotion: ReduceMotion.Syste
 const layout = LinearTransition.springify().duration(700).dampingRatio(0.9).reduceMotion(ReduceMotion.System);
 
 // ── section ──────────────────────────────────────────────────────────────────────────────────────────────────────
-export function Section({ label, parts, onOpen, finished, children }: {
+export function Section({ label, parts, onOpen, onLongPress, right, finished, children }: {
   label: string; parts: RingPart[]; onOpen?: () => void; finished: boolean; children: ReactNode;
+  /** hold the head: the section's edit mode */ onLongPress?: () => void;
+  /** replaces the count (edit mode's Cancel / Done) */ right?: ReactNode;
 }) {
   const done = parts.reduce((a, p) => a + p.done, 0), total = parts.reduce((a, p) => a + p.total, 0);
   return (
     <Animated.View layout={layout} style={s.section}>
-      <Pressable accessibilityRole={onOpen ? 'button' : 'header'} accessibilityLabel={`${label}, ${done} of ${total}`} disabled={!onOpen} onPress={onOpen}
-        style={({ pressed }) => [s.head, pressed && { opacity: 0.6 }]}>
-        <Ring parts={parts} />
-        <Text style={[t.heading, finished && { color: C.muted }]}>{label}</Text>
-        {onOpen ? <Chevron /> : null}
-        <View style={{ flex: 1 }} />
-        {total ? <Text style={[s.count, t.num]}>{`${done} of ${total}`}</Text> : null}
-      </Pressable>
+      <View style={s.head}>
+        <Pressable accessibilityRole={onOpen ? 'button' : 'header'} accessibilityLabel={`${label}, ${done} of ${total}`}
+          accessibilityHint={onLongPress ? 'Hold to edit the routine' : undefined}
+          disabled={!onOpen && !onLongPress} onPress={right ? undefined : onOpen} onLongPress={onLongPress} delayLongPress={450}
+          style={({ pressed }) => [s.headHit, pressed && { opacity: 0.6 }]}>
+          <Ring parts={parts} />
+          <Text style={[t.heading, finished && { color: C.muted }]}>{label}</Text>
+          {onOpen && !right ? <Chevron /> : null}
+          <View style={{ flex: 1 }} />
+          {total && !right ? <Text style={[s.count, t.num]}>{`${done} of ${total}`}</Text> : null}
+        </Pressable>
+        {right}
+      </View>
       {children}
     </Animated.View>
   );
@@ -227,6 +234,7 @@ export function Segmented({ value, options, onChange }: { value: string; options
 export const s = StyleSheet.create({
   section: { gap: 12 },
   head: { minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  headHit: { flex: 1, minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 10 },
   count: { fontFamily: F.regular, fontSize: 14, lineHeight: 20, color: C.faint },
   subLabel: { marginTop: 4, marginBottom: -4, marginLeft: 4 },
   group: { borderRadius: 20, backgroundColor: C.glass, overflow: 'hidden' },

@@ -19,7 +19,22 @@ export type CheckId =
   | 'cold-shower' | 'ice-face' | 'skincare-am' | 'gua-sha' | 'squint' | 'voice'
   | 'night-room' | 'night-teeth' | 'night-skin'
   | 'mission-norrita' | 'money-channels' | 'money-social' | 'money-brand' | 'growth-cc'
-  | 'leave-washroom' | 'leave-late';
+  | 'leave-washroom' | 'leave-late'
+  | `am-${string}` | `night-${string}`; // steps he added in edit mode
+
+export type RoutineItem = { id: CheckId; title: string; sub?: string };
+export const DEFAULT_MORNING: RoutineItem[] = [
+  { id: 'cold-shower', title: 'Cold shower' },
+  { id: 'ice-face', title: 'Ice-block face massage' },
+  { id: 'skincare-am', title: 'Skincare', sub: 'Toner, serum, face cream, lip balm, sunscreen' },
+  { id: 'gua-sha', title: 'Facial lymphatic drainage', sub: 'Gua sha' },
+  { id: 'squint', title: 'Squint hold', sub: 'Eyes shut 5 s, 10 times' },
+];
+export const DEFAULT_NIGHT: RoutineItem[] = [
+  { id: 'night-room', title: 'Clean my room' }, { id: 'night-teeth', title: 'Brush teeth' }, { id: 'night-skin', title: 'Skincare' },
+];
+type Routines = { morning: RoutineItem[]; night: RoutineItem[] };
+type RoutineDoc = Doc & Partial<Routines>;
 
 type Session = Doc & { date?: string; kind?: string; title?: string; source?: string };
 
@@ -35,6 +50,11 @@ export function useDay(o: { today: TodayPayload | null; life: LifePayload | null
   const cap = useCapture();
   const checks = useCollection<BodyCheck>('body', 'checks');
   const sessions = useCollection<Session>('mind', 'sessions');
+  // his routine steps, edited from Today (hold the Body head); body settings doc `today-routines`
+  const settings = useCollection<RoutineDoc>('body', 'settings');
+  const savedRoutines = settings.items?.find((x) => x.id === 'today-routines');
+  const routines: Routines = { morning: savedRoutines?.morning ?? DEFAULT_MORNING, night: savedRoutines?.night ?? DEFAULT_NIGHT };
+  const saveRoutines = (r: Routines) => settings.put({ id: 'today-routines', ...r } as never);
   const day = cap.day;
 
   const checked = useMemo(() => {
@@ -53,12 +73,13 @@ export function useDay(o: { today: TodayPayload | null; life: LifePayload | null
     await checks.put({ id: `${day}:${id}`, date: day, item: id, done: v, at: new Date().toISOString(), by: 'me', source: 'today', ...extra } as never);
     // the panel's single Night tick stands for all three rows: the third row ticked writes it, an untick clears it
     if (id.startsWith('night-')) {
-      const rest = (['night-room', 'night-teeth', 'night-skin'] as const).filter((x) => x !== id).every((x) => isOn(x));
+      const nightIds = routines.night.map((x) => x.id);
+      const rest = nightIds.filter((x) => x !== id).every((x) => isOn(x));
       if (v && rest && !nightAll) await cap.toggle('night', true);
       if (!v && nightAll) {
         await cap.toggle('night', false);
         // keep the other two as they were before the untick
-        for (const x of ['night-room', 'night-teeth', 'night-skin'] as const) {
+        for (const x of nightIds) {
           if (x !== id && !isOn(x)) await checks.put({ id: `${day}:${x}`, date: day, item: x, done: true, at: new Date().toISOString(), by: 'me', source: 'today' } as never);
         }
       }
@@ -100,7 +121,7 @@ export function useDay(o: { today: TodayPayload | null; life: LifePayload | null
   const gymDone = !!o.body && o.body.trained.length > 0;
 
   return {
-    cap, day, on, mode, toggle, setShower, practice, togglePractice, tasks, areaName, mealDone, gymDone,
+    cap, day, on, mode, toggle, setShower, routines, saveRoutines, practice, togglePractice, tasks, areaName, mealDone, gymDone,
     color: ASPECT_COLOR,
   };
 }

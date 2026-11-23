@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Platform, Pressable, RefreshControl, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { AppState, Platform, Pressable, RefreshControl, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 // gesture handler's ScrollView, so the hero's sideways drag can take over from the page's scroll
 import { ScrollView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -32,12 +32,12 @@ import { AspectHost, dockClearance, initialAspect, initialLink, type HostEntry }
 import { LifeContext } from '@/aspects/_linked/life';
 import { sectionEntry, SECTION_TARGETS } from '@/lib/aspectLinks';
 import { onLink, openLink } from '@/lib/links';
-import { invalidate } from '@/lib/mod';
+import { invalidate, warm } from '@/lib/mod';
 import { C, F, type AspectKey } from '@/theme';
 import DeskToday from '@/desk/DeskToday';
 import { useNora } from '@/nora/state';
 import { useDesktop } from '@/desk/store';
-import { preloadPages } from '@/aspects/registry';
+import { preloadPages, WARM } from '@/aspects/registry';
 
 // Volume down: a press rings Nora (not again while a call is up), a hold records a voice note to her chat.
 const NORA_KEYS: NoraKeys = {
@@ -48,11 +48,19 @@ const NORA_KEYS: NoraKeys = {
 
 // A desktop browser gets its own layout (src/desk); phones and narrow windows keep this one.
 export default function Today() {
-  // Web loads each aspect page as its own file: fetch them while Today sits idle, so the first tap opens at once.
+  // While Today sits on screen, get every aspect page ready so the first tap opens drawn: their reads in one round
+  // trip (each request through the tunnel costs most of a second), and on web each page's code file.
   useEffect(() => {
-    if (Platform.OS !== 'web') return;
-    const t = setTimeout(preloadPages, 1500);
-    return () => clearTimeout(t);
+    let last = 0;
+    const go = () => {
+      if (Date.now() - last < 5 * 60_000) return;
+      last = Date.now();
+      void warm(WARM);
+      if (Platform.OS === 'web') preloadPages();
+    };
+    const t = setTimeout(go, 1500);
+    const sub = AppState.addEventListener('change', (st) => { if (st === 'active') go(); });
+    return () => { clearTimeout(t); sub.remove(); };
   }, []);
   return useDesktop() ? <DeskToday /> : <PhoneToday />;
 }

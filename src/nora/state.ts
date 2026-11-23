@@ -7,9 +7,9 @@ import { DEMO } from '@/lib/demo';
 // everything). The dock's buttons, deep links (agenticos://nora...) and notification taps all go through here.
 
 export type CallAsk = { incomingId?: string | null; reason?: string; follow?: boolean; seq: number };
-type S = { home: boolean; chat: boolean; mic: number; call: CallAsk | null; replyTo: { id: string; from: string } | null };
+type S = { home: boolean; chat: boolean; mic: number; micSend: number; call: CallAsk | null; replyTo: { id: string; from: string } | null };
 
-let s: S = { home: false, chat: false, mic: 0, call: null, replyTo: null };
+let s: S = { home: false, chat: false, mic: 0, micSend: 0, call: null, replyTo: null };
 let seq = 0;
 const subs = new Set<() => void>();
 const set = (p: Partial<S>) => { s = { ...s, ...p }; for (const f of subs) f(); };
@@ -42,4 +42,10 @@ export const noraUi = {
     set({ call: { ...o, seq: ++seq } });
   },
   closeCall: () => set({ call: null }),
+  /** Volume down held: chat opens recording a voice note... */
+  voiceNote: () => { if (!s.call) set({ chat: true, mic: s.mic + 1, micSend: s.micSend }); },
+  /** ...and let go: the take stops and goes to her. */
+  voiceNoteSend: () => { if (!s.call) set({ micSend: s.micSend + 1 }); },
+  /** Is a call up (volume down shouldn't ring her again)? */
+  inCall: () => !!s.call,
 };

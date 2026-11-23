@@ -42,7 +42,7 @@ export function NoraChat({ origin }: { origin: { x: number; y: number } }) {
         <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, s.tint]} />
         <Animated.View style={[{ width: r.width, height: r.height }, r.content]}>
-          <ChatBody open={ui.chat} mic={ui.mic} replyTo={ui.replyTo} />
+          <ChatBody open={ui.chat} mic={ui.mic} micSend={ui.micSend} replyTo={ui.replyTo} />
         </Animated.View>
       </Animated.View>
     </Animated.View>
@@ -50,8 +50,8 @@ export function NoraChat({ origin }: { origin: { x: number; y: number } }) {
 }
 
 /** The chat itself: drawn full screen by NoraChat on the phone, and as the side panel of the desktop web layout. */
-export function ChatBody({ open, mic, replyTo, onClose = noraUi.closeChat }: {
-  open: boolean; mic: number; replyTo: { id: string; from: string } | null; onClose?: () => void;
+export function ChatBody({ open, mic, micSend = 0, replyTo, onClose = noraUi.closeChat }: {
+  open: boolean; mic: number; micSend?: number; replyTo: { id: string; from: string } | null; onClose?: () => void;
 }) {
   const insets = useSafeAreaInsets();
   const th = useThread(open);
@@ -72,6 +72,22 @@ export function ChatBody({ open, mic, replyTo, onClose = noraUi.closeChat }: {
     return () => clearTimeout(id);
   }, [open, mic, startDictation]);
   useEffect(() => { if (!open) cancelDictation(); }, [open, cancelDictation]);
+  // volume down let go: the voice note stops and is sent as it is (still recording? it waits for the take to start)
+  const sentSeen = useRef(micSend);
+  const sendRef = useRef<(t: string) => void>(() => {});
+  const { stop: stopDictation } = dict;
+  const dictState = useRef(dict.state);
+  dictState.current = dict.state;
+  useEffect(() => {
+    if (micSend === sentSeen.current) return;
+    sentSeen.current = micSend;
+    let tries = 0;
+    const go = () => {
+      if (dictState.current === 'recording') { void stopDictation().then((text) => { if (text) sendRef.current(text); }); return; }
+      if (tries++ < 10) setTimeout(go, 80); else cancelDictation(); // too short to have started: drop it
+    };
+    go();
+  }, [micSend, stopDictation, cancelDictation]);
 
   const send = (text: string) => {
     if (replyTo) {
@@ -83,6 +99,7 @@ export function ChatBody({ open, mic, replyTo, onClose = noraUi.closeChat }: {
     void th.send(text, attach.ids.length ? { ids: attach.ids, uris: attach.pics.filter((p) => p.id).map((p) => p.uri) } : undefined);
     attach.clear();
   };
+  sendRef.current = send;
   const undo = async (m: NoraMessage, run: () => Promise<string | null>) => {
     const e = await run();
     setRowError(e ? { id: m.id, text: e } : null);

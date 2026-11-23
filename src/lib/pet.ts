@@ -15,7 +15,38 @@ export const pet = {
   joy: makeMutable(0),
   fx: makeMutable(0), // where the finger is over it, -1 (left) to 1
   fy: makeMutable(0),
+  // The mood logger drives the face while it is open (drive 0..1): val is how pleasant (-1..1), nrg how much energy
+  // (-1 drained, 1 wired), worry and anger lift or knit the brows, think looks up while it waits for an answer.
+  drive: makeMutable(0),
+  val: makeMutable(0),
+  nrg: makeMutable(0),
+  worry: makeMutable(0),
+  anger: makeMutable(0),
+  think: makeMutable(0),
 };
+
+export type PetFace = 'happy' | 'excited' | 'calm' | 'proud' | 'concerned' | 'sad' | 'tired' | 'angry';
+
+/** A few hearts in a row, as if it can't contain itself. */
+export function heartBurst(n = 4, gap = 180) {
+  for (let i = 0; i < n; i++) setTimeout(() => { for (const fn of hearts) fn(); }, i * gap);
+}
+
+/** A passing expression on top of where the logger has it: a beam, a worried look, a frown, a yawn. */
+export function petReact(face: PetFace) {
+  const pulse = (v: typeof pet.joy, to: number, hold = 1800) => v.set(withSequence(withTiming(to, { duration: 220 }), withDelay(hold, withTiming(0, { duration: 900 }))));
+  if (face === 'happy' || face === 'proud') { pulse(pet.joy, 1); heartBurst(face === 'proud' ? 2 : 3); buzz(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)); }
+  else if (face === 'excited') { pulse(pet.joy, 1, 2400); heartBurst(5, 140); buzz(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)); }
+  else if (face === 'concerned' || face === 'sad') { pulse(pet.worry, face === 'sad' ? 1 : 0.8, 2600); buzz(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft)); }
+  else if (face === 'angry') { pulse(pet.anger, 0.9, 1600); buzz(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Rigid)); }
+  else if (face === 'tired') { pulse(pet.worry, 0.3, 1600); }
+}
+
+/** Hand the face to the mood logger (on) or give it back to his real mood (off). */
+export function petDrive(on: boolean) {
+  pet.drive.set(withTiming(on ? 1 : 0, { duration: on ? 500 : 700 }));
+  if (!on) { pet.think.set(withTiming(0, { duration: 300 })); pet.worry.set(withTiming(0, { duration: 300 })); pet.anger.set(withTiming(0, { duration: 300 })); }
+}
 
 const BUTTON = 52; // the round mood button the finger rubs
 let energy = 0, lastMove = 0, lastRubEnd = 0, purr: ReturnType<typeof setInterval> | null = null;

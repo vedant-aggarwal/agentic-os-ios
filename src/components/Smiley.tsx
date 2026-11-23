@@ -179,13 +179,14 @@ export function Smiley({ size = 30, settleMs = 0, active = true, shadow = true, 
     <View ref={box} onLayout={measure} pointerEvents="none" style={[{ width: size, height: size }, away && s.away]}>
       <View pointerEvents="none" style={[s.canvas, { left: -pad.l, top: -pad.t, width: size + pad.l + pad.r, height: size + pad.t + pad.b }]}>
         {PET_OK && !failed ? <PetView ref={view} cfg={cfg} onMessage={onMessage} /> : null}
-        <Animated.Image source={posterFor(sad)} style={[StyleSheet.absoluteFill, still]} />
+        <Animated.Image source={posterFor(sad)} style={[StyleSheet.absoluteFill, s.poster, still]} resizeMode="contain" />
       </View>
     </View>
   );
 }
 
 const s = StyleSheet.create({
+  poster: { width: '100%', height: '100%' }, // without it the still draws at the asset's own 504x645 until the live pet's first frame
   canvas: { position: 'absolute' },
   away: { opacity: 0 },
 });

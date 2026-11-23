@@ -19,6 +19,10 @@ const fetchAll = () => Promise.all([
   api<{ areas: Area[] }>('/areas'),
 ]);
 
+// Another surface (Home's task list) changed tasks: every mounted Today reads again.
+const changed = new Set<() => void>();
+export function tasksChanged() { for (const f of changed) f(); }
+
 /** Today from the phone server. The UI only ever renders what this returns. The last day loaded is kept on the
  * device, so a launch draws it at once and the PC's answer replaces it a moment later. */
 export function useToday() {
@@ -55,7 +59,9 @@ export function useToday() {
     load();
     const sub = AppState.addEventListener('change', (s) => { if (s === 'active') load(); });
     const tick = setInterval(load, 60_000); // keeps Now / Next current
-    return () => { sub.remove(); clearInterval(tick); };
+    const again = () => { void load(); };
+    changed.add(again);
+    return () => { sub.remove(); clearInterval(tick); changed.delete(again); };
   }, [load]);
 
   const refresh = useCallback(async () => { setRefreshing(true); await load(); setRefreshing(false); }, [load]);

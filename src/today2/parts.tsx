@@ -85,15 +85,16 @@ export function Row({ title, sub, subColor, done, color, onTick, onPress, right,
   const settled = done && !children;
   return (
     <Animated.View layout={layout} style={[s.row, !first && s.rowRule]}>
-      <Pressable accessibilityRole={onPress ? 'button' : undefined} disabled={!onPress} onPress={onPress}
-        style={({ pressed }) => [s.rowInner, settled && s.rowSettled, pressed && onPress && { opacity: 0.7 }]}>
-        <View style={s.rowText}>
+      {/* the words are the row's button; the right side and the tick sit beside it, never inside (no nested buttons) */}
+      <View style={[s.rowInner, settled && s.rowSettled]}>
+        <Pressable accessibilityRole={onPress ? 'button' : undefined} disabled={!onPress} onPress={onPress}
+          style={({ pressed }) => [s.rowText, s.rowHit, pressed && onPress && { opacity: 0.7 }]}>
           <Text numberOfLines={settled ? 1 : lines} style={settled ? s.titleSettled : s.title}>{title}</Text>
           {sub && !settled ? <Text numberOfLines={2} style={[s.sub, subColor ? { color: subColor } : null]}>{sub}</Text> : null}
-        </View>
+        </Pressable>
         {right}
         {onTick ? <Tick done={done} color={color} size={settled ? 22 : 26} label={tickLabel ?? title} onPress={onTick} disabled={tickDisabled} /> : null}
-      </Pressable>
+      </View>
       {children}
     </Animated.View>
   );
@@ -229,6 +230,7 @@ export const s = StyleSheet.create({
   rowInner: { minHeight: 56, paddingVertical: 8, paddingRight: 16, flexDirection: 'row', alignItems: 'center', gap: 12 },
   rowSettled: { minHeight: 44, paddingVertical: 6 },
   rowText: { flex: 1, gap: 2 },
+  rowHit: { alignSelf: 'stretch', justifyContent: 'center' },
   title: { fontFamily: F.medium, fontSize: 16, lineHeight: 21, color: C.text },
   titleSettled: { fontFamily: F.medium, fontSize: 15, lineHeight: 20, color: C.muted },
   sub: { fontFamily: F.regular, fontSize: 13, lineHeight: 18, color: C.faint, fontVariant: ['tabular-nums'] },

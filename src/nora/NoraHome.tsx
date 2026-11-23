@@ -13,6 +13,7 @@ import { C } from '@/theme';
 import { Composer, NGlyph, NORA, TopRow } from './parts';
 import { callTransport, noraUi, useNora } from './state';
 import { useDictate } from './useDictate';
+import { HomeBody } from '@/home/Home';
 
 // Home (the dock's left orb): what Nora has ready for him. Questions waiting on him first, each answered in a tap
 // (or a few words, typed or said); then what she did today, each with Undo; what she noticed; her read of the day
@@ -61,14 +62,14 @@ export function NoraHome({ origin }: { origin: { x: number; y: number } }) {
         <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, s.tint]} />
         <Animated.View style={[{ width: r.width, height: r.height }, r.content]}>
-          <HomeBody open={ui.home} />
+          <HomeBody open={ui.home} />{/* src/home/Home.tsx: Nora, her tasks, his task list */}
         </Animated.View>
       </Animated.View>
     </Animated.View>
   );
 }
 
-function HomeBody({ open }: { open: boolean }) {
+export function FeedBody({ open }: { open: boolean }) {
   const insets = useSafeAreaInsets();
   const h = useHome(open);
   const [local, setLocal] = useState<Local>({});

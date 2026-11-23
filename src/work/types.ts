@@ -64,6 +64,8 @@ export type JobBrief = {
 export type JobFull = JobBrief & {
   perm: Perm; model: string | null; createdAt: string; finishedAt: string | null;
   tasks: string[]; idea: string | null;
+  /** "New session with summary": the job this one carries on from, and the one that carried on from it. */
+  continuedFrom?: string | null; continuedTo?: string | null;
 };
 
 export type PermOption = { optionId: string; name: string; kind: string };

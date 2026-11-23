@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { Easing, FadeIn, FadeOut, Keyframe } from 'react-native-reanimated';
 import { Glass } from '@/components/Glass';
 import { Sym } from '@/components/Sym';
@@ -86,8 +86,10 @@ export function JobMenu({ top, job, turns, hasAnswer, busy, onClose, onCopy, onR
   );
 }
 
-export function Confirm({ title, body, action, danger, onCancel, onConfirm }: {
-  title: string; body: string; action: string; danger?: boolean; onCancel: () => void; onConfirm: () => void;
+/** alt: a third choice, drawn as the main button above the row. working: a line with a spinner replaces the buttons. */
+export function Confirm({ title, body, action, danger, alt, working, onCancel, onConfirm }: {
+  title: string; body: string; action: string; danger?: boolean; alt?: { label: string; onPress: () => void }; working?: string;
+  onCancel: () => void; onConfirm: () => void;
 }) {
   return (
     <View style={[StyleSheet.absoluteFill, s.center]} accessibilityViewIsModal>
@@ -97,12 +99,26 @@ export function Confirm({ title, body, action, danger, onCancel, onConfirm }: {
       <Animated.View entering={cardIn} exiting={FadeOut.duration(120)} style={s.card} accessibilityRole="alert">
         <Text style={s.cardTitle}>{title}</Text>
         <Text style={s.cardBody}>{body}</Text>
-        <View style={s.cardRow}>
-          <Press accessibilityLabel="Cancel" onPress={onCancel} outer={s.flex} style={[s.btn, s.btnSoft]}><Text style={s.btnText}>Cancel</Text></Press>
-          <Press accessibilityLabel={action} onPress={onConfirm} outer={s.flex} style={[s.btn, danger ? s.btnDanger : s.btnMain]}>
-            <Text style={[s.btnText, !danger && { color: '#0B0C10' }]}>{action}</Text>
-          </Press>
-        </View>
+        {working ? (
+          <View style={s.working} accessibilityLiveRegion="polite">
+            <ActivityIndicator color={C.text} />
+            <Text style={s.cardBody}>{working}</Text>
+          </View>
+        ) : (
+          <>
+            {alt ? (
+              <Press accessibilityLabel={alt.label} onPress={alt.onPress} style={[s.btn, s.btnMain, { marginTop: 12 }]}>
+                <Text style={[s.btnText, { color: '#0B0C10' }]}>{alt.label}</Text>
+              </Press>
+            ) : null}
+            <View style={[s.cardRow, alt && { marginTop: 0 }]}>
+              <Press accessibilityLabel="Cancel" onPress={onCancel} outer={s.flex} style={[s.btn, s.btnSoft]}><Text style={s.btnText}>Cancel</Text></Press>
+              <Press accessibilityLabel={action} onPress={onConfirm} outer={s.flex} style={[s.btn, alt ? s.btnSoft : danger ? s.btnDanger : s.btnMain]}>
+                <Text style={[s.btnText, !danger && !alt && { color: '#0B0C10' }]}>{action}</Text>
+              </Press>
+            </View>
+          </>
+        )}
       </Animated.View>
     </View>
   );
@@ -132,6 +148,7 @@ const s = StyleSheet.create({
   cardTitle: { fontFamily: F.semibold, fontSize: 18, lineHeight: 28, color: C.text },
   cardBody: { fontFamily: F.regular, fontSize: 14, lineHeight: 20, color: C.muted },
   cardRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  working: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 48, marginTop: 12 },
   btn: { height: 48, borderRadius: 12, borderCurve: 'continuous', alignItems: 'center', justifyContent: 'center' },
   btnSoft: { backgroundColor: 'rgba(255,255,255,0.08)' },
   btnMain: { backgroundColor: C.text },

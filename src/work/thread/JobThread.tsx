@@ -20,6 +20,7 @@ import { type DiffTarget, DiffViewer } from './DiffViewer';
 import { BAR_GAP, BAR_H, Header } from './Header';
 import { buildRows, type ChangeFile, ENGINE, lastAnswer, revertTurns } from './model';
 import { Confirm, JobMenu, type TurnChoice } from './Overlay';
+import { openJob } from '../ui/nav';
 import { ThreadList } from './ThreadList';
 import { copyText, Press } from './ui';
 import { useJobStream } from './useJobStream';
@@ -29,7 +30,7 @@ import { useJobStream } from './useJobStream';
 
 type Held = { text: string; failed: boolean };
 /** cold: Claude's prompt cache ran out (the PC answered 428), so sending re-reads the whole chat; he decides. */
-type Ask = { kind: 'revert'; turn: TurnChoice } | { kind: 'done' } | { kind: 'cold'; text: string; message: string };
+type Ask = { kind: 'revert'; turn: TurnChoice } | { kind: 'done' } | { kind: 'cold'; text: string; message: string; summarising?: boolean };
 type Sent = 'sent' | 'held' | 'cold' | 'failed';
 
 const say = (e: unknown) => (e instanceof ApiError || e instanceof Error ? e.message : '') || "Couldn't reach your PC.";
@@ -107,6 +108,23 @@ export function JobThread({ id }: { id: string }) {
     if (r === 'held') setHeld({ text, failed: false });
     else if (r === 'failed') setHeld({ text, failed: true });
   }, [sendNow]);
+
+  /** New session with summary: the PC summarises this job and starts a new one with the message; then its thread opens.
+   *  On an error the PC's reason shows and the message stays as "Not sent". */
+  const sendFresh = useCallback(async (text: string) => {
+    if (DEMO) { setAsk(null); work.notify('Not available in the demo.'); return; }
+    setAsk((a) => (a?.kind === 'cold' ? { ...a, summarising: true } : a));
+    try {
+      const r = await workApi.fresh(id, text, newKey());
+      setAsk(null);
+      setHeld((h) => (h?.text === text ? null : h));
+      openJob(r.job.id);
+    } catch (e) {
+      setAsk(null);
+      setHeld({ text, failed: true });
+      work.notify(say(e));
+    }
+  }, [id]);
 
   // ---- controls ----
   const stop = useCallback(async () => {
@@ -237,7 +255,10 @@ export function JobThread({ id }: { id: string }) {
       ) : null}
       {ask?.kind === 'cold' ? (
         <Confirm title="Send anyway?" body={ask.message} action="Send anyway"
-          onCancel={() => { setHeld({ text: ask.text, failed: true }); setAsk(null); }} onConfirm={() => sendCold(ask.text)} />
+          alt={{ label: 'New session with summary', onPress: () => sendFresh(ask.text) }}
+          working={ask.summarising ? 'Summarising this chat for a new session. This takes a few seconds.' : undefined}
+          onCancel={() => { if (ask.summarising) return; setHeld({ text: ask.text, failed: true }); setAsk(null); }}
+          onConfirm={() => sendCold(ask.text)} />
       ) : null}
       {ask?.kind === 'done' && job ? (
         <Confirm title="Mark this job done?" body={`${ENGINE[job.engine]} closes its session, and the job can't take messages after this.`}

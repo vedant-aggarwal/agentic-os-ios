@@ -66,6 +66,9 @@ export const workApi = {
   /** force: send even though Claude's prompt cache went cold (the PC answers 428 without it). */
   prompt: (id: string, text: string, key: string, force = false) =>
     must(call<{ job: JobFull }>(`/jobs/${id}/prompt`, { method: 'POST', body: force ? { text, force: true } : { text }, key })),
+  /** "New session with summary": the PC summarises this job from its record and starts a new one with the text. Takes some seconds. */
+  fresh: (id: string, text: string, key: string) =>
+    must(call<{ job: JobFull; from: string; summarised: boolean }>(`/jobs/${id}/fresh`, { method: 'POST', body: { text }, key })),
   /** answers: a question form's answers, question text to answer, sent with the "submit" option. */
   permission: (id: string, requestId: string, optionId: string, answers?: Record<string, string>) =>
     must(call<{ job: JobFull }>(`/jobs/${id}/permission`, { method: 'POST', body: answers ? { requestId, optionId, answers } : { requestId, optionId } })),

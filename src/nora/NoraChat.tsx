@@ -4,6 +4,7 @@ import { FlatList, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button, clock, Empty, Failed, Glyph, IconButton, Press, Skeleton, SURF, t, tint } from '@/aspects/kit';
+import { Linked } from '@/components/Linked';
 import { useReveal } from '@/components/Reveal';
 import { callLength, type NoraMessage } from '@/lib/nora';
 import { C } from '@/theme';
@@ -177,7 +178,7 @@ function Message({ m, name, error, onRetry, onUndo, onUndoDid, onAnswer }: {
   if (m.role === 'user') {
     return (
       <View style={s.mine}>
-        <View style={[s.bubble, m.pending && s.pending]}><Text selectable style={t.body}>{m.text}</Text></View>
+        <View style={[s.bubble, m.pending && s.pending]}><Text selectable style={t.body}><Linked text={m.text} /></Text></View>
         {m.failed ? (
           <Press label="Send again" onPress={onRetry} style={s.failed}>
             <Text style={[t.caption, { color: C.danger }]}>Didn&apos;t send. Tap to try again.</Text>
@@ -198,7 +199,7 @@ function Message({ m, name, error, onRetry, onUndo, onUndoDid, onAnswer }: {
         </View>
         {w === 'running' ? (
           <View style={s.busyIn}><Dots /><Text style={t.small}>Writing up what you covered</Text></View>
-        ) : <Text selectable style={t.body}>{m.text}</Text>}
+        ) : <Text selectable style={t.body}><Linked text={m.text} /></Text>}
         {(m.meta?.actions ?? []).map((a) => <Change key={a} label={a} undone={false} />)}
       </View>
     );
@@ -207,7 +208,7 @@ function Message({ m, name, error, onRetry, onUndo, onUndoDid, onAnswer }: {
   const askOpen = ask && ['asked', 'calling', 'scheduled'].includes(ask.status);
   return (
     <View style={s.hers}>
-      <Text selectable style={t.body}>{m.text}</Text>
+      <Text selectable style={t.body}><Linked text={m.text} /></Text>
       {(m.meta?.changes ?? []).map((c) => <Change key={`c${c.id}`} label={c.label} undone={c.undone} onUndo={() => onUndo(c.id)} />)}
       {(m.meta?.did ?? []).map((x) => (
         <Change key={x.id} label={x.title} undone={x.undone} onUndo={x.undo ? () => onUndoDid(x.id) : undefined} />

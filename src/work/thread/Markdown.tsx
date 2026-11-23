@@ -1,6 +1,10 @@
-import { memo, useMemo } from 'react';
+import { memo, useContext, useMemo } from 'react';
 import { Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { FolderContext, Linked } from '@/components/Linked';
 import { Sym } from '@/components/Sym';
+import { showFile } from '@/lib/fileViewer';
+import { linkify } from '@/lib/linkify';
+import { openLink } from '@/lib/links';
 import { C, F } from '@/theme';
 import { IcCheck, IcCopy, MONO, Press, useCopied } from './ui';
 
@@ -70,26 +74,35 @@ export function parseBlocks(src: string): Block[] {
 
 const INLINE = /(`[^`\n]+`)|(\*\*[^*\n]+\*\*|__[^_\n]+__)|(\[[^\]\n]+\]\([^)\s]+\))|(\*[^*\s][^*\n]*\*)/g;
 
+/** A [label](target) link: a web address, an agenticos:// link, or a file path (absolute, or inside the job's folder). */
+function openMarkdownLink(url: string, folder: string | null) {
+  if (/^https?:\/\//i.test(url)) { Linking.openURL(url).catch(() => {}); return; }
+  if (/^agenticos:\/\//i.test(url)) { openLink(url); return; }
+  const f = linkify(decodeURI(url), { folder }).find((g) => g.t === 'file');
+  if (f?.t === 'file') showFile(f.path, f.line);
+}
+
 function Inline({ text }: { text: string }) {
+  const folder = useContext(FolderContext);
   const parts: React.ReactNode[] = [];
   let last = 0, k = 0;
   for (const m of text.matchAll(INLINE)) {
     const at = m.index ?? 0;
-    if (at > last) parts.push(text.slice(last, at));
+    if (at > last) parts.push(<Linked key={k++} text={text.slice(last, at)} />);
     const tok = m[0];
-    if (m[1]) parts.push(<Text key={k++} style={s.code}>{tok.slice(1, -1)}</Text>);
+    if (m[1]) parts.push(<Text key={k++} style={s.code}><Linked text={tok.slice(1, -1)} /></Text>);
     else if (m[2]) parts.push(<Text key={k++} style={s.bold}><Inline text={tok.slice(2, -2)} /></Text>);
     else if (m[3]) {
       const lm = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(tok);
       const url = lm?.[2] ?? '';
       parts.push(
         <Text key={k++} style={s.link} accessibilityRole="link"
-          onPress={/^https?:\/\//.test(url) ? () => { Linking.openURL(url).catch(() => {}); } : undefined}>{lm?.[1] ?? tok}</Text>,
+          onPress={() => openMarkdownLink(url, folder)}>{lm?.[1] ?? tok}</Text>,
       );
     } else parts.push(<Text key={k++} style={s.em}>{tok.slice(1, -1)}</Text>); // no italics in this app
     last = at + tok.length;
   }
-  if (last < text.length) parts.push(text.slice(last));
+  if (last < text.length) parts.push(<Linked key={k++} text={text.slice(last)} />);
   return <>{parts}</>;
 }
 

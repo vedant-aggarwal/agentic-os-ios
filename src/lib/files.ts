@@ -193,3 +193,24 @@ export async function fetchFromPc(name: string, size: number, onProgress: (p: Ge
 
 /** Open a file already downloaded from the PC. */
 export async function openDownloaded(uri: string) { if (fs) await fs.File.preview(new fs.File(uri)); }
+
+// ---- a PC file by path, for links in chat text (server: pc-files.ts /read, /raw, /send) ----
+export type PcFileRead =
+  | { kind: 'text'; name: string; size: number; path: string; text: string; truncated: boolean }
+  | { kind: 'image' | 'other'; name: string; size: number; path: string };
+
+/** What is at this absolute PC path: its text (the first 1 MB), or an image or other file's name and size. */
+export const readPcFile = async (path: string) => call<PcFileRead>(await bestRoute(), 'GET', '/read', undefined, { path });
+
+/** An image on the PC as a source `expo-image` can draw (carries the route's sign-in). */
+export async function pcImageSource(path: string) {
+  const r = await bestRoute();
+  return { uri: r.url('/raw', { path }), headers: r.headers };
+}
+
+/** Copy a PC file into Downloads\To Phone and download it onto the phone, then open it. */
+export async function sendPathToPhone(path: string, onProgress: (p: GetProgress) => void) {
+  const r = await bestRoute();
+  const out = await call<{ name: string; size: number }>(r, 'POST', '/send', { path });
+  return fetchFromPc(out.name, out.size, onProgress, true);
+}

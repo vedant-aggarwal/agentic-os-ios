@@ -1436,7 +1436,7 @@ function frame() {
 // Flick it again while it spins and the flicks add up, until it is a blur and the fog goes up and out of the cave.
 // Once it has slowed it eases one crystal round to face you. While it spins fast the app hides the name and gets
 // haptic ticks instead, quicker and harder as it speeds up.
-const turn = { angle: 0, vel: 0, dragging: false, last: 0, moved: false, front: -1, free: 0, fv: 0, w: 0, speed: 0, prev: 0, fast: false, passF: -1, buzz: 0, pull: 0 };
+const turn = { goal: null, start: null, angle: 0, vel: 0, dragging: false, last: 0, moved: false, front: -1, free: 0, fv: 0, w: 0, speed: 0, prev: 0, fast: false, passF: -1, buzz: 0, pull: 0 };
 // It is heavy: a drag of this many world units turns it one radian at rest, and it gets easier to push once it is
 // moving. Each flick adds less the faster it already goes, so top speed takes a run of flicks, kept up.
 const R_TURN = 1.6;
@@ -1452,8 +1452,21 @@ function worldPerScreenX() {
   const d = camera.position.distanceTo(camLook);
   return 2 * d * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2) * camera.aspect;
 }
+// Paging: from rest, a short swipe either way turns exactly one crystal round, the same both ways. Only a hard flick
+// (or flicks while it already spins) lets it spin free.
+const PAGE_PULL = 0.05, PAGE_FLICK = 0.6, SPIN_FLICK = 9;
+function neighbour(base, dir) {
+  let best = null;
+  for (const c of crystals) {
+    const d = wrap(-c.az - base);
+    if (Math.sign(d) === dir && Math.abs(d) > 0.02 && (best === null || Math.abs(d) < Math.abs(best))) best = d;
+  }
+  return best === null ? base : base + best;
+}
 function down() {
   // the finger lands on it: what it was doing carries on under the finger for a moment, so a flick adds to it
+  turn.start = Math.abs(turn.vel) < 1.3 ? turn.angle - wrap(turn.angle + crystals[frontIndex()].az) : null; // the resting angle it left
+  turn.goal = null;
   turn.dragging = true; turn.moved = true; turn.free = turn.vel; turn.fv = 0; turn.pull = 0; turn.last = performance.now();
   toApp({ t: 'grab' });
 }
@@ -1474,7 +1487,15 @@ function up(vx) {
   let vf = 0;
   if (since < 80) vf = typeof vx === 'number' ? (vx * worldPerScreenX()) / R_TURN : turn.fv;
   // a flick adds a capped push, less the faster it already turns that way; against the spin it brakes in full
-  const cur = turn.free, same = Math.sign(vf) === Math.sign(cur) || Math.abs(cur) < 0.5;
+  const cur = turn.free;
+  if (turn.start !== null && Math.abs(cur) < 1.3 && Math.abs(vf) < SPIN_FLICK) {
+    const dir = Math.abs(vf) > PAGE_FLICK ? Math.sign(vf) : Math.abs(turn.pull) > PAGE_PULL ? Math.sign(turn.pull) : 0;
+    turn.goal = dir ? neighbour(turn.start, dir) : turn.start;
+    turn.vel = vf * 0.3; // keeps the swipe's momentum into the spring
+    turn.dragging = false;
+    return;
+  }
+  const same = Math.sign(vf) === Math.sign(cur) || Math.abs(cur) < 0.5;
   const push = Math.sign(vf) * Math.min(Math.abs(vf) * FLICK_GAIN, FLICK_MAX) * (same ? 1 - 0.75 * Math.min(1, Math.abs(cur) / W_MAX) : 1.6);
   turn.vel = THREE.MathUtils.clamp(cur + push, -W_MAX, W_MAX);
   // a slow push that didn't get it going: it gives a little, then rocks back toward where it was
@@ -1496,18 +1517,18 @@ function updateTurn(dt) {
     turn.angle += turn.free * dt;
   } else {
     const a = Math.abs(turn.vel);
-    if (a > 1.3) {
+    if (turn.goal === null && a > 1.3) {
       // friction: grippy when slow, so an ordinary flick settles in a couple of seconds; it runs freer when fast,
       // so a wild spin lasts
       const dec = (0.7 + lerp(0.45, 0.06, sstep(2, 18, a)) * a) * dt;
       turn.vel = Math.sign(turn.vel) * Math.max(0, a - dec);
       turn.angle += turn.vel * dt;
     } else {
-      const diff = wrap(-crystals[frontIndex()].az - turn.angle);
-      turn.vel += (diff * 20 - turn.vel * 8) * dt;
+      const diff = turn.goal !== null ? turn.goal - turn.angle : wrap(-crystals[frontIndex()].az - turn.angle);
+      turn.vel += (diff * (turn.goal !== null ? 34 : 20) - turn.vel * (turn.goal !== null ? 10 : 8)) * dt;
       turn.angle += turn.vel * dt;
       if (Math.abs(diff) < 0.002 && Math.abs(turn.vel) < 0.02) {
-        turn.vel = 0;
+        turn.vel = 0; turn.goal = null;
         if (turn.moved) { turn.moved = false; toApp({ t: 'settled' }); }
       }
     }

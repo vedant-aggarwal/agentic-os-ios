@@ -47,9 +47,11 @@ export function PersonScreen({ open, onClose, id, m, f, a, bank, onPlan, notice 
   const [idea, setIdea] = useState('');
   const [moment, setMoment] = useState<Moment | null>(null);
   const [confirm, setConfirm] = useState(false);
+  const [moving, setMoving] = useState(false);
+  const { color } = useAspect();
   const [editNote, setEditNote] = useState<string | null>(null);
   const [shownFor, setShownFor] = useState(id);
-  if (id !== shownFor) { setShownFor(id); setLogged(null); setConfirm(false); setEditNote(null); setIdea(''); }
+  if (id !== shownFor) { setShownFor(id); setLogged(null); setConfirm(false); setMoving(false); setEditNote(null); setIdea(''); }
 
   const fv = m.friends.find((v) => v.p.id === id) ?? null;
   const nv = [...m.newcomers, ...m.faded].find((v) => v.p.id === id) ?? null;
@@ -89,8 +91,10 @@ export function PersonScreen({ open, onClose, id, m, f, a, bank, onPlan, notice 
 
           {fv ? (
             <View style={s.row}>
-              <Button label="Met today" kind="accent" onPress={() => log('meet')} wrap={s.flex} />
-              <Button label="Talked today" kind="quiet" onPress={() => log('call')} wrap={s.flex} />
+              <Button label="Met today" kind={fv.todayMeet ? 'soft' : 'accent'} onPress={() => log('meet')} wrap={s.flex}
+                icon={fv.todayMeet ? <Icon name="check" size={16} color={color} /> : undefined} />
+              <Button label="Talked today" kind={fv.todayTalk ? 'soft' : 'quiet'} onPress={() => log('call')} wrap={s.flex}
+                icon={fv.todayTalk ? <Icon name="check" size={16} color={color} /> : undefined} />
             </View>
           ) : (
             <View style={s.gap8}>
@@ -156,15 +160,12 @@ export function PersonScreen({ open, onClose, id, m, f, a, bank, onPlan, notice 
               : <Text style={[t.small, s.pad]}>Nothing logged yet. The buttons above keep it to one tap.</Text>}
           </Section>
 
-          {fv ? <Section title="Somewhere else">
-            {fv ? (
-              <View style={s.row}>
-                <Button label="Move to Family" kind="quiet" small onPress={() => { a.moveTo(p, 'family'); onClose(); }} wrap={s.flex} />
-                <Button label="Move to Romance" kind="quiet" small onPress={() => { a.moveTo(p, 'romance'); onClose(); }} wrap={s.flex} />
-              </View>
-            ) : null}
-            {fv && p.friend_since ? <Button label="Back to new people" kind="quiet" small onPress={() => a.stillGettingToKnow(p)} /> : null}
-          </Section> : null}
+          {fv ? (
+            <View>
+              {p.friend_since ? <Row title="Back to new people" sub="Still getting to know them" onPress={() => a.stillGettingToKnow(p)} label="Move back to new people" /> : null}
+              <Row title="Belongs in another section" onPress={() => setMoving(true)} chevron label="Belongs in another section: Family or Romance" />
+            </View>
+          ) : null}
           {nv ? (confirm ? (
               <View style={s.gap8}>
                 <Text style={t.small}>This removes {first} and the times you logged with only them.</Text>
@@ -176,6 +177,13 @@ export function PersonScreen({ open, onClose, id, m, f, a, bank, onPlan, notice 
             ) : <Button label={`Remove ${first}`} kind="quiet" small onPress={() => setConfirm(true)} />) : null}
         </>
       )}
+      <Sheet open={moving} onClose={() => setMoving(false)} title={p ? `Move ${first}` : ''}>
+        <Text style={t.small}>Only the section changes. Everything you logged stays with {first}.</Text>
+        {p ? (['family', 'romance'] as const).map((to) => (
+          <Row key={to} title={to === 'family' ? 'Family' : 'Romance'} chevron label={`Move ${first} to ${to === 'family' ? 'Family' : 'Romance'}`}
+            onPress={() => { a.moveTo(p, to); setMoving(false); onClose(); }} />
+        )) : null}
+      </Sheet>
       <MomentSheet moment={moment} onClose={() => setMoment(null)} f={f} a={a} notice={notice} />
     </Screen>
   );

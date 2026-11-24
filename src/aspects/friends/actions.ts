@@ -1,6 +1,7 @@
-import { clock, today } from '@/aspects/kit';
+import { clock, myDay, today, undoable } from '@/aspects/kit';
 import { invalidate, newId, upload } from '@/lib/mod';
-import { actWord, type Friends, type Kind, type Moment, type Person, type Place, type Plan, type SeenPlace } from './data';
+import { actWord, firstName, type Friends, type Kind, type Moment, type Person, type Place, type Plan, type Rhythm, type SeenPlace } from './data';
+import { loggedOn } from './model';
 
 // Every write the page makes. Writes show at once (the data layer keeps them) and reach the PC in order; when the
 // PC refuses, the record goes back and the promise rejects, so each action reports through `notice`.
@@ -12,11 +13,26 @@ const why = (e: unknown) => (e instanceof Error ? e.message : "Couldn't save tha
 export function makeActions(f: Friends, notice: (text: string) => void) {
   const fail = (e: unknown) => { notice(why(e)); };
 
-  /** One tap: met today or talked today. Returns the new moment's id so the page can offer the details. */
-  function log(person: Person, kind: Kind, extra: Partial<Moment> = {}) {
+  /** A new moment for his day (a log at 01:00 still counts for the evening before). Returns its id. */
+  function put(person: Person, kind: Kind, extra: Partial<Moment> = {}) {
     const id = newId('mo');
-    f.moments.put({ id, date: today(), at: clock(Date.now()), people: [person.id], aspect: 'friends', kind, act: null,
+    f.moments.put({ id, date: myDay(), at: clock(Date.now()), people: [person.id], aspect: 'friends', kind, act: null,
       title: momentTitle(kind), by: 'you', source: 'you', ...extra }).catch(fail);
+    return id;
+  }
+  /**
+   * One tap: met today or talked today. Once one is logged for his day, another tap saves nothing new: it returns that
+   * moment (adding the act when it has none), so the page opens its details. Only a different act makes a second one.
+   */
+  function log(person: Person, kind: Kind, extra: Partial<Moment> = {}) {
+    const had = loggedOn(f.moments.items ?? [], person.id, myDay(), kind !== 'meet');
+    if (had && !(extra.act && had.act && had.act !== extra.act)) {
+      if (extra.act && !had.act) detail(had.id, { act: extra.act });
+      return had.id;
+    }
+    const id = put(person, kind, extra);
+    const what = extra.act ? (actWord(extra.act) ?? extra.act) : null;
+    undoable(`${kind === 'meet' ? 'Met' : 'Talked to'} ${firstName(person)}${what ? `, ${what}` : ''}`, () => undoLog(id));
     return id;
   }
   function detail(id: string, change: Partial<Moment>) {
@@ -54,7 +70,7 @@ export function makeActions(f: Friends, notice: (text: string) => void) {
     } catch (e) { fail(e); return null; }
   }
   function sawAgain(p: Person) {
-    const id = log(p, 'meet', { title: 'Saw again', place: p.place ?? null });
+    const id = put(p, 'meet', { title: 'Saw again', place: p.place ?? null });
     notice(`Saw ${p.name.split(' ')[0]} again`);
     return id;
   }
@@ -63,11 +79,15 @@ export function makeActions(f: Friends, notice: (text: string) => void) {
   }
   function stillGettingToKnow(p: Person) { f.persons.patch(p.id, { rel: 'new', friend_since: null }).catch(fail); }
   function patchPerson(p: Person, change: Partial<Person>) { f.persons.patch(p.id, change).catch(fail); }
-  /** Move someone to Family or Romance: only the section changes; their history stays with them. */
+  /** Move someone to Family or Romance: only the section changes; their history stays with them. Undo puts them back. */
   function moveTo(p: Person, aspect: 'family' | 'romance') {
+    const back = { aspect: p.aspect ?? 'friends', rel: p.rel ?? null };
     f.persons.patch(p.id, { aspect, ...(aspect === 'family' ? { rel: 'family' } : null) })
-      .then(() => notice(`Moved to ${aspect === 'family' ? 'Family' : 'Romance'}`)).catch(fail);
+      .then(() => undoable(`${firstName(p)} moved to ${aspect === 'family' ? 'Family' : 'Romance'}`, () => { f.persons.patch(p.id, back).catch(fail); }))
+      .catch(fail);
   }
+  /** What he and a friend usually do, saved on the rhythm he set with them, so the weekly row and "a first" work from day one. */
+  function setUsual(r: Rhythm, act: string | null) { f.rhythms.patch(r.id, { act }).catch(fail); }
   /** Forget someone he is getting to know: the person and the meetings that were only with them. */
   async function forget(p: Person) {
     try {
@@ -124,7 +144,7 @@ export function makeActions(f: Friends, notice: (text: string) => void) {
   function removePlace(id: string) { f.places.remove(id).then(() => invalidate('/mod/friends/week')).catch(fail); }
 
   return {
-    log, detail, undoLog, photo, addSomeone, sawAgain, makeFriend, stillGettingToKnow, patchPerson, moveTo, forget,
+    log, detail, undoLog, photo, addSomeone, sawAgain, makeFriend, stillGettingToKnow, patchPerson, moveTo, setUsual, forget,
     makePlan, patchPlan, happened, movePlan, letGo, removePlan, saveIdea, toggleIdea, keepPlace, addPlace, editPlace, removePlace,
   };
 }

@@ -3,10 +3,10 @@ import { StyleSheet, View } from 'react-native';
 import { Button, Empty, Failed, Icon, Page, Section, Skeleton, SP, useAspect, useEntry } from '@/aspects/kit';
 import { invalidate } from '@/lib/mod';
 import { makeActions } from './actions';
-import { DeepenCard, FriendRow, LogDetail, UsualRow } from './Circle';
+import { DeepenCard, FriendRow, LogDetail, UsualAsk, UsualRow } from './Circle';
 import { useFriends, type Kind, type Person } from './data';
 import { askIdeas } from './ideas';
-import { AskCard, NextCard, NoPlanCard } from './LeadPlan';
+import { AskRow, NextCard, NoPlanCard } from './LeadPlan';
 import { buildModel, deepenIdeas, type DeepenIdea } from './model';
 import { AddSomeone, NewPeopleScreen, NudgeRow } from './NewPeople';
 import { PathTrack } from './parts';
@@ -90,9 +90,9 @@ export default function Friends() {
       ) : (
         <>
           <Section title="Plans" action={m.upcoming.length + m.ask.length + m.done.length ? 'All' : undefined} onAction={() => setPlansOpen(true)}>
-            {m.ask[0] ? <AskCard plan={m.ask[0]} m={m} a={a} free={free} />
-              : m.upcoming[0] ? <NextCard plan={m.upcoming[0]} m={m} a={a} more={m.upcoming.length - 1} onOpen={() => setPlansOpen(true)} notice={asp.notice} />
-                : <NoPlanCard free={free} onMake={() => makePlan()} calendarKnown={!!f.week.data} />}
+            {m.upcoming[0] ? <NextCard plan={m.upcoming[0]} m={m} a={a} more={m.upcoming.length - 1} onOpen={() => setPlansOpen(true)} notice={asp.notice} />
+              : <NoPlanCard free={free} onMake={() => makePlan()} calendarKnown={!!f.week.data} />}
+            {m.askRecent[0] ? <AskRow key={m.askRecent[0].id} plan={m.askRecent[0]} m={m} a={a} free={free} /> : null}
           </Section>
 
           <Section title="New people" action="All" onAction={() => setNewOpen(true)}>
@@ -104,9 +104,11 @@ export default function Friends() {
           <Section title="Circle" gap={0}>
             {m.friends.length ? m.friends.map((v) => (
               <View key={v.p.id}>
-                <FriendRow v={v} logged={logged?.person === v.p.id && !!loggedMoment} onLog={(kind) => log(v.p, kind)} onOpen={() => openPerson(v.p)} />
-                {logged?.person === v.p.id && loggedMoment ? <LogDetail moment={loggedMoment} a={a} onClose={() => setLogged(null)} /> : null}
+                <FriendRow v={v} onLog={(kind) => log(v.p, kind)} onOpen={() => openPerson(v.p)}
+                  onLogged={(mo) => setLogged(logged?.moment === mo.id ? null : { person: v.p.id, moment: mo.id })} />
+                {logged?.person === v.p.id && loggedMoment ? <LogDetail key={loggedMoment.id} moment={loggedMoment} a={a} onClose={() => setLogged(null)} /> : null}
                 {v.usual ? <UsualRow v={v} onLog={() => log(v.p, 'meet', v.usual!.act)} /> : null}
+                {steady?.p.id === v.p.id ? <UsualAsk v={v} a={a} /> : null}
               </View>
             )) : (
               <Empty title="Your friends will be here" body="Someone you meet joins your circle once you have spent time together. A friend you already have can be added too."

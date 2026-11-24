@@ -17,23 +17,43 @@ function hint(v: FriendView) {
   return null;
 }
 
-/** One friend in the circle: when they last met, and the one button that logs today. */
-export function FriendRow({ v, logged, onLog, onOpen }: {
-  v: FriendView; logged: boolean; onLog: (kind: Kind) => void; onOpen: () => void;
+/** One friend in the circle: when they last met, and the one button that logs today. Once today is logged, the button
+ *  says so and opens the details instead of saving another meeting. */
+export function FriendRow({ v, onLog, onLogged, onOpen }: {
+  v: FriendView; onLog: (kind: Kind) => void; onLogged: (moment: Moment) => void; onOpen: () => void;
 }) {
   const { color } = useAspect();
   const talk = v.rhythm?.mode === 'talk';
-  const h = hint(v);
+  const done = talk ? v.todayTalk ?? v.todayMeet : v.todayMeet;
+  const h = done ? null : hint(v);
+  const doneWord = done && (done.kind ?? 'meet') !== 'meet' ? 'Talked today' : 'Met today';
   return (
     <ActRow title={v.p.name} sub={`${lastLine(v.st)}${h ? `. ${h}` : ''}`} onPress={onOpen} label={`${v.p.name}. ${lastLine(v.st)}`}
       left={<Avatar person={v.p} stage="friend" />}
-      action={logged ? (
-        <View style={s.done}><Icon name="check" size={16} color={color} /><Text style={[t.label, { color }]}>Logged</Text></View>
+      action={done ? (
+        <Press label={`${doneWord}. Add what you did`} onPress={() => onLogged(done)} feel="tick" hitSlop={6} style={s.done}>
+          <Icon name="check" size={16} color={color} /><Text style={[t.label, { color }]}>{doneWord}</Text>
+        </Press>
       ) : (
         <Button label={talk ? 'Talked today' : 'Met today'} kind="quiet" small onPress={() => onLog(talk ? 'call' : 'meet')} />
       )} />
   );
 }
+
+/** Asked once, before anything is logged: what he and this friend usually do. Saved on their rhythm. */
+export function UsualAsk({ v, a }: { v: FriendView; a: Actions }) {
+  if (!v.rhythm || v.rhythm.act || v.usual || Object.keys(v.st.acts).length) return null;
+  const r = v.rhythm;
+  return (
+    <View style={[s.ask, s.indent]}>
+      <Text style={t.small}>What do you two usually do?</Text>
+      <View style={s.chips}>
+        {USUAL_ACTS.map((act) => <Chip key={act} label={ACT_CHIP[act]} onPress={() => a.setUsual(r, act)} />)}
+      </View>
+    </View>
+  );
+}
+const USUAL_ACTS = ['food', 'chai', 'gym', 'walk', 'game', 'study', 'drive', 'sport'] as const;
 
 /** After a one-tap log: what they did, a line, a photo. All optional; the log is already saved. */
 export function LogDetail({ moment, a, onClose, indent = true }: { moment: Moment; a: Actions; onClose: () => void; indent?: boolean }) {
@@ -101,7 +121,7 @@ export function DeepenCard({ v, ideas, onPlan, compact }: { v: FriendView; ideas
   const [i, setI] = useState(0);
   if (!ideas.length) return null;
   const idea = ideas[i % ideas.length];
-  const usual = usualAct(v.st);
+  const usual = usualAct(v.st, v.rhythm);
   return (
     <Card style={s.deepen}>
       <Text style={t.label}>{compact ? 'Something new together' : `Something new with ${firstName(v.p)}`}</Text>
@@ -131,4 +151,5 @@ const s = StyleSheet.create({
   usual: { flexDirection: 'row', alignItems: 'center', gap: SP[12], marginLeft: 52, minHeight: 36, marginTop: -SP[8], marginBottom: SP[4] },
   flush: { marginLeft: 0, marginTop: 0, marginBottom: 0 },
   deepen: { gap: SP[12] },
+  ask: { gap: SP[8], marginTop: -SP[4], marginBottom: SP[8] },
 });

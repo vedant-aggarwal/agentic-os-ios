@@ -54,6 +54,42 @@ export function AskCard({ plan, m, a, free }: { plan: Plan; m: Model; a: Actions
   );
 }
 
+/** A past plan with no answer yet, as one small row under the lead: Yes keeps it, Not this time offers to move it. */
+export function AskRow({ plan, m, a, free }: { plan: Plan; m: Model; a: Actions; free: Window[] }) {
+  const { color } = useAspect();
+  const [moving, setMoving] = useState(false);
+  const what = `${plan.title} with ${withNames(plan, m)}`;
+  return (
+    <View style={s.ask}>
+      <View style={s.askHead}>
+        <View style={s.flex}>
+          <Text style={t.strong} numberOfLines={1}>{what}</Text>
+          <Text style={t.small}>{whenLine(plan)}. {moving ? 'Move it?' : 'Did it happen?'}</Text>
+        </View>
+        {!moving ? (
+          <>
+            <Press label={`Yes, ${what} happened`} onPress={() => { haptic.success(); a.happened(plan); }} feel="none" hitSlop={8} style={s.askBtn}>
+              <Text style={[t.label, { color }]}>Yes</Text>
+            </Press>
+            <Press label={`${what} did not happen this time`} onPress={() => setMoving(true)} feel="tick" hitSlop={8} style={s.askBtn}>
+              <Text style={t.label}>Not this time</Text>
+            </Press>
+          </>
+        ) : null}
+      </View>
+      {moving ? (
+        <View style={s.chips}>
+          {free.slice(0, 3).map((w) => (
+            <Chip key={w.date} label={`${dayAhead(w.date)}, ${roundSlot(w.from)}`} onPress={() => { a.movePlan(plan, w.date, roundSlot(w.from)); setMoving(false); }} />
+          ))}
+          <Chip label="Let it go" onPress={() => a.letGo(plan)} />
+          <Chip label="Back" onPress={() => setMoving(false)} />
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 /** The next plan, the page's lead: what, who and when, the invite to copy, and "they're in". */
 export function NextCard({ plan, m, a, more, onOpen, notice }: { plan: Plan; m: Model; a: Actions; more: number; onOpen: () => void; notice: (t: string) => void }) {
   const { color } = useAspect();
@@ -134,5 +170,8 @@ const s = StyleSheet.create({
   flex: { flex: 1, minWidth: 0 },
   inRow: { flexDirection: 'row', alignItems: 'center', gap: SP[8] },
   skel: { height: 172, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.07)' },
+  ask: { gap: SP[8], paddingVertical: SP[8] },
+  askHead: { flexDirection: 'row', alignItems: 'center', gap: SP[8] },
+  askBtn: { minHeight: 40, justifyContent: 'center', paddingHorizontal: SP[4] },
   planRow: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: SP[12], paddingVertical: SP[8] },
 });

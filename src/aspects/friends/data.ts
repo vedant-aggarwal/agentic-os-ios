@@ -1,4 +1,4 @@
-import { addDays, daysBetween, shortDay, today, weekStart } from '@/aspects/kit';
+import { addDays, daysBetween, myDay, shortDay, today, weekStart } from '@/aspects/kit';
 import { useCollection, useGet, type Doc } from '@/lib/mod';
 
 // Friends reads the shared people list (module `people`, rows whose aspect is friends) and keeps only what Friends
@@ -147,13 +147,14 @@ export function warmthOf(rhythm: Rhythm | null, st: Standing): 'warm' | 'due' | 
   return x <= 1 ? 'warm' : x <= 2 ? 'due' : 'drift';
 }
 
-/** One line on when they last met, kindly: "Met yesterday, a film", "Talked 5 days ago", "Nothing logged yet". */
+/** One line on when they last met, kindly: "Met yesterday, a film", "Talked 5 days ago", "Nothing logged yet".
+ *  Counted from his day (rolls at 04:00), so a log at 01:00 reads "today", the same as the button beside it. */
 export function lastLine(st: Standing) {
   const m = st.last;
   if (!m) return 'Nothing logged yet';
   const verb = (m.kind ?? 'meet') === 'meet' ? 'Met' : 'Talked';
   const what = actWord(m.act);
-  return `${verb} ${whenAgo(m.date)}${what ? `, ${what}` : ''}`;
+  return `${verb} ${whenAgo(m.date, myDay())}${what ? `, ${what}` : ''}`;
 }
 
 // ── the data, shared by every part of the page ───────────────────────────────────────────────────────────────

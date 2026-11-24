@@ -1,18 +1,30 @@
-import { addDays, today } from '@/aspects/kit';
+import { addDays, myDay, today } from '@/aspects/kit';
 import {
   actWord, count, firstName, standingOf, standingPlan, warmthOf, whenAgo, whenAhead,
-  type BankIdea, type Friends, type Idea, type Person, type Place, type Plan, type Rhythm, type Stage, type Standing, type Visit,
+  type BankIdea, type Friends, type Idea, type Moment, type Person, type Place, type Plan, type Rhythm, type Stage, type Standing, type Visit,
 } from './data';
 
 // What every screen shows, worked out from the records in one place.
 
-export type FriendView = { p: Person; st: Standing; rhythm: Rhythm | null; warmth: 'warm' | 'due' | 'drift' | 'none'; usual: { act: string; thisWeek: boolean } | null };
+export type FriendView = {
+  p: Person; st: Standing; rhythm: Rhythm | null; warmth: 'warm' | 'due' | 'drift' | 'none'; usual: { act: string; thisWeek: boolean } | null;
+  /** What is already logged for his day (rolls at 04:00): the one-tap buttons read these, so a second tap can't log twice. */
+  todayMeet: Moment | null; todayTalk: Moment | null;
+};
 export type NewView = { p: Person; st: Standing; place: Place | null; visit: Visit | null };
 export type Nudge = { key: string; kind: 'hello' | 'invite' | 'friend'; v: NewView; title: string; sub: string };
 export type DeepenIdea = { id: string; title: string; act: string | null; invite: string | null; saved: boolean };
 export type PlaceView = { place: Place; visits: Visit[]; people: { p: Person; stage: Stage }[] };
 
 const OPEN = new Set(['tentative', 'confirmed', 'asked', 'sent', 'draft', 'idea']);
+/** How long an unanswered plan waits on home for "did it happen?" before it lives on the Plans screen only. */
+const ASK_DAYS = 7;
+
+/** The latest moment with this person logged for his day `day`, of one kind: an in-person meeting or a call/chat. */
+export function loggedOn(moments: Moment[], person: string, day: string, talk: boolean) {
+  return moments.filter((m) => m.date === day && m.people?.includes(person) && (((m.kind ?? 'meet') === 'meet') !== talk))
+    .sort((a, b) => (b.at ?? '').localeCompare(a.at ?? ''))[0] ?? null;
+}
 
 export function visitPhrase(place: Place | null, visit: Visit | null) {
   if (!place) return null;
@@ -22,6 +34,7 @@ export function visitPhrase(place: Place | null, visit: Visit | null) {
 
 export function buildModel(f: Friends) {
   const ref = today();
+  const day = myDay();
   const persons = (f.persons.items ?? []).filter((p) => p.aspect === 'friends');
   const ids = new Set(persons.map((p) => p.id));
   const moments = (f.moments.items ?? []).filter((m) => m.people?.some((id) => ids.has(id)));
@@ -35,7 +48,8 @@ export function buildModel(f: Friends) {
   const friends: FriendView[] = persons.filter((p) => p.rel !== 'new').sort(byName).map((p) => {
     const st = standingOf(p, moments, plans, ref);
     const rhythm = rhythms.filter((r) => r.person === p.id && !r.dinner).sort((a, b) => ((a as { sort?: number }).sort ?? 9) - ((b as { sort?: number }).sort ?? 9))[0] ?? null;
-    return { p, st, rhythm, warmth: warmthOf(rhythm, st), usual: standingPlan(p, moments, rhythm, ref) };
+    return { p, st, rhythm, warmth: warmthOf(rhythm, st), usual: standingPlan(p, moments, rhythm, ref),
+      todayMeet: loggedOn(moments, p.id, day, false), todayTalk: loggedOn(moments, p.id, day, true) };
   });
   const all: NewView[] = persons.filter((p) => p.rel === 'new').map((p) => {
     const place = placeOf(p.place);
@@ -53,6 +67,8 @@ export function buildModel(f: Friends) {
   // ── plans ──
   const open = plans.filter((p) => OPEN.has(p.state));
   const ask = open.filter((p) => p.date && p.date < ref).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  // home asks only about the last week's plans, newest first; older ones wait on the Plans screen
+  const askRecent = ask.filter((p) => String(p.date) >= addDays(ref, -ASK_DAYS)).reverse();
   const upcoming = open.filter((p) => !p.date || p.date >= ref).sort((a, b) => String(a.date ?? '9999').localeCompare(String(b.date ?? '9999')) || String(a.slot ?? '').localeCompare(String(b.slot ?? '')));
   const done = plans.filter((p) => p.state === 'done').sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')));
   const withPlan = new Set([...upcoming, ...ask].flatMap((p) => p.people ?? []));
@@ -74,9 +90,11 @@ export function buildModel(f: Friends) {
   const rank = (n: Nudge) => (n.kind === 'friend' ? 0 : n.kind === 'hello' ? 1 : 2);
   nudges.sort((a, b) => rank(a) - rank(b) || String(a.v.visit?.date ?? '9999').localeCompare(String(b.v.visit?.date ?? '9999')));
 
-  // ── the steadiest friend gets one idea beyond the usual ──
+  // ── the steadiest friend gets one idea beyond the usual: the one he meets most, or, before anything is logged,
+  // the one he set the closest in-person rhythm with (his own words for who he sees every week) ──
   const recent = (v: FriendView) => (v.st.last ? v.st.meetings : 0);
-  const steady = friends.filter((v) => v.st.meetings >= 2 && v.st.lastMeet && v.st.lastMeet.date >= addDays(ref, -60)).sort((a, b) => recent(b) - recent(a))[0] ?? null;
+  const steady = friends.filter((v) => v.st.meetings >= 2 && v.st.lastMeet && v.st.lastMeet.date >= addDays(ref, -60)).sort((a, b) => recent(b) - recent(a))[0]
+    ?? friends.filter((v) => v.rhythm?.mode === 'meet' && v.rhythm.every <= 14).sort((a, b) => a.rhythm!.every - b.rhythm!.every)[0] ?? null;
 
   // ── the header line: the answer to "is my circle growing?" in words ──
   const monthStart = `${ref.slice(0, 8)}01`;
@@ -94,23 +112,24 @@ export function buildModel(f: Friends) {
       ...friends.filter((v) => v.p.place === place.id).map((v) => ({ p: v.p, stage: 'friend' as Stage }))],
   }));
 
-  return { ref, persons, moments, plans, friends, newcomers, faded, groups, ask, upcoming, done, nudges, steady, headline, places: placeViews, placeOf };
+  return { ref, persons, moments, plans, friends, newcomers, faded, groups, ask, askRecent, upcoming, done, nudges, steady, headline, places: placeViews, placeOf };
 }
 export type Model = ReturnType<typeof buildModel>;
 
 /** Ideas beyond the usual for one friend: his own saved ideas first, then the bank's firsts for these two. */
 export function deepenIdeas(v: FriendView, ideas: Idea[], bank: BankIdea[]): DeepenIdea[] {
   const saved = ideas.filter((i) => i.person === v.p.id && i.kind === 'plan' && !i.done).map((i) => ({ id: i.id, title: i.title, act: null, invite: null, saved: true }));
-  const firsts = bank.filter((b) => b.act !== 'talk' && !v.st.acts[b.act] && !(b.act === 'food' && v.st.acts.meal))
+  const usual = v.rhythm?.act ?? null;
+  const firsts = bank.filter((b) => b.act !== 'talk' && b.act !== usual && !v.st.acts[b.act] && !(b.act === 'food' && (v.st.acts.meal || usual === 'meal')))
     .sort((a, b) => Number(!!a.near) - Number(!!b.near))
     .map((b) => ({ id: b.id, title: b.title, act: b.act, invite: b.invite, saved: false }));
   return [...saved, ...firsts];
 }
 
-/** What a friend and he usually do, for "this would be a first". */
-export function usualAct(st: Standing) {
+/** What a friend and he usually do, for "this would be a first": what they log most, else what he said they do. */
+export function usualAct(st: Standing, rhythm?: Rhythm | null) {
   const top = Object.entries(st.acts).sort((a, b) => b[1] - a[1])[0];
-  return top ? actWord(top[0]) : null;
+  return top ? actWord(top[0]) : actWord(rhythm?.act);
 }
 
 /** Plans that involve a person, soonest first. */

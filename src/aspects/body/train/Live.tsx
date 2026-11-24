@@ -207,8 +207,8 @@ function RestBar({ until, total, bottom, onAdd, onSkip, onEnd }: { until: number
           <Text style={[t.footnote, { color: a.color }]}>Rest</Text>
           <Text style={[t.title3, t.num]} accessibilityLiveRegion="polite">{timer(left)}</Text>
         </View>
-        <Press label="15 seconds less rest" onPress={() => onAdd(-15)} style={s.restBtn}><Text style={[t.callout, t.num]}>−15</Text></Press>
-        <Press label="15 seconds more rest" onPress={() => onAdd(15)} style={s.restBtn}><Text style={[t.callout, t.num]}>+15</Text></Press>
+        <Press label="15 seconds less rest" onPress={() => onAdd(-15)} style={[s.restBtn, s.restStep]}><Icon name="minus" size={14} /><Text style={[t.callout, t.num]}>15</Text></Press>
+        <Press label="15 seconds more rest" onPress={() => onAdd(15)} style={[s.restBtn, s.restStep]}><Icon name="plus" size={14} /><Text style={[t.callout, t.num]}>15</Text></Press>
         <Press label="Skip rest" onPress={onSkip} style={[s.restBtn, s.restSkip]}><Text style={[t.callout, { color: C.scene }]}>Skip</Text></Press>
       </View>
     </View>
@@ -260,7 +260,7 @@ function ExerciseBlock({ it, best, holding, onHoldDone, onTick, onEdit, onMenu, 
             </View>
             <Press label={last ? `Use last time, ${lastText(it.kind, last)}` : 'No last time'} disabled={!last || st.done} feel="none" wrap={s.cLast}
               onPress={() => last && onCopy(j, it.kind === 'weight' ? { w: last.w ?? null, r: last.r ?? null } : it.kind === 'bw' ? { r: last.r ?? null } : it.kind === 'time' ? { t: last.t ?? null } : { min: last.min ?? null })}>
-              <Text numberOfLines={1} style={[t.footnote, t.num]}>{last ? lastText(it.kind, last) : '–'}</Text>
+              <Text numberOfLines={1} style={[t.footnote, t.num]}>{last ? lastText(it.kind, last) : 'New'}</Text>
             </Press>
             {vals.map((v, k) => (
               <Press key={k} label={`Set ${j + 1}, ${cols[k]} ${v.empty ? 'not set' : v.text}. Change`} onPress={() => onEdit(j, k)} feel="tick" wrap={s.cVal}
@@ -483,6 +483,7 @@ const s = StyleSheet.create({
   },
   restFill: { position: 'absolute', left: 0, top: 0, bottom: 0 },
   restText: { flex: 1 },
+  restStep: { flexDirection: 'row', gap: 4 },
   restBtn: { height: 48, minWidth: 52, paddingHorizontal: 12, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: SURF.raised },
   restSkip: { backgroundColor: C.text },
   follow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 44 },

@@ -1,8 +1,9 @@
 import { requireOptionalNativeModule } from 'expo';
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { AppState, Platform } from 'react-native';
+import { dayLabel, daysBetween, myDay } from '@/aspects/kit';
 import { api, ApiError } from '@/lib/api';
-import { collection, invalidate, useGet, type Doc } from '@/lib/mod';
+import { collection, invalidate, useCollection, useGet, type Doc } from '@/lib/mod';
 
 // Soul's data: the shapes the server answers (server/modules/soul.ts, soul-clean.ts, soul-journal.ts), the reads the
 // page shares, what the phone keeps on its own disk so a rough moment works with the PC away, and the outbox that
@@ -119,14 +120,15 @@ export function cancel(id: string) {
 export async function flush() {
   if (flushing || !jobs.length) return;
   flushing = true;
+  let wrote = false;
   try {
     for (const j of [...jobs]) {
       try {
         await api(j.path, { method: j.method, body: j.body });
       } catch (e) {
-        const refused = e instanceof ApiError && e.status >= 400 && e.status < 500 && e.status !== 408 && e.status !== 429;
-        if (!refused) break; // the PC is away: keep this and everything after it, in order
+        if (!refused(e)) break; // the PC is away: keep this and everything after it, in order
       }
+      if (j.id.startsWith('journal:')) wrote = true;
       jobs = jobs.filter((x) => x.id !== j.id);
       publish();
     }
@@ -135,6 +137,27 @@ export async function flush() {
   }
   collection('soul', 'urges').refresh().catch(() => {});
   refreshClean();
+  if (wrote) { collection('growth', 'journal').refresh().catch(() => {}); refreshJournal(); }
+}
+
+/** The PC answered and said no (a 4xx other than a timeout or rate limit). Anything else means it is away. */
+export const refused = (e: unknown) => e instanceof ApiError && e.status >= 400 && e.status < 500 && e.status !== 408 && e.status !== 429;
+
+/** True while something with this outbox id is still waiting on the phone. */
+export const waiting = (id: string) => jobs.some((j) => j.id === id);
+
+/** Growth's journal with the entries still waiting in the outbox laid over it, so a save made with the PC away shows. */
+export function useEntries() {
+  const journal = useCollection<Entry>('growth', 'journal');
+  const all = useSyncExternalStore((fn) => { subs.add(fn); return () => { subs.delete(fn); }; }, () => jobs, () => jobs);
+  const items = useMemo(() => {
+    const pending = all.filter((j) => j.id.startsWith('journal:')).map((j) => j.body as Entry);
+    if (!pending.length) return journal.items;
+    const m = new Map((journal.items ?? []).map((e) => [e.id, e]));
+    for (const e of pending) m.set(e.id, e);
+    return [...m.values()];
+  }, [journal.items, all]);
+  return { ...journal, items };
 }
 
 /** How many logs are waiting for the PC. Flushes when the app comes back to the front. */
@@ -162,6 +185,22 @@ export function useNow(ms: number, on = true) {
   return now;
 }
 
+/**
+ * Keep the screen on while `on` (a sit, a rough moment): iOS auto-lock would put the app in the background and stop
+ * the clock and the haptics. expo-keep-awake ships inside expo; a build without it just skips this.
+ */
+export function useKeepAwake(on: boolean, tag: string) {
+  useEffect(() => {
+    if (!on) return;
+    let k: typeof import('expo-keep-awake') | null = null;
+    try {
+      k = require('expo-keep-awake') as typeof import('expo-keep-awake'); // eslint-disable-line @typescript-eslint/no-require-imports
+      k.activateKeepAwakeAsync(tag).catch(() => {});
+    } catch { k = null; }
+    return () => { k?.deactivateKeepAwake(tag).catch(() => {}); };
+  }, [on, tag]);
+}
+
 /** True while the app is in the foreground. */
 export function useForeground() {
   const [on, setOn] = useState(AppState.currentState === 'active' || Platform.OS === 'web');
@@ -178,4 +217,9 @@ export const hm = (at: string | number) => new Date(new Date(at).getTime() + 5.5
 export const istMin = (ms = Date.now()) => { const d = new Date(ms + 5.5 * 3600_000); return d.getUTCHours() * 60 + d.getUTCMinutes(); };
 /** 1 Monday .. 7 Sunday for an IST day. */
 export const isoDow = (day: string) => { const d = new Date(`${day}T00:00:00Z`).getUTCDay(); return d === 0 ? 7 : d; };
+/** "Today" / "Yesterday" on his day (it rolls at 04:00), so an entry from last evening still reads "Today" at 01:00. */
+export function nightLabel(day: string) {
+  const d = daysBetween(myDay(), day);
+  return d === 0 ? 'Today' : d === -1 ? 'Yesterday' : d === 1 ? 'Tomorrow' : dayLabel(day);
+}
 export const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));

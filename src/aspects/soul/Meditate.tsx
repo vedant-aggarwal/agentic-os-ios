@@ -5,7 +5,7 @@ import {
 } from '@/aspects/kit';
 import { collection, newId, useCollection } from '@/lib/mod';
 import { Breath } from './Breath';
-import { readLocal, send, useForeground, writeLocal, type Sit } from './data';
+import { readLocal, send, useForeground, useKeepAwake, writeLocal, type Sit } from './data';
 import { Fig, Gl, plural } from './parts';
 import { PATTERNS, patternOf, SIT_LENGTHS, type Pattern } from './words';
 
@@ -89,6 +89,7 @@ function SitRoom({ open, mins, pattern, onClose }: { open: boolean; mins: number
   const finished = ms >= goal * 1000;
   const done = ended ?? (finished ? goal : null);
   const running = open && pageOpen && fg && !paused && done == null;
+  useKeepAwake(open && pageOpen && !paused && done == null, 'soul-sit'); // auto-lock would freeze the sit
   useEffect(() => {
     if (!running) return;
     let last = Date.now();

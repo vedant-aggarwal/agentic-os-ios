@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import {
-  addDays, ago, Button, Card, Chip, dayLabel, Empty, Failed, Icon, IconButton, Loading, Press, Row, Screen, Section, Skeleton,
-  SURF, t, tint, today, useAspect, weekday,
+  addDays, ago, Button, Card, Chip, Empty, Failed, Icon, IconButton, Loading, Press, Row, Screen, Section, Skeleton,
+  myDay, SURF, t, tint, useAspect, weekday,
 } from '@/aspects/kit';
 import { call, useCollection, type Read } from '@/lib/mod';
 import { C, F } from '@/theme';
-import { errText, refreshJournal, type Entry, type JournalDay, type JournalOut, type Reading, type Settings } from './data';
+import { errText, nightLabel, refreshJournal, useEntries, type Entry, type JournalDay, type JournalOut, type Reading, type Settings } from './data';
 import type { Seed } from './Editor';
 import { Fig, Gl, plural } from './parts';
 import { moodWord } from './words';
@@ -19,7 +19,7 @@ const REMIND = ['21:00', '21:30', '22:00', '22:30', '23:00'];
 export function Journal({ open, onClose, day, onWrite, onOpen }: {
   open: boolean; onClose: () => void; day: Read<JournalDay>; onWrite: (seed: Seed) => void; onOpen: (e: Entry) => void;
 }) {
-  const journal = useCollection<Entry>('growth', 'journal');
+  const journal = useEntries();
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>('All');
   const [pick, setPick] = useState<string | null>(null);
@@ -54,7 +54,7 @@ export function Journal({ open, onClose, day, onWrite, onOpen }: {
         <Month entries={all} pick={pick} onPick={(x) => { setPick(x); setShown(12); }} />
       </Section>
 
-      <Section title={pick ? dayLabel(pick) : 'Entries'} action={pick ? 'Show all' : undefined} onAction={() => setPick(null)}>
+      <Section title={pick ? nightLabel(pick) : 'Entries'} action={pick ? 'Show all' : undefined} onAction={() => setPick(null)}>
         <Search value={q} onChange={setQ} />
         <View style={s.wrap}>
           {FILTERS.map((f) => <Chip key={f} label={f} selected={filter === f} onPress={() => setFilter(f)} />)}
@@ -122,9 +122,9 @@ function EntryCard({ e, onPress }: { e: Entry; onPress: () => void }) {
   const { color } = useAspect();
   const mood = moodWord(e.p);
   return (
-    <Card onPress={onPress} label={`Entry, ${dayLabel(e.date)}`}>
+    <Card onPress={onPress} label={`Entry, ${nightLabel(e.date)}`}>
       <View style={s.cardHead}>
-        <Text style={t.label}>{dayLabel(e.date)}{mood ? ` · ${mood}` : ''}</Text>
+        <Text style={t.label}>{nightLabel(e.date)}{mood ? ` · ${mood}` : ''}</Text>
         <View style={s.icons}>
           {e.kind === 'voice' ? <Gl k="wave" size={14} color={C.muted} /> : null}
           {e.photos?.length ? <Gl k="photo" size={14} color={C.muted} /> : null}
@@ -151,7 +151,7 @@ function Search({ value, onChange }: { value: string; onChange: (v: string) => v
 // ── the month calendar ──────────────────────────────────────────────────────────────────────────────────────────
 function Month({ entries, pick, onPick }: { entries: Entry[]; pick: string | null; onPick: (d: string | null) => void }) {
   const { color } = useAspect();
-  const [month, setMonth] = useState(() => today().slice(0, 7));
+  const [month, setMonth] = useState(() => myDay().slice(0, 7));
   const written = useMemo(() => {
     const m = new Map<string, number | null>();
     for (const e of entries) if (!m.has(e.date) || (e.p != null && m.get(e.date) == null)) m.set(e.date, e.p ?? null);
@@ -163,7 +163,7 @@ function Month({ entries, pick, onPick }: { entries: Entry[]; pick: string | nul
   const cells: (string | null)[] = [...Array(lead).fill(null), ...Array.from({ length: len }, (_, i) => `${month}-${String(i + 1).padStart(2, '0')}`)];
   while (cells.length % 7) cells.push(null);
   const step = (n: number) => { const d = addDays(first, n > 0 ? 32 : -1); setMonth(d.slice(0, 7)); };
-  const now = today();
+  const now = myDay();
   const count = cells.filter((c) => c && written.has(c)).length;
   return (
     <Card>
@@ -178,7 +178,7 @@ function Month({ entries, pick, onPick }: { entries: Entry[]; pick: string | nul
           if (!c) return <View key={i} style={s.cell} />;
           const has = written.has(c), on = pick === c, future = c > now;
           return (
-            <Press key={c} label={`${dayLabel(c)}${has ? ', written' : ''}`} onPress={() => onPick(on ? null : c)} disabled={future} feel="tick" scale={0.9} wrap={s.cell}
+            <Press key={c} label={`${nightLabel(c)}${has ? ', written' : ''}`} onPress={() => onPick(on ? null : c)} disabled={future} feel="tick" scale={0.9} wrap={s.cell}
               style={[s.dayBox, has && { backgroundColor: tint(color, 0.22 + 0.1 * ((written.get(c) ?? 3) - 1)) }, on && { borderColor: color, borderWidth: 1.5 }, c === now && !has && s.todayBox]}>
               <Text style={[s.dayNum, has && { color: C.text }]}>{Number(c.slice(8))}</Text>
             </Press>
@@ -218,7 +218,7 @@ function JournalRead({ reading }: { reading: Reading<JournalOut> | null }) {
           {r.out.quotes.map((x) => (
             <View key={x.date + x.text} style={[s.quote, { borderLeftColor: tint(color, 0.5) }]}>
               <Text style={t.body}>{x.text}</Text>
-              <Text style={t.caption}>{dayLabel(x.date)}</Text>
+              <Text style={t.caption}>{nightLabel(x.date)}</Text>
             </View>
           ))}
           <Text style={[t.caption, s.gap8]}>Read {ago(r.at).replace(/^Y/, 'y')} from {plural(r.n ?? 0, 'entry', 'entries')}.</Text>

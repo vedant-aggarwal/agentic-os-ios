@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Button, Card, haptic, Press, Screen, Section, t, timer, tint, useAspect } from '@/aspects/kit';
 import { newId } from '@/lib/mod';
 import { Breath } from './Breath';
-import { istMin, kit, readLocal, send, useForeground, useNow, type Plan } from './data';
+import { istMin, kit, readLocal, send, useForeground, useKeepAwake, useNow, type Plan } from './data';
 import { Choice } from './parts';
 import { ACTION_BANK, BEFORE, LEVELS, patternOf } from './words';
 
@@ -71,6 +71,7 @@ export function Moment({ open, base, onClose, onSlip }: {
   const pattern = useMemo(() => patternOf(readLocal<string>('pattern')), [run]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const live = open && pageOpen && fg && phase === 'room';
+  useKeepAwake(open && pageOpen && phase === 'room', 'soul-moment'); // auto-lock would stop the clock and the haptics
   const now = useNow(1000, live);
   const left = Math.max(0, WAIT - Math.floor((now - round) / 1000));
   useEffect(() => {

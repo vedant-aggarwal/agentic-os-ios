@@ -130,9 +130,9 @@ export function Plan({ d, body, now, onOpen, onToggleTask, onCancelTask, onResto
       <Section key="core" label="Core habits" parts={parts} finished={p.done === p.total} onOpen={() => onOpen('soul')}>
         <View style={st.tiles}>
           <Habit name="Journaling" big="1" unit="line" done={j} color={A.soul} onTick={() => (j ? tick('journal', false) : setLine('journal'))} onOpen={() => onOpen('soul/journal')} />
-          <Habit name="Clean streak" big={cap.cleanDay != null ? String(cap.cleanDay) : '–'} unit={cap.cleanDay === 1 ? 'day' : 'days'} done={cl} color={A.soul}
+          <Habit name="Day count" big={cap.cleanDay != null ? String(cap.cleanDay) : '–'} unit={cap.cleanDay === 1 ? 'day' : 'days'} done={cl} color={A.soul}
             onTick={() => (cap.cleanReady ? tick('clean', !cl) : say('Start Clean in Soul first.'))}
-            foot={<Link text="Slipped" onPress={() => onOpen('soul/clean')} />} onOpen={() => onOpen('soul/clean')} />
+            foot={<Link text="Reset" onPress={() => onOpen('soul/clean')} />} onOpen={() => onOpen('soul/clean')} />
           <Habit name="Meditation" big="10" unit="min" done={me} color={A.soul} onTick={() => tick('meditate', !me)} onOpen={() => onOpen('soul/meditate')} />
         </View>
       </Section>

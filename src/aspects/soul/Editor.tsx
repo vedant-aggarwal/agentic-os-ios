@@ -3,12 +3,12 @@ import { Image } from 'expo-image';
 import { useCallback, useEffect, useRef, useState, type ComponentRef, type ReactNode } from 'react';
 import { Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 import {
-  addDays, Button, Card, Chip, dayLabel, Field, haptic, Icon, IconButton, Press, Screen, SURF, t, tint, today, useAspect,
+  addDays, Button, Card, Chip, Field, haptic, Icon, IconButton, myDay, Press, Screen, SURF, t, tint, useAspect,
 } from '@/aspects/kit';
 import { gptAvailable, useGptRecorder } from '@/lib/gpt';
-import { call, fileSource, newId, upload, useCollection } from '@/lib/mod';
+import { call, collection, fileSource, newId, upload } from '@/lib/mod';
 import { C, F } from '@/theme';
-import { errText, refreshJournal, type Asked, type Entry, type Photo } from './data';
+import { cancel, errText, nightLabel, refreshJournal, refused, send, useEntries, waiting, type Asked, type Entry, type Photo } from './data';
 import { Gl } from './parts';
 import { MOODS } from './words';
 
@@ -26,10 +26,10 @@ const wordsIn = (x: string) => (x.trim() ? x.trim().split(/\s+/).length : 0);
  */
 export function Editor({ open, onClose, entry, seed }: { open: boolean; onClose: () => void; entry: Entry | null; seed: Seed | null }) {
   const { color, notice } = useAspect();
-  const journal = useCollection<Entry>('growth', 'journal');
+  const journal = useEntries();
   const rec = useGptRecorder();
   const [id, setId] = useState('');
-  const [date, setDate] = useState(today());
+  const [date, setDate] = useState(myDay());
   const [p, setP] = useState<number | null>(null);
   const [text, setText] = useState('');
   const [prompt, setPrompt] = useState<string | null>(null);
@@ -41,7 +41,7 @@ export function Editor({ open, onClose, entry, seed }: { open: boolean; onClose:
   const [tidy, setTidy] = useState<Entry['tidy']>(null);
   const [offer, setOffer] = useState<string | null>(null); // a tidy version waiting for his yes
   const [kind, setKind] = useState('typed');
-  const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle');
+  const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'kept' | 'failed'>('idle');
   const [busy, setBusy] = useState<null | 'ask' | 'tidy' | 'photo' | 'listen'>(null);
   const [sure, setSure] = useState(false);
   const dirty = useRef(false);
@@ -52,10 +52,10 @@ export function Editor({ open, onClose, entry, seed }: { open: boolean; onClose:
   useEffect(() => {
     if (open && !wasOpen.current) {
       const e = entry;
-      setId(e?.id ?? newId('jr')); setDate(e?.date ?? seed?.date ?? today()); setP(e?.p ?? null); setText(e?.text ?? '');
+      setId(e?.id ?? newId('jr')); setDate(e?.date ?? seed?.date ?? myDay()); setP(e?.p ?? null); setText(e?.text ?? '');
       setPrompt(e?.prompt ?? seed?.prompt ?? null); setPhotos(e?.photos ?? []); setAsked(e?.asked ?? []); setAnswer('');
       setBookmark(!!e?.bookmark); setRaw(e?.raw ?? null); setTidy(e?.tidy ?? null); setOffer(null); setKind(e?.kind ?? 'typed');
-      setState(e ? 'saved' : 'idle'); setSure(false); dirty.current = false; at.current = e?.at ?? new Date().toISOString();
+      setState(e ? (waiting(`journal:${e.id}`) ? 'kept' : 'saved') : 'idle'); setSure(false); dirty.current = false; at.current = e?.at ?? new Date().toISOString();
       if (seed?.speak) setTimeout(() => { void listen(); }, 350);
       // focus once the screen has slid in: focusing it off screen makes the web preview scroll the page sideways
       else if (!e) setTimeout(() => input.current?.focus(), 480);
@@ -64,7 +64,7 @@ export function Editor({ open, onClose, entry, seed }: { open: boolean; onClose:
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const doc = useCallback((): Entry => ({
-    id, date, at: date === today() || at.current.slice(0, 10) === date ? at.current : new Date(`${date}T21:00:00+05:30`).toISOString(),
+    id, date, at: date === myDay() || myDay(at.current) === date ? at.current : new Date(`${date}T21:00:00+05:30`).toISOString(),
     text, kind, p, photos, prompt, asked, bookmark, raw, tidy, by: 'me', source: 'app',
   }), [id, date, text, kind, p, photos, prompt, asked, bookmark, raw, tidy]);
 
@@ -74,8 +74,18 @@ export function Editor({ open, onClose, entry, seed }: { open: boolean; onClose:
     if (!d.text.trim() && !d.photos?.length) return;
     dirty.current = false;
     setState('saving');
-    try { await journal.put(d); setState('saved'); refreshJournal(); } catch (e) { setState('failed'); dirty.current = true; notice(errText(e)); }
-  }, [id, doc, journal, notice]);
+    try {
+      await journal.put(d);
+      cancel(`journal:${d.id}`); // an older save still waiting on the phone is no longer needed
+      setState('saved'); refreshJournal();
+    } catch (e) {
+      if (refused(e)) { setState('failed'); dirty.current = true; notice(errText(e)); return; }
+      // the PC is away: the entry waits in Soul's outbox on this phone and goes when it answers
+      const now = new Date().toISOString();
+      const r = await send({ id: `journal:${d.id}`, method: 'PUT', path: `/mod/growth/journal/${encodeURIComponent(d.id)}`, body: { ...d, created_at: entry?.created_at ?? d.at, updated_at: now, deleted_at: null } });
+      setState(r === 'sent' ? 'saved' : 'kept');
+    }
+  }, [id, doc, journal, notice, entry]);
 
   // save a moment after he stops typing
   useEffect(() => {
@@ -136,22 +146,28 @@ export function Editor({ open, onClose, entry, seed }: { open: boolean; onClose:
   };
   const remove = async () => {
     if (!sure) { setSure(true); return; }
-    try { if (entry) await journal.remove(entry.id); refreshJournal(); onClose(); } catch (e) { notice(errText(e)); }
+    try {
+      if (entry) {
+        const onPhoneOnly = cancel(`journal:${entry.id}`) && !collection<Entry>('growth', 'journal').get()?.some((x) => x.id === entry.id);
+        if (!onPhoneOnly) await journal.remove(entry.id);
+      }
+      refreshJournal(); onClose();
+    } catch (e) { notice(errText(e)); }
   };
 
   const n = wordsIn(text);
   const last = asked.at(-1);
-  const status = state === 'saving' ? 'Saving' : state === 'saved' ? 'Saved' : state === 'failed' ? 'Not saved' : n ? `${n} ${n === 1 ? 'word' : 'words'}` : '';
+  const status = state === 'saving' ? 'Saving' : state === 'saved' ? 'Saved' : state === 'kept' ? 'Saved on this phone' : state === 'failed' ? 'Not saved' : n ? `${n} ${n === 1 ? 'word' : 'words'}` : '';
   return (
-    <Screen open={open} onClose={close} immersive title={dayLabel(date)}
+    <Screen open={open} onClose={close} immersive title={nightLabel(date)}
       right={<IconButton label={bookmark ? 'Remove bookmark' : 'Bookmark'} size={36} onPress={() => { setBookmark(!bookmark); touch(); }}>
         <Gl k={bookmark ? 'bookmarkOn' : 'bookmark'} size={16} color={bookmark ? color : C.text} />
       </IconButton>}>
       <View style={s.row}>
-        {!entry || entry.date >= addDays(today(), -1) ? (
+        {!entry || entry.date >= addDays(myDay(), -1) ? (
           <>
-            <Chip label="Today" selected={date === today()} onPress={() => { setDate(today()); touch(); }} />
-            <Chip label="Yesterday" selected={date === addDays(today(), -1)} onPress={() => { setDate(addDays(today(), -1)); touch(); }} />
+            <Chip label="Today" selected={date === myDay()} onPress={() => { setDate(myDay()); touch(); }} />
+            <Chip label="Yesterday" selected={date === addDays(myDay(), -1)} onPress={() => { setDate(addDays(myDay(), -1)); touch(); }} />
           </>
         ) : null}
         <Text style={[t.caption, s.status]}>{status}</Text>

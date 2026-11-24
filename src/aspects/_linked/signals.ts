@@ -81,7 +81,7 @@ function mood(moods: Mood[] | undefined, now: string): Signal | null {
 function clean(s: SoulSummary | undefined): Signal | null {
   const c = s?.clean;
   if (!c?.text || c.private) return null; // private: he chose not to show it outside Soul
-  return { key: 'clean', from: 'soul', text: `Clean: ${c.text.replace(/^Day/, 'day')}`, link: 'agenticos://soul/clean' };
+  return { key: 'clean', from: 'soul', text: c.text, link: 'agenticos://soul/clean' }; // only ever "Day N" outside Soul
 }
 function screen(m: MindDay | undefined, now: string): Signal | null {
   const k = m?.kinds;

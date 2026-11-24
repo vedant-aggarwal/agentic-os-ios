@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import {
-  Button, Card, Chip, haptic, Icon, lastDays, Page, Press, Section, Skeleton, t, today, useAspect, useEntry,
+  Button, Card, Chip, haptic, Icon, lastDays, myDay, Page, Press, Section, Skeleton, t, useAspect, useEntry,
 } from '@/aspects/kit';
 import { useCollection } from '@/lib/mod';
 import { C, F } from '@/theme';
 import { Clean } from './Clean';
-import { rememberKit, send, useCleanNow, useJournalDay, useOutbox, type Entry, type Sit } from './data';
+import { rememberKit, send, useCleanNow, useEntries, useJournalDay, useOutbox, type Entry, type Sit } from './data';
 import { Editor, type Seed } from './Editor';
 import { Journal } from './Journal';
 import { Meditate } from './Meditate';
@@ -23,7 +23,7 @@ export default function Soul() {
   const { color, notice } = a;
   const now = useCleanNow();
   const jday = useJournalDay();
-  const journal = useCollection<Entry>('growth', 'journal');
+  const journal = useEntries();
   const sits = useCollection<Sit>('soul', 'sits');
   const waiting = useOutbox();
   const [screen, setScreen] = useState<null | 'clean' | 'journal' | 'meditate'>(null);
@@ -46,7 +46,7 @@ export default function Soul() {
   const on = d && d.setup ? d : null;
   const base = useMemo(() => (d ? { reasons: d.reasons, actions: d.actions, plans: d.setup ? d.plans : [] } : null), [d]);
 
-  const written = (journal.items ?? []).filter((e) => !e.deleted_at && e.date === today() && e.text?.trim());
+  const written = (journal.items ?? []).filter((e) => !e.deleted_at && e.date === myDay() && e.text?.trim());
   const weekMins = Math.round((sits.items ?? []).filter((x) => !x.deleted_at && lastDays(7).includes(x.date)).reduce((n, x) => n + x.secs, 0) / 60);
   const write = (seed: Seed) => setEditor({ open: true, entry: null, seed });
   const openEntry = (entry: Entry) => setEditor({ open: true, entry, seed: null });

@@ -42,11 +42,11 @@ const set = (w: number | null, r: number | null, n = 3) => Array.from({ length: 
 const past: Past[] = [
   { id: 'w-s1', date: addDays(day, -2), name: 'Push', split: 'push', minutes: 58, items: [{ ex: 'bench', sets: set(60, 6, 4) }, { ex: 'ohp', sets: set(35, 8) }] },
   { id: 'w-s2', date: addDays(day, -4), name: 'Boxing', split: 'quick', minutes: 45, quick: 'boxing', items: [] },
-  { id: 'w-s3', date: addDays(day, -5), name: 'Legs + speed', split: 'legs', minutes: 64, items: [{ ex: 'squat', sets: set(70, 6, 4) }, { ex: 'rdl', sets: set(60, 8) }] },
+  { id: 'w-s3', date: addDays(day, -5), name: 'Legs and speed', split: 'legs', minutes: 64, items: [{ ex: 'squat', sets: set(70, 6, 4) }, { ex: 'rdl', sets: set(60, 8) }] },
   { id: 'w-s4', date: addDays(day, -7), name: 'Pull', split: 'pull', minutes: 52, items: [{ ex: 'pulldown', sets: set(45, 8) }, { ex: 'cable-row', sets: set(40, 10) }, { ex: 'curl', sets: set(25, 10) }] },
   { id: 'w-s5', date: addDays(day, -9), name: 'Push', split: 'push', minutes: 55, items: [{ ex: 'bench', sets: set(57.5, 6, 4) }, { ex: 'ohp', sets: set(32.5, 8) }] },
   { id: 'w-s6', date: addDays(day, -11), name: 'Run', split: 'quick', minutes: 30, quick: 'run', items: [] },
-  { id: 'w-s7', date: addDays(day, -12), name: 'Legs + speed', split: 'legs', minutes: 61, items: [{ ex: 'squat', sets: set(67.5, 6, 4) }, { ex: 'rdl', sets: set(57.5, 8) }] },
+  { id: 'w-s7', date: addDays(day, -12), name: 'Legs and speed', split: 'legs', minutes: 61, items: [{ ex: 'squat', sets: set(67.5, 6, 4) }, { ex: 'rdl', sets: set(57.5, 8) }] },
   { id: 'w-s8', date: addDays(day, -14), name: 'Pull', split: 'pull', minutes: 50, items: [{ ex: 'pulldown', sets: set(42.5, 8) }, { ex: 'cable-row', sets: set(37.5, 10) }, { ex: 'curl', sets: set(22.5, 10) }] },
 ];
 const PAST_IDS = new Set(past.map((p) => p.id));
@@ -70,6 +70,11 @@ const lastOf = (ex: string) => past.find((p) => p.items.some((i) => i.ex === ex)
 const st = {
   water: 3, meals: [] as MealRow[], checks: new Set<string>(['am-1', 'am-2']), weights: [] as { date: string; v: number }[], quick: [] as HistoryRow[],
   targets: { protein: 140, kcal: 2300, water: 8, days: 4 },
+  measures: [
+    { date: addDays(day, -42), waist: 88, chest: 98, arm: 33 },
+    { date: addDays(day, -28), waist: 87, chest: 98.5, arm: 33.5 },
+    { date: addDays(day, -12), waist: 86, chest: 99, arm: 34 },
+  ] as { date: string; waist: number | null; chest: number | null; arm: number | null }[],
 };
 st.meals = [
   { id: 'meal-1', name: 'Poha and chai', at: at(day, '08:40'), slot: 'breakfast', kcal: 380, protein: 9, carbs: 62, fat: 9, estimate: true, unknown: false, photo: null, source: 'app', items: null },
@@ -271,6 +276,15 @@ demoSource({
     [`${B}/face/rubric`]: () => ({ version: 'face-3', margin: 4, rescanDays: 14, light: 'Face a window in daylight, no overhead light.',
       shots: [{ id: 'front', name: 'Front', guide: 'Look straight at the camera, face relaxed.' }, { id: 'smile', name: 'Smile', guide: 'Same spot, a natural smile.' }, { id: 'left', name: 'Left profile', guide: 'Turn to your right until only your left side shows.' }, { id: 'right', name: 'Right profile', guide: 'Turn to your left.' }, { id: 'three', name: 'Three quarter', guide: 'Halfway between front and profile.' }, { id: 'skin', name: 'Skin close up', guide: 'Cheek, an arm length away.' }],
       features: FEATURES.map(([id, name, change]) => ({ id, name, change, can: '', fixed: '', shots: ['front'], anchors: [] })) }),
+    [`${B}/measures`]: () => ({ items: [...st.measures].sort((a, b) => a.date.localeCompare(b.date)) }),
+    [`${B}/program`]: () => {
+      const order = [
+        { key: 'push', name: 'Push', muscles: ['chest', 'shoulders', 'triceps'] }, { key: 'pull', name: 'Pull', muscles: ['upperback', 'biceps'] },
+        { key: 'legs', name: 'Legs and speed', muscles: ['quads', 'hamstrings', 'glutes', 'calves'] }, { key: 'upper', name: 'Upper', muscles: ['chest', 'upperback', 'shoulders'] },
+        { key: 'lower', name: 'Lower', muscles: ['quads', 'hamstrings', 'glutes'] }, { key: 'arms', name: 'Arms and core', muscles: ['biceps', 'triceps', 'abs'] },
+      ];
+      return { split: 'six day', next: 'pull', days: order.map((o) => { const p = past.find((x) => x.split === o.key); return { ...o, last: p?.date ?? null, days: p ? daysSince(p.date) : null }; }) };
+    },
     [`${B}/voice`]: (): Voice => {
       const dims = [
         { id: 'pace' as const, name: 'Pace', target: '130 to 160 words a minute', v: 76, value: '168 words a minute', why: 'A little fast in the free part.' },
@@ -332,6 +346,11 @@ demoSource({
     [`${B}/workouts/*`]: (_b, info) => { const id = decodeURIComponent(info.path.split('/').pop() ?? ''); st.quick = st.quick.filter((q) => q.id !== id); return { item: { id } }; },
     [`${B}/targets`]: (body: Partial<typeof st.targets>) => { Object.assign(st.targets, body); return { ok: true }; },
     [`${B}/plan`]: () => ({ by: 'rules', plan: plan() }),
+    [`${B}/measures`]: (body: { date: string; waist: number | null; chest: number | null; arm: number | null }) => {
+      st.measures = [...st.measures.filter((m) => m.date !== body.date), body];
+      return { ok: true };
+    },
+    [`${B}/measures/*`]: (_b, info) => { const d = info.path.split('/').pop() ?? ''; st.measures = st.measures.filter((m) => m.date !== d); return { ok: true }; },
     [`${B}/meal-photo`]: () => { throw new Error('Photos are read on the PC; the sample preview has none.'); },
   },
 });

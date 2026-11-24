@@ -8,6 +8,7 @@ import { agoDays, goalOf, planAgain, quickLog, removeDoc, useGym, type Gym, type
 import { useNav } from '../nav';
 import { minutesFor, s as u, Trend, volumeText } from '../parts';
 import { BodyMap } from './BodyMap';
+import { Measurements, Rotation } from './More';
 
 // Train: the gym, done properly. Today's session with its reasons, other training in one tap, the week, recovery on
 // a figure, records per lift, and every session he has done.
@@ -28,10 +29,12 @@ export function TrainTab({ active }: { active: boolean }) {
       <Session g={g} />
       <Quick g={g} />
       <Week g={g} />
+      <Rotation active={active} />
       <Recovery g={g} />
       <Records g={g} />
       <History g={g} />
       <BodyWeight g={g} />
+      <Measurements active={active} />
     </>
   );
 }

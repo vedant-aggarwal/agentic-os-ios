@@ -20,6 +20,10 @@
 //   POST   /jobs/:id/revert                { turn }
 //   GET    /work/feed                      SSE: "change" (FeedChange), keep-alive comments every 15 s
 //   GET    /engines/health                 -> EngineHealth
+//   GET    /work/orca                      -> OrcaState  (ETag) the Orca app's agents and Claude/Codex usage
+//   GET    /orca/agents/:id?limit=         -> OrcaRead   one Orca agent's conversation, newest last
+//   POST   /orca/agents/:id/prompt         { text, force? } -> { ok }  428 cold cache, 409 working, 501 a chat tab
+//   POST   /orca/launch                    { agent, folder, prompt } -> { agent: OrcaAgent | null, outcome }
 //
 // Writes from the phone carry an `Idempotency-Key` header, so a replayed offline write never doubles.
 
@@ -61,8 +65,15 @@ export type JobBrief = {
   changes: { files: number; add: number; del: number } | null;
   error: string | null;
 };
+/** Claude's prompt cache for a job as the PC sees it: warm until `warmUntil`, then a message re-reads the whole chat. */
+export type JobCache = {
+  state: 'warm' | 'cold' | 'none'; ttlMin: number; lastAt: string | null; warmUntil: string | null; tokens: number | null;
+  /** Keep-warm pings hold the cache open until then. */
+  keepWarmUntil?: string | null;
+};
 export type JobFull = JobBrief & {
   perm: Perm; model: string | null; createdAt: string; finishedAt: string | null;
+  cache?: JobCache;
   tasks: string[]; idea: string | null;
   /** "New session with summary": the job this one carries on from, and the one that carried on from it. */
   continuedFrom?: string | null; continuedTo?: string | null;
@@ -128,6 +139,25 @@ export type NewJob = {
 export type FeedChange =
   | { kind: 'job'; id: string; project: string | null; job: JobBrief }
   | { kind: 'need'; id: string; project: string | null; need: NeedItem | null }
-  | { kind: 'idea' | 'task' | 'project'; id: string; project: string | null };
+  | { kind: 'idea' | 'task' | 'project'; id: string; project: string | null }
+  | { kind: 'orca'; id: '*'; project: null };
 
 export type EngineHealth = Record<Engine, { ok: boolean; detail: string | null; checkedAt: string }>;
+
+// ---- Orca: the agent app on his PC, where jobs also run and where he watches them on the desktop ----
+export type CacheState = { state: 'warm' | 'cold' | 'none'; lastAt: string | null; warmUntil: string | null; ttlMin: number };
+/** An agent in Orca. `state`: working, blocked (a permission), waiting (a question), done. Only terminal agents take replies from the phone. */
+export type OrcaAgent = {
+  id: string; kind: 'chat' | 'terminal'; agent: string; state: string; title: string; last: string | null;
+  workspace: string | null; path: string | null; project: string | null; updatedAt: string | null; cache: CacheState;
+};
+export type UsageWindow = { usedPercent: number; resetsAt: string | null; reset: string | null };
+export type ProviderUsage = {
+  status: string; plan: string | null; error: string | null; at: string | null;
+  session: UsageWindow | null; weekly: UsageWindow | null; extra: { label: string; window: UsageWindow }[];
+};
+export type OrcaUsage = { claude: ProviderUsage | null; codex: ProviderUsage | null; at: string };
+export type OrcaState = { up: boolean; error: string | null; agents: OrcaAgent[]; usage: OrcaUsage | null; at: string };
+export type OrcaEntry = { kind: 'message' | 'tool'; role: 'user' | 'assistant' | null; text: string | null; name: string | null; state: string | null };
+export type OrcaRead = { agent: OrcaAgent; entries: OrcaEntry[]; state: string; limited: boolean };
+export type OrcaLaunch = { agent?: 'claude' | 'codex'; folder: string; prompt: string; model?: string | null; effort?: string | null };

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useIsFocused } from 'expo-router';
 import { AppState, Platform, Pressable, RefreshControl, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 // gesture handler's ScrollView, so the hero's sideways drag can take over from the page's scroll
 import { ScrollView } from 'react-native-gesture-handler';
@@ -97,6 +98,9 @@ function PhoneToday() {
   const [remoteOpen, setRemoteOpen] = useState(false); // the top bar's Remote PC button: the PC's screen, full screen
   const [pcTab, setPcTab] = useState<PcTab | null>(null); // hold Remote PC: media remote and power
   const [heroOn, setHeroOn] = useState(true); // the 3D hero renders only while some of it is on screen
+  // A page pushed over Today (Work, a job, a project) leaves Today mounted underneath: both WebGL scenes stop then,
+  // else they keep drawing every frame behind the page and the whole app stutters.
+  const focused = useIsFocused();
   // dev, web sample mode only: window.__mood() opens the mood logger (for driving it from a test browser)
   useEffect(() => {
     if (DEMO) (window as unknown as { __mood?: (x?: number, y?: number) => void }).__mood = (x, y) => setMoodFrom({ x: x ?? width - 102, y: y ?? insets.top + 32 });
@@ -168,7 +172,7 @@ function PhoneToday() {
         scrollEventThrottle={100}
         onScroll={(e) => { const on = e.nativeEvent.contentOffset.y < insets.top + HERO_H; if (on !== heroOn) setHeroOn(on); }}
         refreshControl={<RefreshControl refreshing={t.refreshing} onRefresh={() => { t.refresh(); reloadBody(); }} tintColor={C.muted} />}>
-        <Hero view={v} top={insets.top} topBar={TOP_GAP + TOP_H} active={heroOn && !aspect && !moodFrom} />
+        <Hero view={v} top={insets.top} topBar={TOP_GAP + TOP_H} active={focused && heroOn && !aspect && !moodFrom} />
 
         <View style={[s.sheet, { paddingBottom: insets.bottom + 140 }]}>
           {t.state.status === 'ready' ? (
@@ -186,7 +190,7 @@ function PhoneToday() {
       {/* the same blur under the top bar, dense at the screen's top edge */}
       <EdgeBlur edge="top" height={insets.top + TOP_GAP + TOP_H + 28} strength={30} curve={2} />
       {/* on web the bar would sit over Nora's chat header */}
-      {native || !noraOpen ? <TopBar top={insets.top} width={width} live={live} petActive={!aspect} onMic={() => { setClosedLive(false); setMicOpen(true); }}
+      {native || !noraOpen ? <TopBar top={insets.top} width={width} live={live} petActive={focused && !aspect} onMic={() => { setClosedLive(false); setMicOpen(true); }}
         onRemote={() => setRemoteOpen(true)} onRemoteHold={() => setPcTab('media')}
         onVoices={() => setVoicesOpen(true)} onFiles={() => setFilesOpen(true)} onAccount={() => setAccountOpen(true)} onMood={setMoodFrom} /> : null}
       {/* an aspect page grows out of the orb, over Today and its top bar; the dock stays above it */}

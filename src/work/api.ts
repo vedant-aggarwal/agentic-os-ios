@@ -1,6 +1,7 @@
 import { API, ApiError, currentToken } from '@/lib/api';
 import type {
-  EngineHealth, FolderSuggestion, Idea, JobDiff, JobEvent, JobFull, NewJob, ProjectCard, ProjectHome, Task, WorkHome,
+  EngineHealth, FolderSuggestion, Idea, JobDiff, JobEvent, JobFull, NewJob, OrcaAgent, OrcaLaunch, OrcaRead, OrcaState, ProjectCard,
+  ProjectHome, Task, WorkHome,
 } from './types';
 
 // Thin client for the hub's routes (contract in ./types.ts). GETs remember their ETag so an unchanged answer is a
@@ -76,4 +77,12 @@ export const workApi = {
   diff: (id: string, turn = 0, file?: string) =>
     must(call<JobDiff>(`/jobs/${id}/diff?turn=${turn}${file ? `&file=${encodeURIComponent(file)}` : ''}`)),
   revert: (id: string, turn: number) => must(call<{ ok: boolean }>(`/jobs/${id}/revert`, { method: 'POST', body: { turn } })),
+
+  /** null = unchanged since the last call (304). */
+  orca: () => call<OrcaState>('/work/orca', { etag: true }),
+  orcaRead: (id: string, limit = 40) => must(call<OrcaRead>(`/orca/agents/${encodeURIComponent(id)}?limit=${limit}`)),
+  /** force: send even though the prompt cache went cold (the PC answers 428 without it). */
+  orcaPrompt: (id: string, text: string, key: string, force = false) =>
+    must(call<{ ok: boolean }>(`/orca/agents/${encodeURIComponent(id)}/prompt`, { method: 'POST', body: force ? { text, force: true } : { text }, key })),
+  orcaLaunch: (b: OrcaLaunch, key: string) => must(call<{ agent: OrcaAgent | null }>('/orca/launch', { method: 'POST', body: b, key })),
 };

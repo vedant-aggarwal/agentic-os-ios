@@ -4,15 +4,19 @@ import { PlusIcon } from './icons';
 import { Press } from './Press';
 import { T } from './tokens';
 
-/** A section's label, its count, and an optional add button on the right (Today's group heading). */
-export function SectionHeader({ title, count, add }: {
-  title: string; count?: number; add?: { label: string; onPress: () => void };
+/** A section's label, its count, and an optional add button on the right (Today's group heading). `extra` sits
+ *  beside the label (the projects' Active | Ideas switch) and replaces the count. */
+export function SectionHeader({ title, count, add, extra }: {
+  title: string; count?: number; add?: { label: string; onPress: () => void }; extra?: React.ReactNode;
 }) {
   return (
     <View style={s.head} accessibilityRole="header">
-      <Text style={T.label}>{title}</Text>
+      <View style={s.left}>
+        <Text style={T.label}>{title}</Text>
+        {extra}
+      </View>
       <View style={s.right}>
-        {count ? <Text style={T.meta}>{count}</Text> : null}
+        {count && !extra ? <Text style={T.meta}>{count}</Text> : null}
         {add ? (
           <Press accessibilityLabel={add.label} onPress={add.onPress} haptic hitSlop={8} style={s.add}>
             {(pressed) => (
@@ -55,6 +59,7 @@ export function MoreLine({ label, onPress }: { label: string; onPress: () => voi
 
 const s = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 32, paddingBottom: 4 },
+  left: { flexDirection: 'row', alignItems: 'center', gap: 12, flexShrink: 1 },
   right: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   add: { width: 32, height: 32 },
   addFill: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.08)' },

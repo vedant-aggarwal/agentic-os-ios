@@ -1,4 +1,4 @@
-import type { Folder, JobBrief, NeedItem, ProjectCard, ProjectHome, WorkHome } from './types';
+import type { Folder, JobBrief, NeedItem, OrcaAgent, OrcaState, ProjectCard, ProjectHome, WorkHome } from './types';
 
 // Dev only (web build with `?demo`, see lib/demo.ts): the hub on sample data, for layout work without the PC.
 // The project list mirrors the seed in PROJECTS-HUB-SPEC.md section 12; jobs, ideas and tasks are samples.
@@ -18,17 +18,19 @@ const PROJECTS: ProjectCard[] = [
   card('content-os', 'Content OS', [f('Main', 'content-os', true), f('Design', 'Desktop\\Content OS phone app design')],
     { lastActiveAt: ago(9), counts: { ideas: 7, tasks: 3, jobs: 5, live: 1, needs: 0 } }),
   card('bizbrain', 'BizBrain', [f('App', 'bizbrain-expo', true), f('Server', 'bizbrain-os')], { lastActiveAt: ago(40), counts: { ideas: 1, tasks: 2, jobs: 3, live: 0, needs: 0 } }),
-  card('nora', 'Nora', [f('Server', 'agentic-os-ios-ai', true)], { lastActiveAt: ago(180) }),
-  card('chatflow', 'Chatflow', [f('Main', 'Documents\\Codex\\chatflow', true), f('Design', 'Desktop\\Chatflow Design')], { lastActiveAt: ago(1500) }),
-  card('innovex', 'Innovex', [f('Main', 'innovex', true), f('ERP', 'innovex-erp')], { lastActiveAt: ago(3000) }),
-  card('wonder-bazaar', 'Wonder Bazaar', [f('Main', 'wonderbazaar', true), f('Shopify', 'Desktop\\shopify-workflow')], { lastActiveAt: ago(5000) }),
-  card('tapstar', 'Tapstar', [f('Main', 'Desktop\\tapstar-workspace', true)], { lastActiveAt: ago(8000) }),
-  card('tarahood', 'Tarahood', [f('Main', 'tarahood-os', true)], { lastActiveAt: ago(9000) }),
-  card('norrita-os', 'Norrita OS', [f('Main', 'norrita-os', true)], { lastActiveAt: ago(12000) }),
+  card('nora', 'Nora', [f('Server', 'agentic-os-ios-ai', true)], { lastActiveAt: ago(180), counts: { ideas: 1, tasks: 0, jobs: 0, live: 0, needs: 0 } }),
+  card('hermes', 'Hermes', [f('Main', 'nora-hermes', true), f('Home', '.hermes')], { lastActiveAt: ago(240) }),
+  card('innovex', 'Innovex', [f('Main', 'innovex', true), f('ERP', 'innovex-erp')], { lastActiveAt: ago(3000), counts: { ideas: 1, tasks: 0, jobs: 0, live: 0, needs: 0 } }),
   card('agentic-os-v48', 'Agentic OS V4.8', [f('Main', 'Desktop\\⭐️ Agentic OS V4.8\\Agentic-OS-V4.8', true)], { lastActiveAt: ago(4000) }),
-  card('reel-studio', 'Reel Studio', [f('Main', 'Desktop\\Reel Studio', true)], { lastActiveAt: ago(20000) }),
-  card('realflow', 'Realflow', []),
-  card('bahi', 'Bahi', []),
+  // Idea projects: kept, not worked on now (paused on the PC)
+  card('chatflow', 'Chatflow', [f('Main', 'Documents\\Codex\\chatflow', true), f('Design', 'Desktop\\Chatflow Design')], { status: 'paused', lastActiveAt: ago(15000) }),
+  card('wonder-bazaar', 'Wonder Bazaar', [f('Main', 'wonderbazaar', true), f('Shopify', 'Desktop\\shopify-workflow')], { status: 'paused', lastActiveAt: ago(50000) }),
+  card('tapstar', 'Tapstar', [f('Main', 'Desktop\\tapstar-workspace', true)], { status: 'paused', lastActiveAt: ago(28000) }),
+  card('tarahood', 'Tarahood', [f('Main', 'tarahood-os', true)], { status: 'paused', lastActiveAt: ago(29000) }),
+  card('norrita-os', 'Norrita OS', [f('Main', 'norrita-os', true)], { status: 'paused', lastActiveAt: ago(40000) }),
+  card('reel-studio', 'Reel Studio', [f('Main', 'Desktop\\Reel Studio', true)], { status: 'paused', lastActiveAt: ago(30000) }),
+  card('realflow', 'Realflow', [], { status: 'paused' }),
+  card('bahi', 'Bahi', [], { status: 'paused' }),
 ];
 
 const job = (id: string, title: string, project: string, status: JobBrief['status'], step: string | null, min: number, extra: Partial<JobBrief> = {}): JobBrief => ({
@@ -78,5 +80,37 @@ export function demoProject(slug: string): ProjectHome {
     sessions: [],
     repo: project.folders.slice(0, 2).map((fo, i) => ({ folder: fo.path, branch: i ? 'feature/ai' : 'expo-v3', changed: i ? 0 : 3, ahead: 0, at: ago(1) })),
     at: new Date().toISOString(),
+  };
+}
+
+const agent = (id: string, title: string, project: string | null, state: string, min: number, extra: Partial<OrcaAgent> = {}): OrcaAgent => {
+  const at = Date.now() - min * 60_000;
+  const warm = state === 'working' || min < 60;
+  return {
+    id, kind: 'terminal', agent: 'claude', state, title, last: null, workspace: project ?? '~', path: null, project, updatedAt: new Date(at).toISOString(),
+    cache: { state: warm ? 'warm' : 'cold', lastAt: new Date(at).toISOString(), warmUntil: new Date(at + 3_600_000).toISOString(), ttlMin: 60 }, ...extra,
+  };
+};
+
+/** Orca on sample data: two agents working, one waiting on him, a few quiet ones, and both usage meters. */
+export function demoOrca(): OrcaState {
+  const reset = (h: number) => new Date(Date.now() + h * 3_600_000).toISOString();
+  return {
+    up: true, error: null, at: new Date().toISOString(),
+    agents: [
+      agent('o1', 'Work tab: Orca bridge', 'agentic-os', 'working', 1, { last: 'Wiring /work/orca into the hub store.' }),
+      agent('o2', 'Hermes heartbeat checks', 'hermes', 'blocked', 4, { last: 'Wants to run hermes cron list.' }),
+      agent('o3', 'Reel script for Sheru', 'content-os', 'working', 2, { agent: 'codex' }),
+      agent('o4', 'Reply to Skool member', null, 'done', 22, { kind: 'chat', last: 'Post the reply below as your answer.' }),
+      agent('o5', 'Nora', 'nora', 'done', 380, { kind: 'chat', last: 'I didn’t change anything in Hermes.' }),
+      agent('o6', 'BizBrain punch sync', 'bizbrain', 'done', 140, { last: 'Pushed the hourly copy agent.' }),
+    ],
+    usage: {
+      at: new Date().toISOString(),
+      claude: { status: 'ok', plan: 'max_20x', error: null, at: new Date().toISOString(), session: { usedPercent: 31, resetsAt: reset(3), reset: '4:30 pm' },
+        weekly: { usedPercent: 42, resetsAt: reset(100), reset: 'Sun, 6:30 pm' }, extra: [{ label: 'Fable', window: { usedPercent: 6, resetsAt: reset(100), reset: 'Sun, 6:30 pm' } }] },
+      codex: { status: 'ok', plan: 'plus', error: null, at: new Date().toISOString(), session: null,
+        weekly: { usedPercent: 79, resetsAt: reset(23), reset: 'Wed, 1:19 pm' }, extra: [] },
+    },
   };
 }

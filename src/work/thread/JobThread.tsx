@@ -21,6 +21,7 @@ import { type DiffTarget, DiffViewer } from './DiffViewer';
 import { BAR_GAP, BAR_H, Header } from './Header';
 import { buildRows, type ChangeFile, ENGINE, lastAnswer, revertTurns } from './model';
 import { Confirm, JobMenu, type TurnChoice } from './Overlay';
+import { CacheChip } from '../ui/CacheChip';
 import { openJob } from '../ui/nav';
 import { ThreadList } from './ThreadList';
 import { copyText, Press } from './ui';
@@ -224,6 +225,7 @@ export function JobThread({ id }: { id: string }) {
               <View pointerEvents="none" style={s.noticeAnchor}>
                 <Notice text={notice} bottom={8} onClear={work.clearNotice} />
               </View>
+              <CacheChip cache={job.cache} working={busyStatus(job.status)} />
               <Composer job={job} phase={phase} queued={held?.failed ? null : held?.text ?? null} onSend={send} onStop={stop}
                 onCancelQueued={() => setHeld(null)} onMic={() => work.notify('Not built yet')} />
               {held?.failed ? (

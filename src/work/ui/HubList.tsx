@@ -1,9 +1,11 @@
 import { useCallback } from 'react';
 import { type GestureResponderEvent, RefreshControl, SectionList, type SectionListData, StyleSheet, View } from 'react-native';
 import { C } from '@/theme';
-import type { Idea, JobBrief, NeedItem, ProjectCard, RepoState, SessionBrief, Task } from '../types';
+import type { Idea, JobBrief, NeedItem, OrcaAgent, ProjectCard, RepoState, SessionBrief, Task } from '../types';
 import { NeedCard } from './NeedCard';
-import { notBuilt, openJob, openProject } from './nav';
+import { notBuilt, openJob, openOrcaAgent, openProject } from './nav';
+import { OrcaRow } from './orca';
+import { IdeaProjectRow, TilePair } from './projects';
 import { IdeaRow, JobRow, ProjectRow, RepoRow, SessionRow, SkeletonRows, TaskLine } from './rows';
 import { EmptyLine, MoreLine, SectionHeader } from './Section';
 import { useShellInsets } from './Shell';
@@ -16,6 +18,9 @@ type Add = { label: string; onPress: () => void };
 export type Item =
   | { kind: 'need'; key: string; need: NeedItem; heading?: string | null }
   | { kind: 'job'; key: string; job: JobBrief; where?: string | null }
+  | { kind: 'orca'; key: string; agent: OrcaAgent; where?: string | null }
+  | { kind: 'tiles'; key: string; projects: { project: ProjectCard; orcaWorking: number; orcaWaiting: number }[] }
+  | { kind: 'ideaProject'; key: string; project: ProjectCard }
   | { kind: 'project'; key: string; project: ProjectCard }
   | { kind: 'idea'; key: string; idea: Idea }
   | { kind: 'task'; key: string; task: Task }
@@ -26,7 +31,7 @@ export type Item =
   | { kind: 'loading'; key: string }
   | { kind: 'error'; key: string; title: string; message: string | null; onRetry: () => void };
 
-export type Sec = { key: string; title?: string; count?: number; add?: Add; data: Item[] };
+export type Sec = { key: string; title?: string; count?: number; add?: Add; extra?: React.ReactNode; data: Item[] };
 
 export type ListHandlers = {
   onHide: (id: string) => void;
@@ -51,6 +56,15 @@ export function HubList({ sections, header, refreshing, onRefresh, handlers }: {
           </View>
         );
       case 'job': return <JobRow job={item.job} where={item.where} onPress={() => openJob(item.job.id)} />;
+      case 'orca': return <OrcaRow agent={item.agent} where={item.where} onPress={() => openOrcaAgent(item.agent.id)} />;
+      case 'tiles':
+        return (
+          <TilePair items={item.projects.map((t) => ({
+            ...t, onPress: () => openProject(t.project.slug), onLongPress: (e: GestureResponderEvent) => onHold?.(t.project, e),
+          }))} />
+        );
+      case 'ideaProject':
+        return <IdeaProjectRow project={item.project} onPress={() => openProject(item.project.slug)} onLongPress={(e) => onHold?.(item.project, e)} />;
       case 'project':
         return (
           <ProjectRow project={item.project} onPress={() => openProject(item.project.slug)}
@@ -68,7 +82,7 @@ export function HubList({ sections, header, refreshing, onRefresh, handlers }: {
   }, [onHide, onUndo, onSent, onHold, onProjectAction]);
 
   const renderSectionHeader = useCallback(({ section }: { section: SectionListData<Item, Sec> }) => (
-    section.title ? <SectionHeader title={section.title} count={section.count} add={section.add} /> : null
+    section.title ? <SectionHeader title={section.title} count={section.count} add={section.add} extra={section.extra} /> : null
   ), []);
 
   return (
@@ -78,7 +92,7 @@ export function HubList({ sections, header, refreshing, onRefresh, handlers }: {
       renderItem={renderItem}
       renderSectionHeader={renderSectionHeader}
       // 24 between sections; a card already carries 12 under it
-      renderSectionFooter={({ section }) => <View style={section.data.at(-1)?.kind === 'need' ? s.gapAfterCard : s.gap} />}
+      renderSectionFooter={({ section }) => <View style={['need', 'tiles'].includes(section.data.at(-1)?.kind ?? '') ? s.gapAfterCard : s.gap} />}
       ListHeaderComponent={header}
       stickySectionHeadersEnabled={false}
       showsVerticalScrollIndicator={false}

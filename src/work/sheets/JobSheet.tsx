@@ -8,8 +8,8 @@ import { DEMO } from '@/lib/demo';
 import { C, F } from '@/theme';
 import { workApi } from '../api';
 import { closeSheet, openSheet } from '../bus';
-import { useFanProjects, useProjectHome, useWorkHome, useWorkNotice, work } from '../store';
-import type { Engine, EngineHealth, Perm } from '../types';
+import { includedOf, useFanProjects, useOrca, useProjectHome, useWorkHome, useWorkNotice, work } from '../store';
+import type { Engine, EngineHealth, Idea, Perm, ProjectCard, Task } from '../types';
 import { appendText, useDictation } from '../voice';
 import { DictationLine, MicButton, ProjectChip, ProjectPicker, shortPath, startFolder } from './parts';
 import { Chip, Glyph, Press, PrimaryButton, Segmented, SectionLabel, Sheet, SheetFooter, SheetHeader, sheetStyles } from './Sheet';
@@ -17,7 +17,8 @@ import { Chip, Glyph, Press, PrimaryButton, Segmented, SectionLabel, Sheet, Shee
 // New job: Claude or Codex as two big buttons, the idea and tasks it carries as chips, Additional context (the mic
 // adds to it), the folder it starts in (tap for the project's other folders), and the permission mode. The engines'
 // logins are checked first (GET /engines/health): Start stays off while the chosen one can't run, with its reason.
-// Start opens the job's thread at once.
+// Start opens the job's thread at once. With Orca up on the PC it can run there instead, as an Orca terminal, so the
+// job shows in Orca too and he can follow it from either place; Orca's own permission settings apply then.
 
 const ENGINES: { key: Engine; name: string }[] = [{ key: 'claude', name: 'Claude' }, { key: 'codex', name: 'Codex' }];
 const PERMS: { value: Perm; label: string }[] = [{ value: 'ask', label: 'Ask' }, { value: 'edits', label: 'Edits' }, { value: 'auto', label: 'Auto' }];
@@ -26,9 +27,25 @@ const PERM_NOTE: Record<Perm, string> = {
   edits: 'Edits files on its own. Asks before running commands.',
   auto: 'Edits files and runs commands without asking.',
 };
+type Where = 'orca' | 'app';
+const WHERE: { value: Where; label: string }[] = [{ value: 'orca', label: 'Orca' }, { value: 'app', label: 'App' }];
 // the last choices, so the next job starts the way the last one did (this app run)
-const last: { engine: Engine; perm: Perm } = { engine: 'claude', perm: 'ask' };
-const remember = (engine: Engine, perm: Perm) => { last.engine = engine; last.perm = perm; };
+const last: { engine: Engine; perm: Perm; where: Where } = { engine: 'claude', perm: 'ask', where: 'orca' };
+const remember = (engine: Engine, perm: Perm, where: Where) => { last.engine = engine; last.perm = perm; last.where = where; };
+
+/** An Orca job's first message, laid out like the app's own job prompt. Orca opens it in the folder already. */
+export function orcaPrompt(p: { project: Pick<ProjectCard, 'name'> | null; tasks: Task[]; idea: Idea | null; context: string }) {
+  const lines: string[] = [];
+  if (p.project) lines.push(`Project: ${p.project.name}.`);
+  if (p.tasks.length) {
+    lines.push('', p.tasks.length === 1 ? 'Task:' : 'Tasks:');
+    p.tasks.forEach((t, i) => lines.push(`${p.tasks.length > 1 ? `${i + 1}. ` : ''}${t.title}${t.notes ? `\n   ${t.notes.replace(/\n/g, '\n   ')}` : ''}`));
+  }
+  if (p.idea) lines.push('', `Idea: ${p.idea.title}${p.idea.body ? `\n${p.idea.body}` : ''}`);
+  if (p.context) lines.push('', p.tasks.length || p.idea ? `Additional context:\n${p.context}` : p.context);
+  lines.push('', 'When you finish, reply with a short summary of what you did, the files you changed, and anything left for me.');
+  return lines.join('\n').trim();
+}
 
 type Health = { s: 'loading' } | { s: 'ok'; h: EngineHealth } | { s: 'error'; status: number; message: string };
 function useHealth() {
@@ -58,9 +75,11 @@ export function JobSheet(props: { project: string | null; text?: string; idea?: 
 function JobBody({ project: initial, text, idea, tasks }: { project: string | null; text?: string; idea?: string | null; tasks?: string[] }) {
   const projects = useFanProjects();
   const notice = useWorkNotice();
+  const orca = useOrca();
   const { health, retry } = useHealth();
   const [engine, setEngine] = useState<Engine>(last.engine);
   const [perm, setPerm] = useState<Perm>(last.perm);
+  const [whereRaw, setWhere] = useState<Where>(last.where);
   const [project, setProject] = useState(initial);
   const [picking, setPicking] = useState(false);
   const [context, setContext] = useState(text ?? '');
@@ -86,11 +105,32 @@ function JobBody({ project: initial, text, idea, tasks }: { project: string | nu
   const engineOk = chosen === 'ready' || (chosen === 'unknown' && health.s === 'error' && health.status !== 0);
   const hasWork = !!(context.trim() || ideaId || taskIds.length);
   const canStart = engineOk && !!folder && hasWork && dict.state === 'idle' && !busy;
+  // Orca is a choice only while it answers on the PC; otherwise the job runs in the app.
+  const orcaUp = !!orca.data?.up;
+  const where: Where = orcaUp ? whereRaw : 'app';
 
   const start = async () => {
     if (!canStart || !folder) return;
-    remember(engine, perm);
+    remember(engine, perm, orcaUp ? whereRaw : last.where);
     setBusy(true); setFailed(false);
+    if (where === 'orca') {
+      const inc = includedOf(project, ideaId, taskIds);
+      if ((ideaId && !inc.idea) || inc.tasks.some((t) => !t)) {
+        setBusy(false); setFailed(true);
+        work.notify('The phone hasn’t loaded that idea or task yet. Start it in the app, or try again in a moment.');
+        return;
+      }
+      const agent = await work.launchInOrca({
+        agent: engine, folder: folder.path,
+        prompt: orcaPrompt({ project: card, tasks: inc.tasks as Task[], idea: inc.idea, context: context.trim() }),
+      });
+      setBusy(false);
+      if (agent === undefined) { setFailed(true); return; }
+      closeSheet();
+      if (agent) router.push(`/work/orca/${agent.id}` as Href);
+      else work.notify('Started in Orca. It shows under Live in a few seconds.');
+      return;
+    }
     const job = await work.startJob({
       engine, project, perm, folder: folder.path,
       context: context.trim() || undefined, idea: ideaId ?? undefined, tasks: taskIds.length ? taskIds : undefined,
@@ -181,11 +221,25 @@ function JobBody({ project: initial, text, idea, tasks }: { project: string | nu
           )}
         </View>
 
-        <View style={{ gap: 8 }}>
-          <SectionLabel>Permissions</SectionLabel>
-          <Segmented options={PERMS} value={perm} onChange={setPerm} label="Permission mode" />
-          <Text style={sheetStyles.note}>{PERM_NOTE[perm]}</Text>
-        </View>
+        {orcaUp ? (
+          <View style={{ gap: 8 }}>
+            <SectionLabel>Runs in</SectionLabel>
+            <Segmented options={WHERE} value={where} onChange={setWhere} label="Where the job runs" />
+            <Text style={sheetStyles.note}>
+              {where === 'orca'
+                ? 'Shows in Orca on your PC too, and takes replies from here. Permission prompts get answered in Orca.'
+                : 'Permission questions come to your phone. It won’t show in Orca.'}
+            </Text>
+          </View>
+        ) : null}
+
+        {where === 'app' ? (
+          <View style={{ gap: 8 }}>
+            <SectionLabel>Permissions</SectionLabel>
+            <Segmented options={PERMS} value={perm} onChange={setPerm} label="Permission mode" />
+            <Text style={sheetStyles.note}>{PERM_NOTE[perm]}</Text>
+          </View>
+        ) : null}
 
         {failed ? <Text style={sheetStyles.error}>{notice ?? 'Couldn’t start the job. Try again.'}</Text> : null}
       </ScrollView>

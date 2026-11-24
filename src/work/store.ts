@@ -4,9 +4,9 @@ import { ApiError, loadToken, setToken } from '@/lib/api';
 import { DEMO } from '@/lib/demo';
 import { newKey, workApi } from './api';
 import { readCache, writeCache } from './cache';
-import { demoHome, demoProject } from './demo';
+import { demoHome, demoOrca, demoProject } from './demo';
 import { openSSE } from './sse';
-import type { FeedChange, Folder, Idea, JobBrief, NewJob, ProjectCard, ProjectHome, Task, WorkHome } from './types';
+import type { FeedChange, Folder, Idea, JobBrief, NewJob, OrcaLaunch, OrcaState, ProjectCard, ProjectHome, Task, WorkHome } from './types';
 
 // The hub's one store. Screens read it through the hooks at the bottom; nothing renders from a fetch directly.
 // Order on every read: the phone's cached copy first (instant), then the PC's answer (ETag, so usually a 304),
@@ -17,11 +17,15 @@ type Slot<T> = { data: T | null; load: Load; error: string | null };
 type State = {
   home: Slot<WorkHome>;
   projects: Record<string, Slot<ProjectHome>>;
+  /** The Orca app on the PC: its agents and the Claude/Codex usage it reads. */
+  orca: Slot<OrcaState>;
   live: boolean; // the feed is connected
   notice: string | null;
 };
 
-let state: State = { home: { data: null, load: 'loading', error: null }, projects: {}, live: false, notice: null };
+let state: State = {
+  home: { data: null, load: 'loading', error: null }, projects: {}, orca: { data: null, load: 'loading', error: null }, live: false, notice: null,
+};
 const subs = new Set<() => void>();
 const emit = () => subs.forEach((f) => f());
 const set = (fn: (s: State) => State) => { state = fn(state); emit(); };
@@ -40,6 +44,15 @@ export function fanOrder(projects: ProjectCard[]) {
       || a.name.localeCompare(b.name));
 }
 
+/** A cached copy or an answer from an older server can miss lists; a missing list must never crash the screen. */
+function normHome(h: WorkHome | null | undefined): WorkHome | null {
+  if (!h || typeof h !== 'object' || !Array.isArray(h.projects)) return null;
+  return {
+    ...h, projects: h.projects, needs: Array.isArray(h.needs) ? h.needs : [], live: Array.isArray(h.live) ? h.live : [],
+    inbox: { ideas: Array.isArray(h.inbox?.ideas) ? h.inbox.ideas : [], tasks: Array.isArray(h.inbox?.tasks) ? h.inbox.tasks : [] },
+  };
+}
+
 function fail(e: unknown): { load: Load; error: string | null } {
   if (e instanceof ApiError && e.status === 401) { setToken(null).catch(() => {}); return { load: 'signedOut', error: null }; }
   return { load: 'error', error: (e as Error).message };
@@ -52,12 +65,14 @@ export function loadHome(): Promise<void> {
   homeBusy = (async () => {
     if (DEMO) { set((s) => ({ ...s, home: { data: s.home.data ?? demoHome(), load: 'ready', error: null } })); return; }
     if (!state.home.data) {
-      const cached = await readCache<WorkHome>('home');
+      const cached = normHome(await readCache<WorkHome>('home'));
       if (cached && !state.home.data) set((s) => ({ ...s, home: { data: cached, load: 'ready', error: null } }));
     }
     if (!(await loadToken())) { set((s) => ({ ...s, home: { ...s.home, load: 'signedOut' } })); return; }
     try {
-      const fresh = await workApi.home();
+      const raw = await workApi.home();
+      const fresh = raw === null ? null : normHome(raw);
+      if (raw !== null && !fresh) throw new Error('Your PC answered, but not with Work data. Update the server and try again.');
       if (fresh) { writeCache('home', fresh); set((s) => ({ ...s, home: { data: fresh, load: 'ready', error: null } })); }
       else set((s) => ({ ...s, home: { ...s.home, load: 'ready', error: null } }));
     } catch (e) {
@@ -100,23 +115,59 @@ export function loadProject(slug: string): Promise<void> {
   return p;
 }
 
+let orcaBusy: Promise<void> | null = null;
+/** Orca's agents and usage: the cached copy first, then the PC (ETag). A failure keeps the copy. */
+export function loadOrca(): Promise<void> {
+  if (orcaBusy) return orcaBusy;
+  orcaBusy = (async () => {
+    if (DEMO) { set((s) => ({ ...s, orca: { data: s.orca.data ?? demoOrca(), load: 'ready', error: null } })); return; }
+    if (!state.orca.data) {
+      const cached = await readCache<OrcaState>('orca');
+      if (cached?.agents && !state.orca.data) set((s) => ({ ...s, orca: { data: cached, load: 'ready', error: null } }));
+    }
+    if (!(await loadToken())) return;
+    try {
+      const fresh = await workApi.orca();
+      if (fresh && Array.isArray(fresh.agents)) { writeCache('orca', fresh); set((s) => ({ ...s, orca: { data: fresh, load: 'ready', error: null } })); }
+      else set((s) => ({ ...s, orca: { ...s.orca, load: 'ready', error: null } }));
+    } catch (e) {
+      const f = fail(e);
+      set((s) => ({ ...s, orca: { ...s.orca, load: f.load === 'signedOut' ? 'signedOut' : s.orca.data ? 'ready' : 'error', error: f.error } }));
+    }
+  })().finally(() => { orcaBusy = null; });
+  return orcaBusy;
+}
+
 // ---- live feed ----
 let feedRefs = 0, closeFeed: (() => void) | null = null, refetch: ReturnType<typeof setTimeout> | null = null;
+let orcaTimer: ReturnType<typeof setTimeout> | null = null;
 const dirty = new Set<string>();
+let lastRefetch = 0;
 
-function scheduleRefetch(project: string | null) {
+/**
+ * Fetches home (and touched projects) again after a change. `lazy` is for a running job's own updates, which the
+ * store already applied (patchJob): those refetch at most every 3 s, so a streaming job doesn't reload the hub
+ * several times a second (each reload re-renders every visible row).
+ */
+function scheduleRefetch(project: string | null, lazy = false) {
   dirty.add('home');
   if (project) dirty.add(project);
   if (refetch) return;
+  const wait = lazy ? Math.max(400, lastRefetch + 3000 - Date.now()) : 400;
   refetch = setTimeout(() => {
     refetch = null;
+    lastRefetch = Date.now();
     const list = [...dirty];
     dirty.clear();
     for (const k of list) {
       if (k === 'home') loadHome();
       else if (state.projects[k]) loadProject(k);
     }
-  }, 400);
+  }, wait);
+}
+function scheduleOrca() {
+  if (orcaTimer) return;
+  orcaTimer = setTimeout(() => { orcaTimer = null; loadOrca(); }, 300);
 }
 
 function patchJob(j: JobBrief) {
@@ -138,14 +189,15 @@ function patchJob(j: JobBrief) {
 }
 
 function onChange(c: FeedChange) {
-  if (c.kind === 'job') patchJob(c.job);
+  if (c.kind === 'orca') { scheduleOrca(); return; }
+  if (c.kind === 'job') { patchJob(c.job); scheduleRefetch(c.project, true); return; }
   scheduleRefetch(c.project);
 }
 
 function startFeed() {
   if (DEMO || closeFeed) return;
   closeFeed = openSSE(() => '/work/feed', {
-    onOpen: () => { set((s) => ({ ...s, live: true })); scheduleRefetch(null); flushQueue(); },
+    onOpen: () => { set((s) => ({ ...s, live: true })); scheduleRefetch(null); scheduleOrca(); flushQueue(); },
     onDown: () => set((s) => ({ ...s, live: false })),
     onEvent: (name, data) => {
       if (name !== 'change') return;
@@ -282,6 +334,7 @@ function bumpCount(slug: string | null, key: 'ideas' | 'tasks', by: number) {
 export const work = {
   loadHome,
   loadProject,
+  loadOrca,
   clearNotice: () => set((s) => ({ ...s, notice: null })),
   notify: (text: string) => set((s) => ({ ...s, notice: text })),
 
@@ -374,6 +427,24 @@ export const work = {
     ).then((r) => { scheduleRefetch(patch.project ?? from?.project ?? null); return r; });
   },
 
+  /** Moves a project between Active and Ideas (an idea project is 'paused' on the PC). */
+  setProjectStatus(slug: string, status: 'active' | 'paused') {
+    return work.patchProject(slug, { status });
+  },
+
+  /** Starts an agent in Orca on the PC, in the project's folder: null when it started but has no id yet, undefined on failure. */
+  async launchInOrca(b: OrcaLaunch) {
+    if (DEMO) { set((s) => ({ ...s, notice: 'Demo: Orca agents only start on the real PC.' })); return undefined; }
+    try {
+      const r = await workApi.orcaLaunch(b, newKey());
+      loadOrca();
+      return r.agent ?? null;
+    } catch (e) {
+      set((s) => ({ ...s, notice: (e as Error).message }));
+      return undefined;
+    }
+  },
+
   /** Starts a job. Not optimistic: the PC answers at once with the job (status "starting"), then it streams. */
   async startJob(job: NewJob) {
     if (DEMO) { set((s) => ({ ...s, notice: 'Demo: jobs only start on the real server.' })); return null; }
@@ -408,6 +479,24 @@ export function useFanProjects() {
   useEffect(() => { loadHome(); }, []);
   const home = useSyncExternalStore(subscribe, () => state.home.data);
   return home ? fanOrder(home.projects) : null;
+}
+
+/** The idea and tasks a job carries, from the phone's copy (the project's page, else the inbox). Missing ones are null. */
+export function includedOf(project: string | null, idea: string | null, tasks: string[]) {
+  const d = project ? state.projects[project]?.data : null;
+  const ideas = [...(d?.ideas ?? []), ...(state.home.data?.inbox.ideas ?? [])];
+  const rows = [...(d?.tasks ?? []), ...(state.home.data?.inbox.tasks ?? [])];
+  return {
+    idea: idea ? ideas.find((i) => i.id === idea) ?? null : null,
+    tasks: tasks.map((id) => rows.find((t) => t.id === id) ?? null),
+  };
+}
+
+/** Orca's agents and usage, kept fresh by the feed while a hub screen is open. */
+export function useOrca() {
+  useFeed();
+  useEffect(() => { loadOrca(); }, []);
+  return useSyncExternalStore(subscribe, () => state.orca);
 }
 
 export const useWorkLive = () => useSyncExternalStore(subscribe, () => state.live);

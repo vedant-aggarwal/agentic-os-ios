@@ -8,7 +8,7 @@ import type { AspectKey } from '@/theme';
 // Scoring the wheel: nine rows, one drag or one tap each, starting from last time's value. A white mark on each
 // track shows what the data reads, so a score that parts from it is a choice he sees.
 
-export type ScoreSection = { key: AspectKey; name: string; felt: number | null; measured: number | null };
+export type ScoreSection = { key: AspectKey; name: string; felt: number | null; measured: number | null; note?: string | null };
 
 function Track({ value, measured, onChange, label }: { value: number | null; measured: number | null; onChange: (v: number) => void; label: string }) {
   const { color } = useAspect();
@@ -53,7 +53,7 @@ export function Scorer({ sections, values, onChange }: {
         const changed = v != null && sec.felt != null && v !== sec.felt;
         const sub = [
           sec.felt != null ? `Last time ${num(sec.felt, 1)}.` : 'Not scored before.',
-          sec.measured != null ? `Data reads ${num(sec.measured, 1)}.` : 'No data yet.',
+          sec.measured != null ? `Data reads ${num(sec.measured, 1)}.` : sec.note ? 'Not tracked yet.' : 'No data yet.',
         ].join(' ');
         return (
           <View key={sec.key} style={s.row}>

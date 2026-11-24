@@ -47,14 +47,15 @@ export function OverTime({ open, start, onClose }: { open: boolean; start: Aspec
           <Section title="Week by week">
             <ChartKey />
             {d.sections.map((x) => (
-              <Card key={x.key} onPress={() => setFocus(x.key)} label={`${x.name}, ${TREND_WORD[x.trend.state]}`} style={s.card}>
+              <Card key={x.key} onPress={() => setFocus(x.key)} label={`${x.name}, ${x.note ? 'not tracked yet' : TREND_WORD[x.trend.state]}`} style={s.card}>
                 <View style={s.cardHead}>
                   <Text style={[t.strong, s.flex]}>{x.name}</Text>
-                  <Text style={[t.label, x.trend.state === 'up' || x.trend.state === 'down' ? { color: C.text } : null]}>{TREND_WORD[x.trend.state]}</Text>
+                  <Text style={[t.label, !x.note && (x.trend.state === 'up' || x.trend.state === 'down') ? { color: C.text } : null]}>{x.note ? 'Not tracked yet' : TREND_WORD[x.trend.state]}</Text>
                 </View>
                 {x.series.some((v) => v != null) || x.feltHistory.length ? (
                   <Chart series={x.series} weeks={d.weeks} felt={x.feltHistory} width={width} height={56} />
                 ) : null}
+                {x.note ? <Text style={t.caption}>{x.note}</Text> : null}
                 {!x.series.some((v) => v != null) ? <Text style={t.caption}>{x.feltHistory.length ? 'No data from this part of your life yet. Only your score shows.' : 'Nothing here yet. Score the wheel and this fills in week by week.'}</Text> : null}
               </Card>
             ))}
@@ -104,21 +105,22 @@ function Detail({ sec, d, width }: { sec: Sec; d: WheelData; width: number }) {
   const f = feltLine(sec);
   const tr = sec.trend;
   const nums = sec.series.filter((v): v is number => v != null);
+  const quiet = !!sec.note; // nothing logged lately: no number, no average, the note says why
   return (
     <View style={s.list}>
       <Card style={s.card}>
         <View style={s.cardHead}>
-          <Text style={[t.title2, s.flex]}>{TREND_WORD[tr.state]}</Text>
-          {tr.now != null ? <Text style={[t.label, t.num]}>{num(tr.now, 1)} lately</Text> : null}
+          <Text style={[t.title2, s.flex]}>{quiet ? 'Not tracked yet' : TREND_WORD[tr.state]}</Text>
+          {!quiet && tr.now != null ? <Text style={[t.label, t.num]}>{num(tr.now, 1)} lately</Text> : null}
         </View>
         <Text style={t.small}>
-          {WHY[tr.state]}
-          {tr.now != null && tr.before != null ? ` Last four weeks average ${num(tr.now, 1)}, the four before ${num(tr.before, 1)}.` : ''}
+          {quiet ? sec.note : WHY[tr.state]}
+          {!quiet && tr.now != null && tr.before != null ? ` Last four weeks average ${num(tr.now, 1)}, the four before ${num(tr.before, 1)}.` : ''}
         </Text>
         {nums.length || sec.feltHistory.length ? (
-          <Chart series={sec.series} weeks={d.weeks} felt={sec.feltHistory} width={width} height={160} trend={tr} axis />
+          <Chart series={sec.series} weeks={d.weeks} felt={sec.feltHistory} width={width} height={160} trend={quiet ? null : tr} axis />
         ) : null}
-        <ChartKey trend={tr.now != null && tr.before != null} />
+        <ChartKey trend={!quiet && tr.now != null && tr.before != null} />
       </Card>
 
       <Section title="Your score and the data">

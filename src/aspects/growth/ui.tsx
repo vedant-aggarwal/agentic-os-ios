@@ -39,7 +39,7 @@ export function feltLine(sec: Section) {
   const head = sec.felt != null
     ? `You scored ${sec.name} ${num(sec.felt, 1)}${sec.feltDate ? ` on ${shortDay(sec.feltDate)}` : ''}.`
     : `${sec.name} isn't scored yet.`;
-  const data = sec.measured != null ? `The data reads ${num(sec.measured, 1)}.` : 'No data from this part of your life yet.';
+  const data = sec.measured != null ? `The data reads ${num(sec.measured, 1)}.` : sec.note ?? 'No data from this part of your life yet.';
   const verdict = sec.agree === 'agree' ? 'Your score and the data roughly agree.'
     : sec.agree === 'higher' ? 'You rate it higher than the data shows.'
     : sec.agree === 'lower' ? 'The data reads higher than your score.'

@@ -87,7 +87,7 @@ export default function Growth() {
 
       <Next home={d} onReview={() => setOpen('review')} onScore={() => setOpen('score')} onMission={() => a.openAspect('mission')} />
 
-      {d.read && !d.read.answered ? <ReadCard read={d.read} /> : null}
+      {d.read && !d.read.answered && beforeReadEnds() ? <ReadCard key={d.read.id} read={d.read} /> : null}
 
       <Section title="Your rules" action={d.rules.active ? 'All' : undefined} onAction={() => setOpen('rules')}>
         {d.rules.top.length ? (
@@ -178,7 +178,7 @@ function SectionCard({ sec, onOpen, onTime, onClose }: { sec: Sec; onOpen: () =>
           ))}
         </View>
       ) : null}
-      <Text style={t.caption}>{sec.trend.state === 'early' ? 'Too early to call a trend.' : `Over the last month: ${TREND_WORD[sec.trend.state].toLowerCase()}.`}</Text>
+      {sec.note ? null : <Text style={t.caption}>{sec.trend.state === 'early' ? 'Too early to call a trend.' : `Over the last month: ${TREND_WORD[sec.trend.state].toLowerCase()}.`}</Text>}
       <View style={s.secActions}>
         <Button label={`Open ${sec.name}`} kind="soft" small onPress={onOpen} />
         <Button label="Over time" kind="quiet" small onPress={onTime} />
@@ -226,6 +226,10 @@ function Next({ home, onReview, onScore, onMission }: { home: Home; onReview: ()
   );
 }
 
+/** The overnight read is a morning card: it stays until every thread is answered, or until 15:00 (IST). */
+const READ_ENDS = 15;
+const beforeReadEnds = (at = Date.now()) => new Date(at + 5.5 * 3_600_000).getUTCHours() < READ_ENDS;
+
 const OFF = ['Wrong facts', 'Reads too much into it', 'Not important', 'Something else'];
 
 /** Last night's read on a short morning card: agree, say what's off, or keep it as a move for Sunday. */
@@ -235,12 +239,14 @@ function ReadCard({ read }: { read: MorningRead }) {
   const [wrong, setWrong] = useState<string | null>(null);
   const [reason, setReason] = useState<string | null>(null);
   const [note, setNote] = useState('');
-  const open = read.connections.filter((c) => !c.verdict);
+  const [done, setDone] = useState<string[]>([]); // answered here, before the reload brings the verdicts
+  const open = read.connections.filter((c) => !c.verdict && !done.includes(c.id));
   const c = open[0] ?? null;
   const send = async (connection: string, answer: 'agree' | 'wrong' | 'move', extra?: { reason?: string; note?: string }) => {
     setBusy(answer);
     try {
       await answerRead({ date: read.date, connection, answer, ...extra });
+      setDone((x) => [...x, connection]); // the next thread shows at once
       a.notice(answer === 'move' ? 'Kept for Sunday’s moves' : 'Noted');
     } catch (e) {
       a.notice((e as Error).message);
@@ -253,6 +259,7 @@ function ReadCard({ read }: { read: MorningRead }) {
     setReason(null);
     setNote('');
   };
+  if (!c && !wrong) return null; // every thread answered here; the reload drops the card
   return (
     <Card style={s.read}>
       <View style={s.readHead}>

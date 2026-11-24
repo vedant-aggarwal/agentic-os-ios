@@ -11,6 +11,8 @@ export type Section = {
   change: number | null; moved: boolean;
   measured: number | null; trend: Trend; agree: 'agree' | 'higher' | 'lower' | null;
   evidence: string[]; sources: string[];
+  /** Sources this section reads that sat unused lately; when set, measured is null and note says so (no-guilt rule). */
+  untracked?: string[]; note?: string | null;
   series: (number | null)[];
   feltHistory: { date: string; v: number }[];
 };
@@ -75,7 +77,7 @@ export type ReviewDraft = {
   rules: RuleSum[]; ruleIdeas: { id: string; when: string; then: string; why: string }[];
   moves: DraftMove[]; goals: GoalRef[];
   whys: string[]; taskWhys: string[]; whyTree: Record<string, string[]>; ruleBank: Record<string, { when: string; then: string }>;
-  wheel: { due: boolean; last: string | null; sections: { key: AspectKey; name: string; felt: number | null; measured: number | null }[] };
+  wheel: { due: boolean; last: string | null; sections: { key: AspectKey; name: string; felt: number | null; measured: number | null; note?: string | null }[] };
 };
 
 /** A sealed review as stored (`/mod/growth/reviews`). Older ones (from the first app) carry fewer fields. */

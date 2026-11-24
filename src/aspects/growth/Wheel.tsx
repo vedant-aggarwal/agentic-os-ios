@@ -107,7 +107,7 @@ export function Wheel({ sections, size, selected, onSelect, then = null, showDat
         const words = [
           sec.name,
           sec.felt != null ? `you scored ${num(sec.felt, 1)}` : 'not scored',
-          sec.measured != null ? `the data reads ${num(sec.measured, 1)}` : 'no data yet',
+          sec.measured != null ? `the data reads ${num(sec.measured, 1)}` : sec.note ? 'not tracked yet' : 'no data yet',
           sec.moved && sec.change != null ? `${sec.change > 0 ? 'up' : 'down'} ${Math.abs(sec.change)} since the scoring before` : '',
         ].filter(Boolean).join(', ');
         return (

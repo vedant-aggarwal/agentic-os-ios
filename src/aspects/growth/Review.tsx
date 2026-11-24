@@ -1,9 +1,9 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
   Bar, Button, Card, Chip, dayLabel, Empty, Failed, Field, haptic, Icon, IconButton, Loading, Press, Row, Screen, Skeleton, SP, t, useAspect,
 } from '@/aspects/kit';
-import { useGet } from '@/lib/mod';
+import { keep, kept, useGet } from '@/lib/mod';
 import { C, type AspectKey } from '@/theme';
 import { draftWithAI, landInMission, REVIEW, saveScores, sealReview, type SealBody } from './data';
 import { Scorer } from './Score';
@@ -50,7 +50,9 @@ export function Review({ open, onClose }: { open: boolean; onClose: () => void }
       ) : d.status === 'sealed' ? (
         <Done d={d} moves={null} rule={null} landed={null} onClose={close} />
       ) : (
-        <Flow key={`${d.week}:${d.drafted_at}`} d={d} onSealed={setJust} redraft={g.refresh} />
+        // keyed on the week and who drafted it: a reload of the same draft keeps every answer; a new AI draft
+        // starts the drafted items over but keeps what he set himself (see restore)
+        <Resume key={`${d.week}:${d.drafted_by}`} d={d} onSealed={setJust} redraft={g.refresh} />
       )}
     </Screen>
   );
@@ -61,33 +63,108 @@ type Moved = { id: string; text: string; aspect: AspectKey; keep: boolean; mine?
 type Move = DraftMove & { mine?: boolean };
 type RuleIdea = { id: string; when: string; then: string; why: string; from: { text: string; aspect: AspectKey; why: string | null } | null };
 
-function Flow({ d, onSealed, redraft }: { d: ReviewDraft; onSealed: (s: Sealed) => void; redraft: () => Promise<unknown> }) {
+// ── answers that outlive a reload, a close, or the phone locking halfway ────────────────────────────────────────
+/** Everything he has answered so far, for one week. Kept in memory and on the device until the week is closed. */
+type Answers = {
+  week: string; by: ReviewDraft['drafted_by']; i: number;
+  verdicts: Record<string, { verdict: Verdict | null; carry: boolean }>;
+  moved: Moved[]; missed: Miss[]; checks: Record<string, boolean | null>;
+  ruleId: string | null; own: { when: string; then: string };
+  scores: Partial<Record<AspectKey, number>>; scoreSkip: boolean;
+  extra: Move[]; picks: string[]; serves: Record<string, string | null>; feel: string;
+};
+const ANSWERS = 'growth-review'; // one entry on the device; it names its week, so an old week's answers never apply
+let inMemory: Answers | null = null; // the device write waits a moment; this copy is current at once
+
+function saveAnswers(v: Answers | null) {
+  inMemory = v;
+  keep(ANSWERS, v);
+}
+const uid = (p: string) => `${p}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+
+/**
+ * The flow's starting state: the draft, with his saved answers laid back on it. Answers on drafted items come back
+ * only when the item is the same one (same id and words, same drafter); what he wrote himself always comes back.
+ */
+function restore(d: ReviewDraft, saved: Answers | null, steps: number): Answers {
+  const a = saved && saved.week === d.week ? saved : null;
+  const same = !!a && a.by === d.drafted_by;
+  const match = <T extends { id: string; text: string }>(list: T[] | undefined, x: { id: string; text: string }) =>
+    same ? list?.find((y) => y.id === x.id && y.text === x.text && !(y as { mine?: boolean }).mine) ?? null : null;
+  const verdicts = Object.fromEntries(d.commitments.map((c) => [c.id, a?.verdicts[c.id] ?? { verdict: c.suggested, carry: false }]));
+  const moved: Moved[] = [
+    ...d.moved.map((m) => ({ id: m.id, text: m.text, aspect: m.aspect, keep: match(a?.moved, m)?.keep ?? true })),
+    ...(a?.moved.filter((m) => m.mine) ?? []),
+  ];
+  const missed: Miss[] = [
+    ...d.missed.map((m) => { const o = match(a?.missed, m); return { ...m, keep: o?.keep ?? true, why: o?.why ?? null, why2: o?.why2 ?? null }; }),
+    ...(a?.missed.filter((m) => m.source === 'you') ?? []),
+  ];
+  const ruleIds = new Set(d.rules.filter((r) => r.status === 'active').map((r) => r.id));
+  const extra = a?.extra ?? [];
+  const moveIds = new Set([...d.moves.map((m) => m.id), ...extra.map((m) => m.id)]);
+  return {
+    week: d.week, by: d.drafted_by, i: Math.min(a?.i ?? 0, steps - 1),
+    verdicts, moved, missed,
+    checks: Object.fromEntries(Object.entries(a?.checks ?? {}).filter(([id]) => ruleIds.has(id))),
+    ruleId: a?.ruleId === 'own' || (same && a?.ruleId) ? a!.ruleId : null,
+    own: a?.own ?? { when: '', then: '' },
+    scores: a?.scores ?? Object.fromEntries(d.wheel.sections.filter((x) => x.felt != null).map((x) => [x.key, x.felt!])),
+    scoreSkip: a?.scoreSkip ?? false,
+    extra,
+    picks: same ? a!.picks.filter((id) => moveIds.has(id)) : [...d.moves.slice(0, MAX_MOVES).map((m) => m.id), ...extra.map((m) => m.id)].slice(0, MAX_MOVES),
+    serves: { ...Object.fromEntries(d.moves.map((m) => [m.id, m.serves])), ...(a?.serves ?? {}) },
+    feel: a?.feel ?? '',
+  };
+}
+
+/** Reads his saved answers (memory first, then the device) before the flow starts. */
+function Resume(props: { d: ReviewDraft; onSealed: (s: Sealed) => void; redraft: () => Promise<unknown> }) {
+  const week = props.d.week;
+  const [saved, setSaved] = useState<Answers | null | undefined>(() => (inMemory?.week === week ? inMemory : undefined));
+  useEffect(() => {
+    if (saved !== undefined) return;
+    let live = true;
+    kept<Answers>(ANSWERS).then((x) => { if (live) setSaved(x && x.week === week ? x : null); }, () => { if (live) setSaved(null); });
+    return () => { live = false; };
+  }, [saved, week]);
+  if (saved === undefined) return null; // the device answers in a few milliseconds
+  return <Flow {...props} saved={saved} />;
+}
+
+function Flow({ d, saved, onSealed, redraft }: { d: ReviewDraft; saved: Answers | null; onSealed: (s: Sealed) => void; redraft: () => Promise<unknown> }) {
   const a = useAspect();
   const active = d.rules.filter((r) => r.status === 'active');
   const steps: StepKey[] = [
     ...(d.commitments.length ? ['week' as const] : []), 'moved', 'missed', ...(active.length ? ['rules' as const] : []),
     'rule', ...(d.wheel.due ? ['score' as const] : []), 'moves', 'close',
   ];
-  const [i, setI] = useState(0);
+  const [init] = useState(() => restore(d, saved, steps.length));
+  const [i, setI] = useState(init.i);
   const step = steps[Math.min(i, steps.length - 1)];
 
-  const [verdicts, setVerdicts] = useState<Record<string, { verdict: Verdict | null; carry: boolean }>>(
-    () => Object.fromEntries(d.commitments.map((c) => [c.id, { verdict: c.suggested, carry: false }])));
-  const [moved, setMoved] = useState<Moved[]>(() => d.moved.map((m) => ({ id: m.id, text: m.text, aspect: m.aspect, keep: true })));
-  const [missed, setMissed] = useState<Miss[]>(() => d.missed.map((m) => ({ ...m, keep: true, why: null, why2: null })));
-  const [checks, setChecks] = useState<Record<string, boolean | null>>({});
-  const [ruleId, setRuleId] = useState<string | null>(null); // an idea's id, or 'own'
-  const [own, setOwn] = useState({ when: '', then: '' });
-  const [scores, setScores] = useState<Partial<Record<AspectKey, number>>>(
-    () => Object.fromEntries(d.wheel.sections.filter((x) => x.felt != null).map((x) => [x.key, x.felt!])));
-  const [scoreSkip, setScoreSkip] = useState(false);
-  const [extra, setExtra] = useState<Move[]>([]);
-  const [picks, setPicks] = useState<string[]>(() => d.moves.slice(0, MAX_MOVES).map((m) => m.id));
-  const [serves, setServes] = useState<Record<string, string | null>>(() => Object.fromEntries(d.moves.map((m) => [m.id, m.serves])));
-  const [feel, setFeel] = useState('');
+  const [verdicts, setVerdicts] = useState(init.verdicts);
+  const [moved, setMoved] = useState<Moved[]>(init.moved);
+  const [missed, setMissed] = useState<Miss[]>(init.missed);
+  const [checks, setChecks] = useState<Record<string, boolean | null>>(init.checks);
+  const [ruleId, setRuleId] = useState<string | null>(init.ruleId); // an idea's id, or 'own'
+  const [own, setOwn] = useState(init.own);
+  const [scores, setScores] = useState<Partial<Record<AspectKey, number>>>(init.scores);
+  const [scoreSkip, setScoreSkip] = useState(init.scoreSkip);
+  const [extra, setExtra] = useState<Move[]>(init.extra);
+  const [picks, setPicks] = useState<string[]>(init.picks);
+  const [serves, setServes] = useState<Record<string, string | null>>(init.serves);
+  const [feel, setFeel] = useState(init.feel);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [ai, setAi] = useState(false);
+  const [sealed, setSealed] = useState(false);
+
+  // every answer is saved as he gives it, so a reload, a close or a locked phone picks up where he was
+  useEffect(() => {
+    if (sealed) return;
+    saveAnswers({ week: d.week, by: d.drafted_by, i, verdicts, moved, missed, checks, ruleId, own, scores, scoreSkip, extra, picks, serves, feel });
+  }, [d.week, d.drafted_by, i, verdicts, moved, missed, checks, ruleId, own, scores, scoreSkip, extra, picks, serves, feel, sealed]);
 
   const carried: Move[] = d.commitments.filter((c) => verdicts[c.id]?.carry && verdicts[c.id]?.verdict !== 'done')
     .map((c) => ({ id: `carry:${c.id}`, text: c.text, aspect: c.aspect, serves: c.parent, carry: c.id, from: null, source: 'carry' }));
@@ -137,6 +214,8 @@ function Flow({ d, onSealed, redraft }: { d: ReviewDraft; onSealed: (s: Sealed) 
       const res = await sealReview(body);
       const landed = res.already ? null : await landInMission(res.item); // never throws: what Mission can't take stays offered
       haptic.success();
+      setSealed(true);
+      saveAnswers(null); // the week is closed: nothing to resume
       onSealed({ moves: chosen.map((m) => m.text), rule: ruleLine, landed });
     } catch (e) {
       a.notice((e as Error).message);
@@ -186,7 +265,7 @@ function Flow({ d, onSealed, redraft }: { d: ReviewDraft; onSealed: (s: Sealed) 
           </View>
         ) : null}
         <AddLine placeholder="Something that went well" value={draft} onChange={setDraft}
-          onAdd={() => { setMoved([...moved, { id: `u${moved.length + 1}`, text: draft.trim(), aspect: 'growth', keep: true, mine: true }]); setDraft(''); }} />
+          onAdd={() => { setMoved([...moved, { id: uid('u'), text: draft.trim(), aspect: 'growth', keep: true, mine: true }]); setDraft(''); }} />
         {d.drafted_by === 'code' ? (
           <View style={s.aiRow}>
             <Text style={[t.caption, s.flex]}>Drafted from your numbers. Nora can draft it from your journal and tasks too.</Text>
@@ -204,7 +283,7 @@ function Flow({ d, onSealed, redraft }: { d: ReviewDraft; onSealed: (s: Sealed) 
             onChange={(x) => setMissed(missed.map((y) => (y.id === m.id ? x : y)))} />
         ))}
         <AddLine placeholder="Something else that slipped" value={draft} onChange={setDraft}
-          onAdd={() => { setMissed([...missed, { id: `u${missed.length + 1}`, text: draft.trim(), aspect: 'growth', source: 'you', keep: true, why: null, why2: null }]); setDraft(''); }} />
+          onAdd={() => { setMissed([...missed, { id: uid('u'), text: draft.trim(), aspect: 'growth', source: 'you', keep: true, why: null, why2: null }]); setDraft(''); }} />
       </>
     );
   } else if (step === 'rules') {
@@ -288,7 +367,7 @@ function Flow({ d, onSealed, redraft }: { d: ReviewDraft; onSealed: (s: Sealed) 
         })}
         <AddLine placeholder="A move of your own" value={draft} onChange={setDraft}
           onAdd={() => {
-            const id = `own${extra.length + 1}`;
+            const id = uid('own');
             setExtra([...extra, { id, text: draft.trim(), aspect: 'mission', serves: null, carry: null, from: null, source: 'you', mine: true }]);
             if (chosen.length < MAX_MOVES) setPicks([...picks, id]);
             setDraft('');

@@ -11,7 +11,10 @@
 # Repo secrets: APPLE_TEAM_ID, ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8. They reach scripts through env only:
 # this repo is public, so its logs are public.
 name: iOS release
+# Run it: push the commit to build to the release branch (git push ios-build expo-v3:release).
 on:
+  push:
+    branches: [release]
   workflow_dispatch:
 concurrency:
   group: ios-release

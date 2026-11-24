@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { Text, View } from 'react-native';
 import { fileSource } from '@/lib/mod';
-import { Button, Card, Failed, Icon, IconButton, Loading, Row, Screen, Section, shortDay, Skeleton, Spark, t, timer, useAspect } from '@/aspects/kit';
+import { Block, Button, Card, Failed, Icon, IconButton, Loading, Row, Screen, shortDay, Skeleton, Spark, t, timer, useAspect } from '@/aspects/kit';
 import { agoDays, filePath, measureSample, tick, usePoll, useVoice, type DimId, type Drill, type Voice } from '../api';
 import { useNav } from '../nav';
 import { Delta, List, Score, ScoreRow, Tag, s as u, useInnerWidth, useSeen } from '../ui';
 import { usePlayer } from './recorder';
 
-export function VoiceScreen({ open, onClose, title }: { open: boolean; onClose: () => void; title: string }) {
+export function VoiceTab({ active }: { active: boolean }) {
+  const open = active;
   const read = useVoice(useSeen(open));
   const { data, error, refresh } = read;
   const [dim, setDim] = useState<DimId | null>(null);
@@ -16,7 +17,7 @@ export function VoiceScreen({ open, onClose, title }: { open: boolean; onClose: 
   usePoll(refresh, open && measuring, 3000);
   return (
     <>
-      <Screen open={open} onClose={onClose} title={title}>
+      <>
         {!data && error ? <Failed message={error} onRetry={() => { void refresh(); }} /> : null}
         {!data && !error ? <View style={u.gap16}><Skeleton height={180} radius={24} /><Skeleton height={200} radius={24} /><Skeleton height={280} radius={24} /></View> : null}
         {data ? (
@@ -26,12 +27,12 @@ export function VoiceScreen({ open, onClose, title }: { open: boolean; onClose: 
             <Today v={data} />
             {data.latest ? <Dims v={data} onOpen={setDim} /> : null}
             {data.latest ? <Trend v={data} /> : null}
-            <Section title="How it is measured">
+            <Block title="How it is measured">
               <Text style={t.small}>{`Your PC measures each recording with ffmpeg and its own code: pace, pitch spread, loudness drift and pauses come from the sound itself. Clarity and fillers need a transcript, which Nora writes on your PC. A change smaller than ${data.realChange} points is not counted.`}</Text>
-            </Section>
+            </Block>
           </>
         ) : null}
-      </Screen>
+      </>
       <DimDetail id={dim} v={data} onClose={() => setDim(null)} onDrill={setDrill} />
       <DrillSheet drill={drill} onClose={() => setDrill(null)} />
     </>
@@ -142,7 +143,7 @@ function Today({ v }: { v: Voice }) {
     try { await tick(`voice-${id}`, on); } catch (e) { setLocal((l) => { const n = { ...l }; delete n[id]; return n; }); a.notice((e as Error).message); }
   };
   return (
-    <Section title="Today's drills">
+    <Block title="Today's drills">
       <Card style={u.gap4}>
         <View style={u.between}>
           <View style={u.flex}>
@@ -157,7 +158,7 @@ function Today({ v }: { v: Voice }) {
         ))}
         {!v.latest ? <Text style={t.small}>Your first sample aims these at your weakest measure.</Text> : null}
       </Card>
-    </Section>
+    </Block>
   );
 }
 
@@ -165,14 +166,14 @@ function Today({ v }: { v: Voice }) {
 function Dims({ v, onOpen }: { v: Voice; onOpen: (id: DimId) => void }) {
   const dims = [...v.latest!.dims].sort((a, b) => (a.v ?? 101) - (b.v ?? 101));
   return (
-    <Section title="By measure">
+    <Block title="By measure">
       <List>
         {dims.map((d) => (
           <ScoreRow key={d.id} name={d.name} v={d.v} note={d.v == null ? d.why : d.value ? `${d.value}. Target ${d.target.charAt(0).toLowerCase()}${d.target.slice(1)}` : d.target}
             right={d.id === v.today.focus ? <Tag>Today&apos;s focus</Tag> : d.delta ? <Delta d={d.delta} /> : undefined} onPress={() => onOpen(d.id)} />
         ))}
       </List>
-    </Section>
+    </Block>
   );
 }
 
@@ -193,9 +194,9 @@ function DimDetail({ id, v, onClose, onDrill }: { id: DimId | null; v: Voice | n
             {trend.filter((p) => p.v != null).length > 1 ? <Spark values={trend.map((p) => p.v)} width={w} height={56} /> : null}
           </Card>
           {drills.length ? (
-            <Section title="Drills that train it">
+            <Block title="Drills that train it">
               <List>{drills.map((x) => <Row key={x.id} title={x.name} sub={`${x.minutes} min${x.measure ? ', recorded and scored' : ''}`} chevron onPress={() => onDrill(x)} />)}</List>
-            </Section>
+            </Block>
           ) : null}
         </>
       ) : null}
@@ -210,7 +211,7 @@ function DrillSheet({ drill, onClose }: { drill: Drill | null; onClose: () => vo
         <>
           <Text style={t.body}>{drill.does}</Text>
           {drill.text ? <Card><Text style={t.lead}>{drill.text}</Text></Card> : null}
-          <Section title="Steps">
+          <Block title="Steps">
             {drill.steps.map((s, i) => (
               <View key={i} style={[u.row, { alignItems: 'flex-start' }]}>
                 <Text style={[t.label, t.num, { width: 20 }]}>{i + 1}</Text>
@@ -218,7 +219,7 @@ function DrillSheet({ drill, onClose }: { drill: Drill | null; onClose: () => vo
                 {s.sec ? <Text style={[t.caption, t.num]}>{s.sec >= 60 ? `${Math.round(s.sec / 60)} min` : `${s.sec} s`}</Text> : null}
               </View>
             ))}
-          </Section>
+          </Block>
           <Text style={t.small}>{drill.measure ? 'Recorded in the drills player, and scored on your PC.' : 'Guided with a timer in the drills player.'}</Text>
         </>
       ) : null}
@@ -232,18 +233,18 @@ function Trend({ v }: { v: Voice }) {
   const overall = v.trend.find((x) => x.id === 'overall')?.points ?? [];
   if (v.samples.length < 2) {
     return (
-      <Section title="Trend">
+      <Block title="Trend">
         <Text style={t.small}>Your first sample. Next week&apos;s shows here as a line, with each measure&apos;s change.</Text>
-      </Section>
+      </Block>
     );
   }
   return (
-    <Section title="Trend">
+    <Block title="Trend">
       <Card style={u.gap12}>
         <Spark values={overall.map((p) => p.v)} width={w} height={64} />
         <Text style={t.small}>{`${v.samples.length} samples since ${shortDay(v.samples.at(-1)!.date)}.`}</Text>
       </Card>
       <List>{v.samples.map((s) => <Row key={s.id} title={shortDay(s.date)} right={s.overall != null ? String(s.overall) : ''} />)}</List>
-    </Section>
+    </Block>
   );
 }

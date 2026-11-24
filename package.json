@@ -1,6 +1,6 @@
 {
   "name": "agentic-os-mobile",
-  "version": "5.0.2",
+  "version": "5.0.3",
   "main": "expo-router/entry",
   "dependencies": {
     "@bacons/apple-targets": "^5.0.0",

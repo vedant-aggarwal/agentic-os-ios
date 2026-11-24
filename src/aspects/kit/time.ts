@@ -9,6 +9,29 @@ export function dayOf(at: Date | string | number = Date.now()) {
 }
 export const today = () => dayOf();
 
+/**
+ * His day ends at 4 AM IST, not at midnight: a tick, a meal or a journal line at 01:30 belongs to the day he
+ * hasn't slept on yet. Use `lifeDayOf` / `lifeToday` for anything he does or logs (routines, ticks, entries,
+ * "done today"). Keep `dayOf` / `today` for calendar dates. The server has the same rule in
+ * `server/modules/life-day.ts`; a page that switches must switch its server module too, or the two disagree
+ * between midnight and 4 AM.
+ */
+export const DAY_ENDS_AT = 4;
+export function lifeDayOf(at: Date | string | number = Date.now()) {
+  return new Date(new Date(at).getTime() + IST - DAY_ENDS_AT * 3600_000).toISOString().slice(0, 10);
+}
+export const lifeToday = () => lifeDayOf();
+
+/** His day ends at 4 AM, not midnight: he is often up late, and what he does at 1 AM belongs to the evening before. */
+export const DAY_ROLLS_AT = 4;
+/**
+ * The day a tick, log, entry or routine belongs to: the IST day, but before 04:00 it is still yesterday. Use it for
+ * "which day does this count for" (routines, logs, journal, streaks). Use `dayOf` to say when something happened.
+ */
+export function myDay(at: Date | string | number = Date.now()) {
+  return dayOf(new Date(at).getTime() - DAY_ROLLS_AT * 3600_000);
+}
+
 /** A day `n` days after `day` (negative for before). */
 export function addDays(day: string, n: number) {
   const [y, m, d] = day.split('-').map(Number);
@@ -36,15 +59,18 @@ export function lastDays(n: number, end: string = today()) {
   return Array.from({ length: n }, (_, i) => addDays(end, i - n + 1));
 }
 
-/** "Today", "Yesterday", "Tomorrow", else "Mon 17 Nov" (with the year when it isn't this one). */
-export function dayLabel(day: string) {
-  const diff = daysBetween(today(), day);
+/**
+ * "Today", "Yesterday", "Tomorrow", else "Mon 17 Nov" (with the year when it isn't this one). Pages on his day
+ * pass `lifeToday()` as `from`, so a 01:00 entry still reads "Today".
+ */
+export function dayLabel(day: string, from: string = today()) {
+  const diff = daysBetween(from, day);
   if (diff === 0) return 'Today';
   if (diff === -1) return 'Yesterday';
   if (diff === 1) return 'Tomorrow';
   const [y, m, d] = day.split('-').map(Number);
   const base = `${WD[weekday(day)]} ${d} ${MO[m - 1]}`;
-  return y === Number(today().slice(0, 4)) ? base : `${base} ${y}`;
+  return y === Number(from.slice(0, 4)) ? base : `${base} ${y}`;
 }
 
 /** "17 Nov". */

@@ -9,6 +9,7 @@ import { useReveal } from '@/components/Reveal';
 import { ASPECT_COLOR, C, F, type AspectKey } from '@/theme';
 import { ASPECT_NAME, AspectContext, type AspectCtx, type AspectEntry } from './context';
 import { PAGES } from './registry';
+import { UndoToast } from './kit/undo';
 
 /** Space an aspect page keeps clear at the bottom while the dock shows: the bar, the raised orb and its ring. */
 export const dockClearance = (bottom: number) => Math.max(bottom, 12) + 12 + 64 + 40;
@@ -38,7 +39,7 @@ export function AspectHost({ aspect, origin, dock, entry, onEntryDone, onClose, 
   aspect: AspectKey | null; origin: { x: number; y: number }; dock: number;
   /** The link to hand the page once it shows; `onEntryDone` clears it when the page has opened what it names. */
   entry: HostEntry | null; onEntryDone: (stamp: number) => void;
-  onClose: () => void; onOpen: (key: AspectKey) => void; onNotice: (text: string) => void; onImmersive: (on: boolean) => void;
+  onClose: () => void; onOpen: (key: AspectKey) => void; onNotice: (text: string, undo?: () => void) => void; onImmersive: (on: boolean) => void;
 }) {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
@@ -87,6 +88,7 @@ export function AspectHost({ aspect, origin, dock, entry, onEntryDone, onClose, 
             </Boundary>
           </AspectContext>
           <GestureDetector gesture={back}><View style={s.edge} /></GestureDetector>
+          <UndoToast bottom={dock + 12} />
         </Animated.View>
       </Animated.View>
     </Animated.View>

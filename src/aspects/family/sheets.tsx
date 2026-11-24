@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { Button, Chip, Field, Icon, Press, R, Row, Sheet, shortDay, Stepper, SURF, t, today, useAspect } from '@/aspects/kit';
+import { Button, Chip, DayPicker, Field, Icon, MonthDayPicker, myDay, Press, R, Row, Sheet, shortDay, SURF, t, today, useAspect } from '@/aspects/kit';
 import { newId, useCollection } from '@/lib/mod';
 import { C } from '@/theme';
 import { amendMoment, errText, momentDraft, moments, names, pickPhoto, refresh, sendPhoto, whenDay, yesterday, type LocalPhoto } from './data';
@@ -159,19 +159,18 @@ export function DateSheet({ open, onClose, people, preset, notice }: {
   const now = today();
   const [month, setMonth] = useState(Number(now.slice(5, 7)));
   const [day, setDay] = useState(Number(now.slice(8, 10)));
+  const [on, setOn] = useState(myDay()); // a one-off day: the exact day, picked from the next two weeks or a month grid
+  const passed = !(kind === 'birthday' || kind === 'anniversary') && on < myDay();
   const [year, setYear] = useState('');
   const yearly = kind === 'birthday' || kind === 'anniversary';
   const y = Number(year);
   const yearOk = !year.trim() || (/^\d{4}$/.test(year.trim()) && y > 1900 && y <= Number(now.slice(0, 4)));
-  const ready = who.length > 0 && (yearly || !!title.trim()) && yearOk && (kind !== 'birthday' || who.length === 1);
+  const ready = who.length > 0 && (yearly || !!title.trim()) && yearOk && !passed && (kind !== 'birthday' || who.length === 1);
   const max = DAYS_IN[month - 1];
   const d = Math.min(day, max);
   const save = () => {
     if (!ready) return;
-    const md = `${pad(month)}-${pad(d)}`;
-    // a one-off day is this year's, or next year's once this year's has passed
-    const thisYear = `${now.slice(0, 4)}-${md}`;
-    const on = thisYear >= now ? thisYear : `${Number(now.slice(0, 4)) + 1}-${md}`;
+    const md = yearly ? `${pad(month)}-${pad(d)}` : on.slice(5);
     const nameOf = (id: string) => people.find((p) => p.id === id)?.name ?? '';
     const same = kind === 'birthday' ? (dates.items ?? []).find((x) => x.kind === 'birthday' && x.people?.length === 1 && x.people[0] === who[0]) : null;
     const doc: Omit<DateDoc, 'id'> & { id?: string } = {
@@ -186,22 +185,37 @@ export function DateSheet({ open, onClose, people, preset, notice }: {
   };
   return (
     <Sheet open={open} onClose={onClose} title="A date">
-      <View style={s.chips}>{KINDS.map((k) => <Chip key={k.key} label={k.label} selected={kind === k.key} onPress={() => { setKind(k.key); if (k.key === 'birthday' && who.length > 1) setWho(who.slice(0, 1)); }} />)}</View>
+      <View style={s.chips}>{KINDS.map((k) => <Chip key={k.key} label={k.label} selected={kind === k.key} onPress={() => {
+        setKind(k.key);
+        if (k.key === 'birthday' && who.length > 1) setWho(who.slice(0, 1));
+        // an anniversary is a couple's: fill in the first two when fewer are chosen
+        if (k.key === 'anniversary' && who.length < 2 && people.length >= 2) setWho([...new Set([...who, ...people.map((p) => p.id)])].slice(0, 2));
+      }} />)}</View>
       <View style={s.group}><Text style={t.label}>{kind === 'birthday' ? 'Whose' : 'For'}</Text><PeopleChips people={people} value={who} onChange={setWho} single={kind === 'birthday'} /></View>
       {kind === 'festival' || kind === 'other' || kind === 'anniversary' ? (
         <Field label={kind === 'anniversary' ? 'Name, if you like' : 'What is it?'} value={title} onChangeText={setTitle}
           placeholder={kind === 'festival' ? 'Diwali, Raksha Bandhan' : kind === 'anniversary' ? 'Their anniversary' : 'A day that matters'} maxLength={60} />
       ) : null}
-      <View style={s.group}>
-        <Text style={t.label}>Month</Text>
-        <View style={s.months}>
-          {MONTHS.map((m, i) => <Chip key={m} label={m} selected={month === i + 1} onPress={() => setMonth(i + 1)} wrap={s.month} />)}
-        </View>
-      </View>
-      <Stepper label="Day" value={d} onChange={setDay} min={1} max={max} format={(v) => `${v} ${MONTHS[month - 1]}`} />
+      {yearly ? (
+        <>
+          <View style={s.group}>
+            <Text style={t.label}>Month</Text>
+            <View style={s.months}>
+              {MONTHS.map((m, i) => <Chip key={m} label={m} selected={month === i + 1} onPress={() => setMonth(i + 1)} wrap={s.month} />)}
+            </View>
+          </View>
+          <View style={s.group}>
+            <Text style={t.label}>{`Day: ${d} ${MONTHS[month - 1]}`}</Text>
+            <MonthDayPicker value={d} onChange={(v) => setDay(Math.min(v, max))} />
+          </View>
+        </>
+      ) : (
+        <View style={s.group}><Text style={t.label}>Day</Text><DayPicker value={on} onChange={setOn} /></View>
+      )}
       {yearly ? <Field label="Year, if you know it" value={year} onChangeText={setYear} keyboardType="number-pad" maxLength={4} placeholder={kind === 'anniversary' ? 'The year they married' : 'The year of birth'} /> : null}
       {!yearOk ? <Problem text="That year doesn't look right." /> : null}
-      {!yearly ? <Text style={t.small}>{`Saved for ${shortDay(`${now.slice(0, 4)}-${pad(month)}-${pad(d)}`)}. Festivals move each year, so add next year's when it is known.`}</Text> : null}
+      {passed ? <Problem text="That day has passed. Pick one coming up." /> : null}
+      {!yearly ? <Text style={t.small}>{`Saved for ${shortDay(on)}${on.slice(0, 4) !== now.slice(0, 4) ? ` ${on.slice(0, 4)}` : ''}. Festivals move each year, so add next year's when it is known.`}</Text> : null}
       <Button label="Save" onPress={save} disabled={!ready} />
     </Sheet>
   );
@@ -269,16 +283,21 @@ export function MemoryView({ open, onClose, m, nameOf, onAttach, notice }: {
   open: boolean; onClose: () => void; m: MomentBrief | null; nameOf: (id: string) => string; onAttach: (m: MomentBrief) => void; notice: (t: string) => void;
 }) {
   const { width } = useAspect();
-  const [sure, setSure] = useState(false);
+  // armed for one memory only, and only while it is open: the next memory always starts unarmed
+  const [armed, setArmed] = useState<string | null>(null);
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) { setWasOpen(open); if (!open) setArmed(null); }
   if (!m) return null;
+  const sure = open && armed === m.id;
+  const close = () => { setArmed(null); onClose(); };
   const remove = () => {
-    if (!sure) { setSure(true); return; }
+    if (!sure) { setArmed(m.id); return; }
     void moments.remove(m.id).then(() => refresh()).catch((e) => notice(`Couldn't remove it: ${errText(e)}`));
     notice('Removed');
-    onClose();
+    close();
   };
   return (
-    <Sheet open={open} onClose={onClose}>
+    <Sheet open={open} onClose={close}>
       {m.photo ? <Photo id={m.photo} thumb={false} style={{ width: width - 32, height: Math.round((width - 32) * 0.8), borderRadius: R.row }} label={m.note ?? m.title ?? 'A memory'} /> : null}
       <View style={s.group}>
         {m.note ? <Text style={t.lead}>{m.note}</Text> : null}

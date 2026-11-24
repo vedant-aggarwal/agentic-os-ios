@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Empty, Failed, Icon, IconButton, Page, today, useAspect, useEntry } from '@/aspects/kit';
+import { Empty, Failed, Icon, IconButton, Page, today, undoable, useAspect, useEntry } from '@/aspects/kit';
+import { api } from '@/lib/api';
 import { openLink } from '@/lib/links';
 import { newId, useCollection, useGet } from '@/lib/mod';
 import { errText, HOME, momentDraft, moments, readTime, refresh, weeks } from './data';
@@ -8,7 +9,7 @@ import { ComingUp, ForThem, HomeSkeleton, MemoryStrip, PersonCard, Together } fr
 import { MemoriesScreen } from './Memories';
 import { PersonScreen } from './Person';
 import { AddSheet, DateSheet, MemorySheet, MemoryView, MentionSheet, OwnSheet, PersonSheet, type MemoryPreset } from './sheets';
-import type { CalItem, Cand, Card, Chip, DateDoc, Goal, Home, IdeaDoc, Jar, MomentBrief, PersonDoc, Week, WeekDoc } from './types';
+import type { CalItem, Cand, Card, Chip, DateDoc, Goal, Home, IdeaDoc, Jar, MomentBrief, MomentDoc, PersonDoc, Week, WeekDoc } from './types';
 import { Linked } from '@/aspects/_linked/Linked';
 
 // The Family page: am I showing up for them? People first: each with the last thing done together and this week's
@@ -75,37 +76,68 @@ export default function Family() {
     const i = id ? ideas.items?.find((x) => x.id === id) : null;
     if (i && i.done !== done) void ideas.patch(i.id, { done, done_on: done ? today() : null });
   };
-  const toggleThing = async (c: Card) => {
-    if (!data) return;
-    if (c.week.done) {
-      const was = c.week.done;
-      patch((x) => ({ ...x, done: { ...x.done, [c.id]: null } }));
-      try {
-        await moments.remove(was.moment);
-        await weeks.put(weekDoc(c, { done: null }));
-        markIdea(c.week.pick?.idea, false);
-        refresh();
-      } catch (e) {
-        patch((x) => ({ ...x, done: { ...x.done, [c.id]: was } }));
-        a.notice(`Couldn't undo that: ${errText(e)}`);
-      }
-      return;
-    }
+  // the chip for the same routine as this week's thing: ticking either files one moment and lights both
+  const chipFor = (c: Card) => chips.find((x) => x.thing === c.id) ?? null;
+  const markDone = async (c: Card) => {
     const pick = c.week.pick;
-    if (!pick) return;
-    const mid = newId('mo');
+    if (!pick || !data) return;
+    const chip = chipFor(c);
+    // the chip already logged today's visit: that moment is this week's thing too
+    const have = chip?.moment ?? null;
+    const mid = have ?? newId('mo');
     const done = { moment: mid, at: new Date().toISOString(), title: pick.done_title };
-    patch((x) => ({ ...x, done: { ...x.done, [c.id]: done } }));
+    patch((x) => ({ ...x, done: { ...x.done, [c.id]: done }, chips: chip ? { ...x.chips, [chip.key]: mid } : x.chips }));
     try {
-      await moments.put(momentDraft({ id: mid, people: [c.id], title: pick.done_title, showup: true, week: data.week, from: pick.from }));
+      if (!have) await moments.put(momentDraft({
+        id: mid, people: [c.id], title: pick.done_title, showup: true, week: data.week, from: pick.from,
+        ...(chip ? { chip: chip.key, act: chip.act } : {}),
+      }));
       await weeks.put(weekDoc(c, { chosen: pick, done }));
       markIdea(pick.idea, true);
       refresh();
     } catch (e) {
-      patch((x) => { const d = { ...x.done }; delete d[c.id]; return { ...x, done: d }; });
+      patch((x) => {
+        const d = { ...x.done }; delete d[c.id];
+        const ch = { ...x.chips }; if (chip && !have) delete ch[chip.key];
+        return { ...x, done: d, chips: ch };
+      });
       a.notice(`Couldn't save that: ${errText(e)}`);
     }
   };
+  // untick: a moment he added a photo or a line to stays (only the week's tick goes); a bare one goes, with Undo
+  const unmark = async (c: Card) => {
+    const was = c.week.done;
+    if (!was || !data) return;
+    const chip = chipFor(c);
+    patch((x) => ({ ...x, done: { ...x.done, [c.id]: null } }));
+    try {
+      const doc = await api<{ item: MomentDoc }>(`/mod/people/moments/${encodeURIComponent(was.moment)}`).then((r) => r.item).catch(() => null);
+      const keep = !!(doc?.photo || doc?.note?.trim());
+      if (!keep) {
+        if (chip?.moment === was.moment) patch((x) => ({ ...x, chips: { ...x.chips, [chip.key]: null } }));
+        await moments.remove(was.moment);
+      }
+      await weeks.put(weekDoc(c, { done: null }));
+      markIdea(c.week.pick?.idea, false);
+      refresh();
+      undoable(keep ? 'Unticked. The memory stays' : 'Unticked', async () => {
+        patch((x) => ({ ...x, done: { ...x.done, [c.id]: was } }));
+        try {
+          if (!keep) {
+            const { created_at: _c, updated_at: _u, deleted_at: _d, ...cur } = doc ?? momentDraft({ people: [c.id], title: was.title, showup: true, week: data.week });
+            await moments.put({ ...cur, id: was.moment });
+          }
+          await weeks.put(weekDoc(c, { done: was }));
+          markIdea(c.week.pick?.idea, true);
+        } catch (e) { a.notice(`Couldn't put it back: ${errText(e)}`); }
+        refresh();
+      });
+    } catch (e) {
+      patch((x) => ({ ...x, done: { ...x.done, [c.id]: was }, chips: chip?.moment === was.moment ? { ...x.chips, [chip.key]: was.moment } : x.chips }));
+      a.notice(`Couldn't undo that: ${errText(e)}`);
+    }
+  };
+  const toggleThing = (c: Card) => (c.week.done ? unmark(c) : markDone(c));
   const choose = (c: Card, next: Cand, skip: boolean) => {
     if (!data) return;
     patch((x) => ({ ...x, pick: { ...x.pick, [c.id]: next } }));
@@ -124,6 +156,12 @@ export default function Family() {
 
   // ── time together ──
   const toggleChip = (chip: Chip) => {
+    // a routine chip that is someone's thing this week: tapping it ticks (or unticks) that thing, one moment for both
+    const linked = chip.thing ? cards.find((c) => c.id === chip.thing) : null;
+    if (linked && (chip.moment ? linked.week.done?.moment === chip.moment : !linked.week.done && linked.week.pick)) {
+      void toggleThing(linked);
+      return;
+    }
     if (chip.moment) {
       const mid = chip.moment;
       patch((x) => ({ ...x, chips: { ...x.chips, [chip.key]: null } }));
@@ -139,8 +177,14 @@ export default function Family() {
   };
 
   const move = (c: Card, aspect: 'friends' | 'romance') => {
+    const prev = persons.items?.find((p) => p.id === c.id);
+    const back = { aspect: prev?.aspect ?? 'family', rel: prev?.rel ?? 'family' };
     persons.patch(c.id, { aspect, rel: aspect === 'friends' ? 'friend' : 'partner' })
-      .then(() => { refresh(); a.notice(`${c.name} is in ${aspect === 'friends' ? 'Friends' : 'Romance'} now`); })
+      .then(() => {
+        refresh();
+        undoable(`${c.name} is in ${aspect === 'friends' ? 'Friends' : 'Romance'} now`, () =>
+          persons.patch(c.id, back).then(() => refresh()).catch((e) => a.notice(`Couldn't move ${c.name} back: ${errText(e)}`)), 8000);
+      })
       .catch((e) => a.notice(`Couldn't move ${c.name}: ${errText(e)}`));
     setPersonOpen(false);
   };

@@ -17,7 +17,8 @@ export type Card = {
   last: MomentBrief | null; photo: { id: string; moment: string; date: string; title: string | null } | null;
   quiet: boolean; week: Week; mentioned: number; birthday: 'known' | 'not known yet';
 };
-export type Chip = { key: string; label: string; people: string[]; act: string | null; dinner: boolean; moment: string | null };
+/** `thing`: the person whose small thing this week is the same routine (one tap on either files one moment). */
+export type Chip = { key: string; label: string; people: string[]; act: string | null; dinner: boolean; moment: string | null; thing?: string | null };
 export type DateItem = {
   id: string; title: string; kind: string; on: string; days: number; people: string[]; annual: boolean;
   years: number | null; turning: string | null; plan: { id: string; idea: string | null; total: number; done: number } | null;

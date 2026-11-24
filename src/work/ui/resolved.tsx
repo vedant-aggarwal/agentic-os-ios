@@ -54,13 +54,14 @@ export function ResolvedRow({ item, where, onPress, onLongPress }: {
 }
 
 export type ResolvedMenuAt = { item: ResolvedItem; y: number };
-const W = 300, ITEM = 52;
+const ITEM = 52;
 
 /** What a held resolved row offers: carry it on (first, so the finger finds it), read it, copy its session id. */
 export function ResolvedMenu({ at, top, bottom, onContinue, onOpen, onCopy, onClose }: {
   at: ResolvedMenuAt; top: number; bottom: number; onContinue: () => void; onOpen: () => void; onCopy: (() => void) | null; onClose: () => void;
 }) {
-  const { height } = useWindowDimensions();
+  const { height, width } = useWindowDimensions();
+  const w = Math.min(320, width - GUTTER * 2);
   const reduce = useReducedMotion();
   const H = ITEM * (onCopy ? 3 : 2) + 44;
   const below = at.y + 16 + H <= height - bottom;
@@ -71,7 +72,7 @@ export function ResolvedMenu({ at, top, bottom, onContinue, onOpen, onCopy, onCl
   return (
     <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(120)} style={StyleSheet.absoluteFill}>
       <Pressable accessibilityRole="button" accessibilityLabel="Close menu" onPress={onClose} style={[StyleSheet.absoluteFill, s.dim]} />
-      <Animated.View accessibilityViewIsModal style={[s.menu, { top: y, transformOrigin: below ? 'top left' : 'bottom left' }, grow]}>
+      <Animated.View accessibilityViewIsModal style={[s.menu, { top: y, width: w, transformOrigin: below ? 'top left' : 'bottom left' }, grow]}>
         <Glass radius={20} />
         <Text numberOfLines={1} style={[T.meta, s.name]}>{at.item.title}</Text>
         <Item label="Continue working on this" sub="New job with this chat handed over" icon={<JobIcon size={16} />} onPress={onContinue} strong />
@@ -113,7 +114,7 @@ const s = StyleSheet.create({
   rightText: { textAlign: 'right' },
   flex: { flex: 1, minWidth: 0 },
   dim: { backgroundColor: 'rgba(0,0,0,0.4)' },
-  menu: { position: 'absolute', left: GUTTER, width: W, padding: 8, borderRadius: 20, boxShadow: '0 16px 40px rgba(0,0,0,0.5)' },
+  menu: { position: 'absolute', left: GUTTER, padding: 8, borderRadius: 20, boxShadow: '0 16px 40px rgba(0,0,0,0.5)' },
   name: { paddingHorizontal: 12, paddingTop: 4, paddingBottom: 4 },
   item: { height: ITEM, borderRadius: 12, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
   itemStrong: { backgroundColor: 'rgba(255,255,255,0.08)' },

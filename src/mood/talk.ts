@@ -1,6 +1,7 @@
 import { call, collection, invalidate, newId } from '@/lib/mod';
 import { ApiError } from '@/lib/api';
 import { DEMO } from '@/lib/demo';
+import { myDay } from '@/aspects/kit/time';
 import type { PetFace } from '@/lib/pet';
 
 // The mood logger's server half: the AI's next round (POST /mod/soul/mood/ask) and saving the mood in Soul's moods,
@@ -57,7 +58,7 @@ export const moodV = (pleasant: number) => Math.max(1, Math.min(5, Math.round(3 
 export async function saveMood(id: string, d: MoodDraft, rounds: Round[], line: string) {
   const now = new Date();
   const doc = {
-    id, date: new Date(now.getTime() + 5.5 * 3600_000).toISOString().slice(0, 10), at: now.toISOString(),
+    id, date: myDay(now), at: now.toISOString(), // his day: a mood at 01:30 is the evening's
     v: moodV(d.pleasant), energy: Math.round(d.energy * 100) / 100, pleasant: Math.round(d.pleasant * 100) / 100,
     word: d.word, tags: d.tags, note: d.note.trim(), rounds: rounds.filter((r) => r.picked.length || r.text).map(({ q, picked, text }) => ({ q, picked, text })),
     line, source: 'logger',

@@ -6,6 +6,7 @@ import { useCollection, type Doc } from '@/lib/mod';
 import type { BodyToday } from '@/lib/body';
 import type { Area, AspectProgress, LifePayload, Task, TodayPayload } from '@/lib/today';
 import { ASPECT_COLOR, type AspectKey } from '@/theme';
+import { today as calendarDay } from '@/aspects/kit/time';
 
 // Today's routine as data: what each section holds, what is done, and the writes. The quick capture panel's items
 // read and write through capture/data.ts, so a tick in one place shows in the other. Routine rows the panel doesn't
@@ -138,7 +139,8 @@ export function useDay(o: { today: TodayPayload | null; life: LifePayload | null
   const gymDone = !!o.body && o.body.trained.length > 0;
 
   return {
-    cap, day, on, mode, toggle, setShower, routines, saveRoutines, practice, togglePractice, tasks, areaName, mealDone, gymDone,
+    // `day`: his day (rolls at 04:00) for routine ticks; `taskDay`: the calendar day Today's tasks are due by (GET /today)
+    cap, day, taskDay: o.today?.date ?? calendarDay(), on, mode, toggle, setShower, routines, saveRoutines, practice, togglePractice, tasks, areaName, mealDone, gymDone,
     skipped: isSkipped, skip, skipPractice,
     color: ASPECT_COLOR,
   };

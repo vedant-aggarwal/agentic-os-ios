@@ -8,7 +8,7 @@ import type { LifePayload } from '@/lib/today';
 import { tasksChanged } from '@/lib/useToday';
 import { homeTasksChanged } from '@/home/data';
 import { kv } from '@/work/kv';
-import { dayOf, today } from '@/aspects/kit/time';
+import { myDay, today } from '@/aspects/kit/time';
 import type { Diet } from '@/aspects/body/api';
 import type { Picked } from '@/aspects/body/pick';
 import type { ReadView } from '@/aspects/mind/types';
@@ -38,6 +38,8 @@ import { FRAMES, MEAL_SLOT, type Frame, type FrameId, type TickId } from './mome
 //   meal by text   POST /mod/body/meals { name, slot }: the meal record a filed smart photo makes, numbers estimated on the PC
 //   cancelled      the item's body check, not done and `skipped` (Today's "Cancel for today"): out of the day's count
 // A Soul habit whose title matches (journal, meditat, clean, sugar) is ticked as well, so the core habits stay in step.
+// Every log here is for his day, which rolls at 04:00 (`myDay`, as Body and Soul count it): a tick, a glass or a
+// journal line at 01:30 counts for the evening before. Only a task's "today" is the calendar's, as on Today.
 
 export type BodyCheck = Doc & { date: string; item: string; done: boolean; at: string; time?: string; photo?: string; by?: string; source?: string;
   /** cancelled for the day: not done, and not counted as left to do either */ skipped?: boolean };
@@ -83,7 +85,7 @@ function demoDescribe(id: string, text: string, as?: DescribeKind): Described {
 
 type Roll = { day: string; shots: Partial<Record<FrameId, Shot>> };
 const KEY = 'capture:v1:roll';
-let roll: Roll = { day: today(), shots: {} };
+let roll: Roll = { day: myDay(), shots: {} };
 const subs = new Set<() => void>();
 let loaded = false;
 function setRoll(next: Roll) {
@@ -95,13 +97,13 @@ function setRoll(next: Roll) {
   if (!DEMO) void kv.set(KEY, JSON.stringify(keep)).catch(() => {});
 }
 function shotsToday() {
-  if (roll.day !== today()) roll = { day: today(), shots: {} };
+  if (roll.day !== myDay()) roll = { day: myDay(), shots: {} };
   return roll.shots;
 }
 function putShot(id: FrameId, s: Shot | null) {
   const shots = { ...shotsToday() };
   if (s) shots[id] = s; else delete shots[id];
-  setRoll({ day: today(), shots });
+  setRoll({ day: myDay(), shots });
 }
 function useRoll() {
   useEffect(() => {
@@ -111,7 +113,7 @@ function useRoll() {
       if (!raw) return;
       try {
         const r = JSON.parse(raw) as Roll;
-        if (r.day === today() && !Object.keys(roll.shots).length) { roll = r; for (const f of subs) f(); }
+        if (r.day === myDay() && !Object.keys(roll.shots).length) { roll = r; for (const f of subs) f(); }
       } catch {}
     });
   }, []);
@@ -128,7 +130,7 @@ export type FrameState = {
 
 // ── demo: sample data for the web preview (?demo), nobody's real numbers ───────────────────────────────────────────
 function demoDiet(): Diet {
-  const d = today();
+  const d = myDay();
   return {
     day: d, today: d, totals: { kcal: 640, protein: 42, carbs: 70, fat: 18, n: 1 }, water: 5,
     targets: { protein: { v: 140, set: true, from: 'you' }, kcal: { v: 2400, set: true, from: 'you' }, water: { v: 20, set: true, from: 'you' } },
@@ -144,7 +146,7 @@ const fakeWait = (ms = 700) => new Promise((r) => setTimeout(r, ms));
 
 /** Everything the capture surface reads, and every write it makes. */
 export function useCapture() {
-  const day = today();
+  const day = myDay();
   const diet = useGet<Diet>(DEMO ? null : '/mod/body/diet');
   const clean = useGet<CleanNow>(DEMO ? null : '/mod/soul/clean/now');
   const read = useGet<ReadView>(DEMO ? null : '/mod/mind/read');
@@ -360,7 +362,7 @@ export function useCapture() {
   async function journalLine(text: string) {
     const at = stamp();
     const id = newId('jr');
-    const date = dayOf(at);
+    const date = myDay(at);
     await journal.put({ id, date, at, text: text.trim(), kind: 'typed', by: 'me', source: 'capture' } as never);
     tickHabit(/journal/i, true);
     invalidate('/mod/soul/journal');
@@ -378,7 +380,7 @@ export function useCapture() {
     if (!book) throw new Error('No book open. Pick one in Mind > Read.');
     const said = `${book.title}, page ${n}`;
     if (DEMO) { await fakeWait(400); return { said, undo: () => fakeWait(200) }; }
-    const r = await api<{ session: { id: string; from_page?: number | null } }>('/mod/mind/read/sitting', { method: 'POST', body: { book: book.id, to_page: n } });
+    const r = await api<{ session: { id: string; from_page?: number | null } }>('/mod/mind/read/sitting', { method: 'POST', body: { book: book.id, to_page: n, date: day } });
     invalidate('/mod/mind/');
     void sessions.refresh();
     const b = book.id;
@@ -395,7 +397,7 @@ export function useCapture() {
   async function task(o: { title: string; aspect: AspectKey | null; today: boolean; tagNora: boolean }) {
     const body: Record<string, unknown> = { title: o.title.trim() };
     if (o.aspect) Object.assign(body, aspectFields(life, o.aspect));
-    if (o.today) body.due = day;
+    if (o.today) body.due = today();
     if (DEMO) { await fakeWait(400); return o.tagNora ? 'Task added. Nora has it.' : 'Task added'; }
     const t = await api<{ id: string; title: string }>('/tasks', { method: 'POST', body });
     tasksChanged(); homeTasksChanged();

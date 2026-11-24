@@ -126,20 +126,20 @@ export function Plan({ d, body, now, onOpen, onToggleTask, onCancelTask, onResto
     const list = T.get(k) ?? [];
     if (!list.length) return null;
     return (
-      <CardRow tasks={list.slice(0, SHOWN_CARDS)} color={color} today={cap.day} steady={steady}
+      <CardRow tasks={list.slice(0, SHOWN_CARDS)} color={color} today={d.taskDay} steady={steady}
         onTick={(id) => { const x = list.find((y) => y.id === id); hold(id, !!x && shut(x)); onToggleTask(id); }}
         onCancel={cancelTask} onRestore={restoreTask} onOpen={openOf} onHold={holdOf} more={Math.max(0, list.length - SHOWN_CARDS)} onMore={() => onHome(k)} />
     );
   };
-  const dueOf = (k: AspectKey | 'none') => (T.get(k) ?? []).filter((x) => x.due === cap.day);
+  const dueOf = (k: AspectKey | 'none') => (T.get(k) ?? []).filter((x) => x.due === d.taskDay);
 
   // ── due now: late and due-today open tasks, any aspect, plus what Nora waits on him for ──
   const tagsRead = useGet<{ tags: Record<string, Tag> }>(DEMO ? null : '/mod/tasknora/tags');
   const waiting = Object.values(tagsRead.data?.tags ?? {}).filter((g) => g.state === 'ask').length;
   const owed = [...T.entries()].flatMap(([k, l]) => l.map((x) => ({ x, k })))
-    .filter(({ x }) => !!x.due && x.due <= cap.day && (x.status === 'todo' || x.status === 'doing' || (x.id in steady && x.status === 'done')))
+    .filter(({ x }) => !!x.due && x.due <= d.taskDay && (x.status === 'todo' || x.status === 'doing' || (x.id in steady && x.status === 'done')))
     .sort((a, b) => String(a.x.due).localeCompare(String(b.x.due)));
-  const late = owed.filter(({ x }) => x.due! < cap.day).length;
+  const late = owed.filter(({ x }) => x.due! < d.taskDay).length;
   const dueNow = owed.length || waiting ? (
     <View style={st.due}>
       <View style={st.dueHead}>
@@ -151,7 +151,7 @@ export function Plan({ d, body, now, onOpen, onToggleTask, onCancelTask, onResto
       <Group>
         {owed.slice(0, 4).map(({ x, k }, i) => (
           <Row key={x.id} first={i === 0} title={x.title} done={x.status === 'done'} color={k === 'none' ? C.muted : A[k]}
-            sub={`${x.due! < cap.day ? 'Late' : 'Today'}${k === 'none' ? '' : ` · ${ASPECT_NAME[k]}`}`} subColor={x.due! < cap.day ? C.danger : undefined}
+            sub={`${x.due! < d.taskDay ? 'Late' : 'Today'}${k === 'none' ? '' : ` · ${ASPECT_NAME[k]}`}`} subColor={x.due! < d.taskDay ? C.danger : undefined}
             onPress={() => openOf(x)} onHold={() => holdOf(x)} tickLabel={`${x.title}, done`}
             onTick={() => { hold(x.id, x.status === 'done'); onToggleTask(x.id); }} />
         ))}

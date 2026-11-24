@@ -39,7 +39,7 @@ export function AspectHost({ aspect, origin, dock, entry, onEntryDone, onClose, 
   aspect: AspectKey | null; origin: { x: number; y: number }; dock: number;
   /** The link to hand the page once it shows; `onEntryDone` clears it when the page has opened what it names. */
   entry: HostEntry | null; onEntryDone: (stamp: number) => void;
-  onClose: () => void; onOpen: (key: AspectKey) => void; onNotice: (text: string, undo?: () => void) => void; onImmersive: (on: boolean) => void;
+  onClose: () => void; onOpen: (key: AspectKey) => void; onNotice: (text: string) => void; onImmersive: (on: boolean) => void;
 }) {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();

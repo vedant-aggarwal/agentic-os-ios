@@ -1,83 +1,101 @@
 import { use, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { C, F } from '@/theme';
+import { Chip, Press } from './controls';
+import { addDays, daysBetween, myDay, weekday } from './time';
+import { R, SURF, tint } from './tokens';
 import { AspectContext } from '../context';
-import { Icon, IconButton } from './controls';
-import { addDays, today, weekday } from './time';
-import { haptic, R, SURF, t, tint } from './tokens';
 
-const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-const HEAD = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+// One way to pick a day everywhere: a strip of the next two weeks (one tap for almost every case), and "Other" for
+// a month grid. `MonthDayPicker` is the same grid for "which day of the month" (a bill's charge day).
 
-const monthOf = (day: string) => day.slice(0, 7); // "2026-11"
-function shiftMonth(month: string, n: number) {
-  const [y, m] = month.split('-').map(Number);
-  const d = new Date(Date.UTC(y, m - 1 + n, 1));
-  return d.toISOString().slice(0, 7);
-}
+const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MO = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const label = (day: string, from: string) => {
+  const d = daysBetween(from, day);
+  if (d === 0) return 'Today';
+  if (d === 1) return 'Tomorrow';
+  if (d === -1) return 'Yesterday';
+  return `${WD[weekday(day)]} ${Number(day.slice(8, 10))}`;
+};
 
 /**
- * Pick any day in two taps: a month grid (weeks start Monday) with arrows to the months around it. The picked day
- * takes the aspect colour; today has a ring. `min` / `max` (YYYY-MM-DD) grey out days outside them. Put it in a
- * Sheet, or inline under "Another day" after a row of quick chips (Today, Yesterday, ...).
+ * `value` is a YYYY-MM-DD day. The strip starts `past` days before today (default 0) and runs `days` days.
+ * Days outside the strip are one more tap away in the month grid.
  */
-export function DayPicker({ value, onChange, min, max, color }: {
-  value: string; onChange: (day: string) => void; min?: string; max?: string; color?: string;
+export function DayPicker({ value, onChange, days = 14, past = 0, color }: {
+  value: string; onChange: (day: string) => void; days?: number; past?: number; color?: string;
 }) {
-  const tone = color ?? use(AspectContext)?.color ?? C.text;
-  const [month, setMonth] = useState(() => monthOf(value));
-  const now = today();
-  const first = `${month}-01`;
-  const lead = (weekday(first) + 6) % 7; // blanks before the 1st
-  const count = Number(addDays(`${shiftMonth(month, 1)}-01`, -1).slice(8));
-  const cells: (string | null)[] = [
-    ...Array.from({ length: lead }, () => null),
-    ...Array.from({ length: count }, (_, i) => `${month}-${String(i + 1).padStart(2, '0')}`),
-  ];
-  while (cells.length % 7) cells.push(null);
-  const [y, m] = month.split('-').map(Number);
-  const canBack = !min || monthOf(min) < month;
-  const canFwd = !max || monthOf(max) > month;
-
+  const from = myDay();
+  const strip = Array.from({ length: days + past }, (_, i) => addDays(from, i - past));
+  const [grid, setGrid] = useState(!strip.includes(value));
   return (
-    <View style={s.wrap}>
+    <View style={{ gap: 12 }}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.strip}>
+        {strip.map((d) => <Chip key={d} label={label(d, from)} selected={!grid && d === value} color={color} onPress={() => { setGrid(false); onChange(d); }} />)}
+        <Chip label="Other…" selected={grid} color={color} onPress={() => setGrid((g) => !g)} />
+      </ScrollView>
+      {grid ? <MonthGrid value={value} onChange={onChange} color={color} /> : null}
+    </View>
+  );
+}
+
+function MonthGrid({ value, onChange, color }: { value: string; onChange: (day: string) => void; color?: string }) {
+  const tone = color ?? use(AspectContext)?.color ?? C.text;
+  const [month, setMonth] = useState((value || myDay()).slice(0, 7));
+  const [y, m] = month.split('-').map(Number);
+  const first = `${month}-01`;
+  const len = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const lead = (weekday(first) + 6) % 7; // weeks start on Monday
+  const shift = (n: number) => setMonth(addDays(`${month}-15`, n * 30).slice(0, 7));
+  const cells = [...Array(lead).fill(null), ...Array.from({ length: len }, (_, i) => `${month}-${String(i + 1).padStart(2, '0')}`)];
+  return (
+    <View style={s.grid}>
       <View style={s.head}>
-        <IconButton label="Previous month" plain onPress={() => setMonth(shiftMonth(month, -1))} disabled={!canBack}><Icon name="left" /></IconButton>
-        <Text style={[t.strong, s.title]} accessibilityRole="header">{MONTHS[m - 1]} {y}</Text>
-        <IconButton label="Next month" plain onPress={() => setMonth(shiftMonth(month, 1))} disabled={!canFwd}><Icon name="right" /></IconButton>
+        <Press label="Previous month" onPress={() => shift(-1)} hitSlop={8} style={s.nav}><Text style={s.navText}>‹</Text></Press>
+        <Text style={s.month}>{MO[m - 1]} {y}</Text>
+        <Press label="Next month" onPress={() => shift(1)} hitSlop={8} style={s.nav}><Text style={s.navText}>›</Text></Press>
       </View>
-      <View style={s.grid}>
-        {HEAD.map((h, i) => <Text key={`h${i}`} style={[t.caption, s.cell, s.headCell]}>{h}</Text>)}
-        {cells.map((day, i) => {
-          if (!day) return <View key={`b${i}`} style={s.cell} />;
-          const off = (min && day < min) || (max && day > max);
-          const on = day === value;
-          const isToday = day === now;
-          return (
-            <Pressable key={day} disabled={!!off} accessibilityRole="button" accessibilityState={{ selected: on, disabled: !!off }}
-              accessibilityLabel={day} onPress={() => { haptic.tick(); onChange(day); }} style={s.cell}>
-              {({ pressed }) => (
-                <View style={[s.dot, isToday && { borderColor: tint(tone, 0.6) }, on && { backgroundColor: tint(tone, 0.24), borderColor: tone },
-                  pressed && !on && { backgroundColor: SURF.pressed }]}>
-                  <Text style={[s.num, t.num, off ? s.off : null, on && { color: C.text, fontFamily: F.semibold }]}>{Number(day.slice(8))}</Text>
-                </View>
-              )}
-            </Pressable>
-          );
-        })}
-      </View>
+      <Cells cells={cells} isOn={(c) => c === value} text={(c) => String(Number(c.slice(8, 10)))} onPick={onChange} tone={tone} />
+    </View>
+  );
+}
+
+/** Day of the month, 1 to 31 (31 means the last day in shorter months). */
+export function MonthDayPicker({ value, onChange, color }: { value: number | null; onChange: (d: number) => void; color?: string }) {
+  const tone = color ?? use(AspectContext)?.color ?? C.text;
+  const cells = Array.from({ length: 31 }, (_, i) => String(i + 1));
+  return (
+    <View style={s.grid}>
+      <Cells cells={cells} isOn={(c) => Number(c) === value} text={(c) => c} onPick={(c) => onChange(Number(c))} tone={tone} />
+    </View>
+  );
+}
+
+function Cells({ cells, isOn, text, onPick, tone }: {
+  cells: (string | null)[]; isOn: (c: string) => boolean; text: (c: string) => string; onPick: (c: string) => void; tone: string;
+}) {
+  return (
+    <View style={s.cells}>
+      {cells.map((c, i) => c === null ? <View key={`x${i}`} style={s.cell} /> : (
+        <Press key={c} label={text(c)} onPress={() => onPick(c)} feel="tick" role="radio" state={{ selected: isOn(c) }}
+          style={[s.cell, s.on0, isOn(c) && { backgroundColor: tint(tone, 0.2), borderColor: tint(tone, 0.6) }]}>
+          <Text style={[s.cellText, isOn(c) && { color: tone }]}>{text(c)}</Text>
+        </Press>
+      ))}
     </View>
   );
 }
 
 const s = StyleSheet.create({
-  wrap: { gap: 8 },
+  strip: { gap: 8, paddingRight: 8 },
+  grid: { gap: 8, padding: 12, borderRadius: R.row, backgroundColor: SURF.row },
   head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  title: { flex: 1, textAlign: 'center' },
-  grid: { flexDirection: 'row', flexWrap: 'wrap' },
-  cell: { width: `${100 / 7}%`, height: 44, alignItems: 'center', justifyContent: 'center' },
-  headCell: { height: 24, textAlign: 'center', lineHeight: 24 },
-  dot: { width: 40, height: 40, borderRadius: R.chip + 8, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'transparent' },
-  num: { fontFamily: F.medium, fontSize: 16, lineHeight: 20, color: C.textSoft },
-  off: { color: C.faint, opacity: 0.5 },
+  nav: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  navText: { fontFamily: F.medium, fontSize: 24, lineHeight: 28, color: C.textSoft },
+  month: { fontFamily: F.semibold, fontSize: 16, lineHeight: 24, color: C.text },
+  cells: { flexDirection: 'row', flexWrap: 'wrap' },
+  cell: { width: `${100 / 7}%`, aspectRatio: 1, alignItems: 'center', justifyContent: 'center' },
+  on0: { borderRadius: R.chip, borderWidth: 1, borderColor: 'transparent' },
+  cellText: { fontFamily: F.medium, fontSize: 15, lineHeight: 20, color: C.textSoft, fontVariant: ['tabular-nums'] },
 });

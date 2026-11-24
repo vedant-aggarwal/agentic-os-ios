@@ -6,8 +6,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 import { haptic, t } from '@/aspects/kit/tokens';
 import { Chip } from '@/capture/parts';
-import type { Area, LifePayload } from '@/lib/today';
-import { ASPECT_COLOR, C, F } from '@/theme';
+import { ASPECT_KEYS, ASPECT_NAME, aspectOfArea } from '@/lib/aspects';
+import type { LifePayload } from '@/lib/today';
+import { ASPECT_COLOR, C, F, type AspectKey } from '@/theme';
 import { NORA, NORA_TEXT } from '@/today2/parts';
 import { AreaWheel, type WheelItem } from './AreaWheel';
 import { addDays, istDay, type Draft } from './data';
@@ -15,26 +16,25 @@ import { MonthGrid } from './MonthGrid';
 import { parseDue, shortDay } from './parseDue';
 
 // The create sheet, on the keyboard: a title, then when (quick chips, a month, or a date read from the title), the
-// area on a wheel beside it (which decides where it lands on Today) and Tag Nora. Return saves and keeps the sheet
+// Life aspect on a wheel beside it (one of the nine; it decides where it lands on Today) and Tag Nora. Return saves and keeps the sheet
 // open for the next one. With `initial` it edits a task instead.
 
 const SURFACE = '#1B1D25';
-const ASPECT_NAME: Record<string, string> = { body: 'Body', mind: 'Mind', soul: 'Soul', growth: 'Growth', mission: 'Mission', money: 'Money', family: 'Family', friends: 'Friends', romance: 'Romance' };
 
 export function areaColor(life: LifePayload | null, area: string | null) {
   const a = area ? life?.areaAspects[area]?.[0] : undefined;
   return a ? ASPECT_COLOR[a] : C.muted;
 }
 
-export function CreateSheet({ open, initial, areas, life, onClose, onSave, onDelete }: {
-  open: boolean; initial?: Draft & { id: string } | null; areas: Area[]; life: LifePayload | null;
+export function CreateSheet({ open, initial, life, onClose, onSave, onDelete }: {
+  open: boolean; initial?: Draft & { id: string } | null; life: LifePayload | null;
   onClose: () => void; onSave: (d: Draft) => Promise<void>; onDelete?: () => void;
 }) {
   return (
     <Modal transparent visible={open} animationType="none" onRequestClose={onClose} statusBarTranslucent>
       {/* a Modal is its own native tree: the area wheel's drag needs a gesture root inside it */}
       <GestureHandlerRootView style={{ flex: 1 }}>
-        {open ? <Body key={initial?.id ?? 'new'} initial={initial ?? null} areas={areas} life={life} onClose={onClose} onSave={onSave} onDelete={onDelete} /> : null}
+        {open ? <Body key={initial?.id ?? 'new'} initial={initial ?? null} life={life} onClose={onClose} onSave={onSave} onDelete={onDelete} /> : null}
       </GestureHandlerRootView>
     </Modal>
   );
@@ -51,17 +51,16 @@ function useKeyboardUp() {
   return up;
 }
 
-const titleCase = (slug: string) => slug.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
-function Body({ initial, areas, life, onClose, onSave, onDelete }: {
-  initial: (Draft & { id: string }) | null; areas: Area[]; life: LifePayload | null;
+function Body({ initial, life, onClose, onSave, onDelete }: {
+  initial: (Draft & { id: string }) | null; life: LifePayload | null;
   onClose: () => void; onSave: (d: Draft) => Promise<void>; onDelete?: () => void;
 }) {
   const insets = useSafeAreaInsets();
   const kb = useKeyboardUp();
   const today = istDay(), tomorrow = addDays(today, 1);
-  const blank: Draft = { title: '', notes: '', area: null, due: null, nora: false };
-  const [d, setD] = useState<Draft>(initial ?? blank);
+  const blank: Draft = { title: '', notes: '', area: null, aspect: null, due: null, nora: false };
+  const [d, setD] = useState<Draft>(initial ? { ...initial, aspect: initial.aspect ?? aspectOfArea(life, initial.area) } : blank);
   const [details, setDetails] = useState(!!initial?.notes);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -105,24 +104,21 @@ function Body({ initial, areas, life, onClose, onSave, onDelete }: {
       haptic.success();
       if (editing) onClose();
       else {
-        // the next task keeps the area and a hand-picked date, not a date this title named
-        setD({ ...blank, area: d.area, due: auto ? auto.prev : d.due });
+        // the next task keeps the aspect and a hand-picked date, not a date this title named
+        setD({ ...blank, aspect: d.aspect, due: auto ? auto.prev : d.due });
         setAuto(null); setIgnored(null); setManual(false); setCal(false); setDetails(false);
         input.current?.focus();
       }
     } catch (e) { setErr(e instanceof Error ? e.message : 'That didn’t save.'); } finally { setBusy(false); }
   };
 
-  // every area GET /areas knows (the server only files a task under one of those), "No area" first
-  const wheel = useMemo(() => {
-    const list: WheelItem[] = [{ key: null, name: 'No area', color: C.muted }];
-    for (const a of areas) if (!list.some((x) => x.key === a.slug)) list.push({ key: a.slug, name: a.name, color: areaColor(life, a.slug) });
-    if (d.area && !list.some((x) => x.key === d.area)) list.push({ key: d.area, name: titleCase(d.area), color: areaColor(life, d.area) });
-    return list;
-  }, [areas, life, d.area]);
+  // the nine Life aspects (GET /life), "No aspect" first; the PC files the task under the area that leads with the one
+  // picked (lib/aspects.ts)
+  const wheel = useMemo(() => [{ key: null, name: 'No aspect', color: C.muted } as WheelItem,
+    ...ASPECT_KEYS.map((a): WheelItem => ({ key: a, name: ASPECT_NAME[a], color: ASPECT_COLOR[a] }))], []);
 
   const custom = !!d.due && d.due !== today && d.due !== tomorrow;
-  const aspect = d.area ? life?.areaAspects[d.area]?.[0] : undefined;
+  const aspect = d.aspect;
   const when = (
     <View style={st.chips}>
       <Chip text="Today" on={d.due === today} color={C.text} onPress={() => pickDue(today)} />
@@ -163,9 +159,9 @@ function Body({ initial, areas, life, onClose, onSave, onDelete }: {
               <View style={st.controls}>
                 <View style={st.left}>
                   {when}
-                  <Text style={t.caption} numberOfLines={3}>{aspect ? `Lands on Today under ${ASPECT_NAME[aspect] ?? aspect} on its due day.` : 'Lands on Today on its due day.'}</Text>
+                  <Text style={t.caption} numberOfLines={3}>{aspect ? `Lands on Today under ${ASPECT_NAME[aspect]} on its due day.` : 'Lands on Today on its due day.'}</Text>
                 </View>
-                <AreaWheel items={wheel} value={d.area} onChange={(area) => set({ area })} />
+                <AreaWheel items={wheel} value={d.aspect} onChange={(a) => set({ aspect: a as AspectKey | null })} />
               </View>
             )}
 

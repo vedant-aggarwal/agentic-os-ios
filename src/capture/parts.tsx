@@ -285,9 +285,9 @@ export function NowCard({ title, sub, color, glyph, onPress }: {
 }
 
 // ── the line at the bottom ───────────────────────────────────────────────────────────────────────────────────────
-export type Mode = { kind: 'task' } | { kind: 'journal' } | { kind: 'page' } | { kind: 'wake'; hm: string };
+export type Mode = { kind: 'describe' } | { kind: 'task' } | { kind: 'journal' } | { kind: 'page' } | { kind: 'wake'; hm: string };
 
-/** The field every typed capture shares. A mode other than a task wears its name on the left; tap it to go back. */
+/** The field every typed capture shares. A mode other than Describe anything wears its name on the left; tap it to go back. */
 export const Field = forwardRef<ComponentRef<typeof TextInput>, {
   value: string; onChange: (v: string) => void; onSubmit: () => void; placeholder: string; tag: { text: string; color: string } | null;
   onTag: () => void; onFocus: () => void; onBlur: () => void; keyboard: KeyboardTypeOptions; busy: boolean;
@@ -297,7 +297,7 @@ export const Field = forwardRef<ComponentRef<typeof TextInput>, {
   return (
     <View style={s.field}>
       {tag ? (
-        <Pressable accessibilityRole="button" accessibilityLabel={`${tag.text}: back to adding a task`} onPress={onTag} hitSlop={8}
+        <Pressable accessibilityRole="button" accessibilityLabel={`${tag.text}: back to Describe anything`} onPress={onTag} hitSlop={8}
           style={[s.tag, { backgroundColor: tint(tag.color, 0.16) }]}>
           <Text style={[s.tagText, { color: tag.color }]}>{tag.text}</Text>
           <Icon name="close" size={12} color={tag.color} />

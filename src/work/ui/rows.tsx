@@ -117,7 +117,7 @@ export function IdeaRow({ idea, onPress }: { idea: Idea; onPress: () => void }) 
 }
 
 /** A task as the hub lists it. The ring is its state, not a checkbox: ticking from here isn't in the contract yet. */
-export function TaskLine({ task, onPress }: { task: Task; onPress: () => void }) {
+export function TaskLine({ task, onPress, onLongPress }: { task: Task; onPress: () => void; onLongPress?: () => void }) {
   const doing = task.status === 'doing';
   return (
     <Row
@@ -127,6 +127,7 @@ export function TaskLine({ task, onPress }: { task: Task; onPress: () => void })
       right={dueLabel(task.due)}
       label={`Task: ${task.title}${doing ? ', in progress' : ''}${task.due ? `, due ${dueLabel(task.due)}` : ''}`}
       onPress={onPress}
+      onLongPress={onLongPress}
     />
   );
 }

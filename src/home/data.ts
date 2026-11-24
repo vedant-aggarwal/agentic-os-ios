@@ -3,15 +3,39 @@ import { api } from '@/lib/api';
 import { DEMO, demoData } from '@/lib/demo';
 import { nora, type NoraHome } from '@/lib/nora';
 import { demoHome } from '@/lib/noraDemo';
+import { aspectFields } from '@/lib/aspects';
 import type { Area, LifePayload, Task, TodayPayload } from '@/lib/today';
 import { tasksChanged } from '@/lib/useToday';
+import type { AspectKey } from '@/theme';
 
 // Home's data: his tasks (the same GET /today Today reads), the area map, Nora's home feed and the tasks he tagged her
 // on (server modules/tasknora.ts). Every write is optimistic and tells Today to read again.
 
 export type TagState = 'queued' | 'working' | 'ask' | 'found' | 'error';
 export type Tag = { taskId: string; state: TagState; text: string | null; question: string | null; options: string[]; answer: string | null; taggedAt: string; at: string };
-export type Draft = { title: string; notes: string; area: string | null; due: string | null; nora: boolean };
+/** A task being added or edited. `aspect` is what he picked (one of the nine); `area` is the task's own, kept as is
+ *  unless the aspect changes (see lib/aspects.ts). */
+export type Draft = { title: string; notes: string; area: string | null; aspect: AspectKey | null; due: string | null; nora: boolean };
+
+// The task view (work/sheets/EditTaskSheet) changed a task: Home reads again, as Today does on tasksChanged().
+const changed = new Set<() => void>();
+export function homeTasksChanged() { for (const f of changed) f(); }
+
+// Tag Nora on a task, take it back, answer her question: Home's rows and the task view share these.
+/** Tags her (tasknora) and tells her in her chat, where she works; she writes back with her tasknora_note tool. */
+export async function tagNora(id: string, title: string) {
+  if (DEMO) return;
+  await api(`/mod/tasknora/tags/${id}`, { method: 'POST', body: {} });
+  await nora.send(`I tagged you on ${id}: "${title}". Work on it and keep me posted under the task with tasknora_note (working, ask, found or error).`).catch(() => {});
+}
+export async function untagNora(id: string) {
+  if (!DEMO) await api(`/mod/tasknora/tags/${id}`, { method: 'DELETE' });
+}
+export async function answerNora(id: string, text: string) {
+  if (DEMO) return;
+  await api(`/mod/tasknora/tags/${id}/answer`, { method: 'POST', body: { text } });
+  await nora.send(`Answer on ${id}: ${text}`).catch(() => {});
+}
 
 const IST = 5.5 * 3600_000;
 export const istDay = (ms = Date.now()) => new Date(ms + IST).toISOString().slice(0, 10);
@@ -65,7 +89,9 @@ export function useHomeData(open: boolean) {
     if (!open) return;
     const first = setTimeout(() => void load(), 0);
     const id = setInterval(() => void load(), 60_000);
-    return () => { clearTimeout(first); clearInterval(id); };
+    const again = () => { void load(); };
+    changed.add(again);
+    return () => { clearTimeout(first); clearInterval(id); changed.delete(again); };
   }, [open, load]);
 
   const patchLocal = (id: string, p: Partial<Task>) => setToday((t) => (t ? { ...t, tasks: t.tasks.map((x) => (x.id === id ? { ...x, ...p } : x)) } : t));
@@ -91,41 +117,37 @@ export function useHomeData(open: boolean) {
     const p = { position, ...(due !== undefined ? { due } : {}) };
     return patch(id, p, p);
   };
-  const edit = (id: string, d: Draft) => patch(id, { title: d.title.trim(), area: d.area, due: d.due },
-    { title: d.title.trim(), area: d.area, due: d.due, ...(d.notes.trim() ? { notes: d.notes.trim() } : {}) });
+  /** The aspect is sent only when he changed it, so a task keeps its own area otherwise. */
+  const edit = (id: string, d: Draft, was: AspectKey | null) => {
+    const a = d.aspect !== was ? aspectFields(life, d.aspect) : null;
+    const area = a ? (a.area !== undefined ? a.area : d.area) : d.area;
+    return patch(id, { title: d.title.trim(), area, due: d.due },
+      { title: d.title.trim(), due: d.due, ...(a ?? {}), ...(d.notes.trim() ? { notes: d.notes.trim() } : {}) });
+  };
 
   async function tag(id: string, title: string) {
     const at = new Date().toISOString();
     setTags((g) => ({ ...g, [id]: g[id] ?? { taskId: id, state: 'queued', text: null, question: null, options: [], answer: null, taggedAt: at, at } }));
-    if (DEMO) return;
-    try {
-      await api(`/mod/tasknora/tags/${id}`, { method: 'POST', body: {} });
-      // her chat is where she works: she reads the task there and writes back with her tasknora_note tool
-      await nora.send(`I tagged you on ${id}: "${title}". Work on it and keep me posted under the task with tasknora_note (working, ask, found or error).`).catch(() => {});
-    } catch (e) { setTags((g) => { const n = { ...g }; delete n[id]; return n; }); throw e; }
+    try { await tagNora(id, title); } catch (e) { setTags((g) => { const n = { ...g }; delete n[id]; return n; }); throw e; }
   }
   async function untag(id: string) {
     const was = tags[id];
     setTags((g) => { const n = { ...g }; delete n[id]; return n; });
-    if (DEMO) return;
-    try { await api(`/mod/tasknora/tags/${id}`, { method: 'DELETE' }); }
-    catch (e) { if (was) setTags((g) => ({ ...g, [id]: was })); throw e; }
+    try { await untagNora(id); } catch (e) { if (was) setTags((g) => ({ ...g, [id]: was })); throw e; }
   }
   async function answer(id: string, text: string) {
     const was = tags[id];
     if (was) setTags((g) => ({ ...g, [id]: { ...was, state: 'working', answer: text, question: null, options: [] } }));
-    if (DEMO) return;
-    try {
-      await api(`/mod/tasknora/tags/${id}/answer`, { method: 'POST', body: { text } });
-      await nora.send(`Answer on ${id}: ${text}`).catch(() => {});
-    } catch (e) { if (was) setTags((g) => ({ ...g, [id]: was })); throw e; }
+    try { await answerNora(id, text); } catch (e) { if (was) setTags((g) => ({ ...g, [id]: was })); throw e; }
   }
 
   async function add(d: Draft) {
     const title = d.title.trim();
     if (!title) throw new Error('A title, please.');
     const body: Record<string, unknown> = { title, status: 'todo' };
-    if (d.area) body.area = d.area;
+    const a = d.aspect ? aspectFields(life, d.aspect) : null;
+    const area = a ? a.area ?? null : d.area;
+    if (a) Object.assign(body, a); else if (d.area) body.area = d.area;
     if (d.due) body.due = d.due;
     if (d.notes.trim()) body.notes = d.notes.trim();
     // On top of its bucket at once, before the server answers: a position below every open task's, so it sorts first
@@ -136,7 +158,7 @@ export function useHomeData(open: boolean) {
     const position = floor - 1024;
     lowest.current = position;
     const tmp = `tmp${Date.now()}`;
-    const draft: Task = { id: tmp, title, status: 'todo', area: d.area, due: d.due, scheduled: null, owner: 'me', completedAt: null, position };
+    const draft: Task = { id: tmp, title, status: 'todo', area, due: d.due, scheduled: null, owner: 'me', completedAt: null, position };
     setToday((x) => (x ? { ...x, tasks: [draft, ...x.tasks] } : x));
     setFresh(tmp);
     let t: Task;
@@ -160,6 +182,7 @@ export function useHomeData(open: boolean) {
     if (!DEMO && !top) api(`/tasks/${t.id}`, { method: 'PATCH', body: { position } }).catch(() => {});
     if (d.nora) await tag(t.id, title);
     after();
+    if (a && a.area === undefined) void load(); // the PC made an area for that aspect: read the new map
     return t;
   }
   const clearFresh = useCallback(() => setFresh(null), []);

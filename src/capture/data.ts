@@ -2,8 +2,11 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { api } from '@/lib/api';
 import { DEMO, demoData } from '@/lib/demo';
 import { fileSource, invalidate, newId, upload, useCollection, useGet, type Doc } from '@/lib/mod';
+import { aspectFields, ASPECT_KEYS, ASPECT_NAME } from '@/lib/aspects';
 import { nora } from '@/lib/nora';
-import type { Area, LifePayload } from '@/lib/today';
+import type { LifePayload } from '@/lib/today';
+import { tasksChanged } from '@/lib/useToday';
+import { homeTasksChanged } from '@/home/data';
 import { kv } from '@/work/kv';
 import { dayOf, today } from '@/aspects/kit/time';
 import type { Diet } from '@/aspects/body/api';
@@ -28,7 +31,10 @@ import { FRAMES, MEAL_SLOT, type Frame, type FrameId, type TickId } from './mome
 //   smart photo    POST /mod/capture/smart-photo?id= (raw image): the PC reads it and files it where it belongs (a meal
 //                  with its photo in Diet, the photo vault, the wake-up drink, a reading sitting); the panel polls
 //                  GET /mod/capture/smart-photo/<id> and offers POST .../undo
-//   task           POST /tasks { title, area, due }; "Tag Nora" also sends her the task in chat
+//   describe       POST /mod/capture/describe { id, text }: anything in words (a meal, a spend, a task, an idea, a
+//                  journal line, a weight); the PC works out what it is and files it through that page's own route.
+//                  POST .../describe/<id>/undo takes it back, POST .../describe/<id>/as { kind } re-files it as that
+//   task           POST /tasks { title, aspect, area, due }; "Tag Nora" also sends her the task in chat
 //   meal by text   POST /mod/body/meals { name, slot }: the meal record a filed smart photo makes, numbers estimated on the PC
 //   cancelled      the item's body check, not done and `skipped` (Today's "Cancel for today"): out of the day's count
 // A Soul habit whose title matches (journal, meditat, clean, sugar) is ticked as well, so the core habits stay in step.
@@ -49,6 +55,30 @@ export type SmartItem = {
   frame: FrameId | 'salad' | null; tick: TickId | null; said: string | null; canUndo: boolean; photo: string;
   meal?: { protein: number } | null; page?: number | null;
 };
+/** What the PC made of a line typed or said into "Describe anything" (server: modules/capture-describe.ts). */
+export type DescribeKind = 'task' | 'meal' | 'spend' | 'idea' | 'journal' | 'weight';
+export type Described = {
+  id: string; status: 'filing' | 'filed' | 'failed' | 'undone'; kind: DescribeKind | null; text: string; said: string | null;
+  /** the page it landed on: "Body · Diet", "Money", "Tasks" */ where: string | null; link: string | null;
+  /** who decided the kind: the model, the PC's rules (AI down), or him ("Not right?") */ by: 'ai' | 'rules' | 'you' | null;
+  /** what it made: the task, idea, meal or entry id */ ref: string | null; canUndo: boolean; kinds: DescribeKind[];
+};
+export const DESCRIBE_KINDS: { kind: DescribeKind; label: string }[] = [
+  { kind: 'task', label: 'Task' }, { kind: 'meal', label: 'Meal' }, { kind: 'spend', label: 'Spend' },
+  { kind: 'idea', label: 'Idea' }, { kind: 'journal', label: 'Journal' }, { kind: 'weight', label: 'Weight' },
+];
+/** The demo's stand-in for the PC: the same rough rules the PC falls back on when its AI is down. */
+function demoDescribe(id: string, text: string, as?: DescribeKind): Described {
+  const n = Number((text.match(/\d+(?:\.\d+)?/) ?? [])[0]);
+  const kind: DescribeKind = as ?? (/\b(kg|weigh)/i.test(text) && n ? 'weight' : /\b(spent|paid|rs|rupees?)\b|₹/i.test(text) && n ? 'spend'
+    : /^idea\b/i.test(text) ? 'idea' : /^(journal|today i|felt)\b/i.test(text) ? 'journal'
+      : /\b(ate|had|breakfast|lunch|dinner|snack|roti|dal|rice|eggs?|oats|paneer|chicken)\b/i.test(text) ? 'meal' : 'task');
+  const said = kind === 'weight' ? `Weight ${n} kg logged` : kind === 'spend' ? `Spent ₹${n}` : kind === 'idea' ? `Idea saved: ${text}`
+    : kind === 'journal' ? "In today's journal" : kind === 'meal' ? `Meal logged: ${text}, about 20 g protein` : `Task: ${text}`;
+  const where = { weight: 'Body', spend: 'Money', idea: 'Ideas', journal: 'Growth · Journal', meal: 'Body · Diet', task: 'Tasks' }[kind];
+  return { id, status: 'filed', kind, text, said, where, link: null, ref: null, by: as ? 'you' : 'rules', canUndo: true, kinds: DESCRIBE_KINDS.map((k) => k.kind) };
+}
+
 type Roll = { day: string; shots: Partial<Record<FrameId, Shot>> };
 const KEY = 'capture:v1:roll';
 let roll: Roll = { day: today(), shots: {} };
@@ -116,7 +146,6 @@ export function useCapture() {
   const diet = useGet<Diet>(DEMO ? null : '/mod/body/diet');
   const clean = useGet<CleanNow>(DEMO ? null : '/mod/soul/clean/now');
   const read = useGet<ReadView>(DEMO ? null : '/mod/mind/read');
-  const areasRead = useGet<{ areas: Area[] }>(DEMO ? null : '/areas');
   const lifeRead = useGet<LifePayload>(DEMO ? null : '/life');
   const checks = useCollection<BodyCheck>('body', 'checks');
   const sessions = useCollection<Session>('mind', 'sessions');
@@ -132,8 +161,7 @@ export function useCapture() {
   const cleanData = DEMO ? demoClean : clean.data;
   const book = (DEMO ? DEMO_READ : read.data)?.reading?.[0] ?? null;
   const demo = useMemo(() => (DEMO ? demoData() : null), []);
-  const areas = useMemo(() => (DEMO ? demo?.areas : areasRead.data?.areas) ?? [], [demo, areasRead.data]);
-  const areaAspects = useMemo(() => (DEMO ? demo?.life.areaAspects : lifeRead.data?.areaAspects) ?? {}, [demo, lifeRead.data]);
+  const life = DEMO ? demo?.life : lifeRead.data;
   // a glass shows at once, until the read comes back with it
   const [glass, setGlass] = useState<{ base: number; v: number } | null>(null);
   const baseWater = dietData?.water ?? 0;
@@ -349,14 +377,15 @@ export function useCapture() {
     return `${book.title}, page ${n}`;
   }
 
-  async function task(o: { title: string; area: string | null; today: boolean; tagNora: boolean }) {
+  async function task(o: { title: string; aspect: AspectKey | null; today: boolean; tagNora: boolean }) {
     const body: Record<string, unknown> = { title: o.title.trim() };
-    if (o.area) body.area = o.area;
+    if (o.aspect) Object.assign(body, aspectFields(life, o.aspect));
     if (o.today) body.due = day;
     if (DEMO) { await fakeWait(400); return o.tagNora ? 'Task added. Nora has it.' : 'Task added'; }
     const t = await api<{ id: string; title: string }>('/tasks', { method: 'POST', body });
+    tasksChanged(); homeTasksChanged();
     if (o.tagNora) {
-      const where = o.area ? ` (${areas.find((a) => a.slug === o.area)?.name ?? o.area})` : '';
+      const where = o.aspect ? ` (${ASPECT_NAME[o.aspect]})` : '';
       // her chat is the one way in today; she reads it, works the task with her tools and answers in the thread
       await nora.send(`I tagged you on ${t.id}: "${t.title}"${where}. Work on it and add what you find to the task's notes.`).catch(() => {});
     }
@@ -419,7 +448,36 @@ export function useCapture() {
     void checks.refresh(); void sessions.refresh();
   }
 
-  const areaOptions = useMemo(() => areas.map((a) => ({ ...a, aspect: (areaAspects[a.slug]?.[0] ?? null) as AspectKey | null })), [areas, areaAspects]);
+  // ── describe anything: words in, the PC files them where they belong ──
+  const [demoDescribed] = useState(() => new Map<string, Described>());
+  /** What a filing (or its undo) changed: every page that might show it reads again. */
+  const refreshAll = () => {
+    tasksChanged(); homeTasksChanged();
+    invalidate('/mod/body/'); invalidate('/mod/money/'); invalidate('/mod/growth/'); invalidate('/mod/soul/journal'); invalidate('/ideas');
+    void journal.refresh();
+  };
+  async function describe(text: string): Promise<Described> {
+    const id = `ds_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    if (DEMO) { await fakeWait(500); const it = demoDescribe(id, text.trim()); demoDescribed.set(id, it); return it; }
+    const r = await api<{ item: Described }>('/mod/capture/describe', { method: 'POST', body: { id, text: text.trim() } });
+    refreshAll();
+    return r.item;
+  }
+  async function describeUndo(it: Described): Promise<Described> {
+    if (DEMO) { await fakeWait(250); return { ...it, status: 'undone', said: 'Taken back', canUndo: false }; }
+    const r = await api<{ item: Described }>(`/mod/capture/describe/${encodeURIComponent(it.id)}/undo`, { method: 'POST', body: {} });
+    refreshAll();
+    return r.item;
+  }
+  async function describeAs(it: Described, kind: DescribeKind): Promise<Described> {
+    if (DEMO) { await fakeWait(400); return demoDescribe(it.id, it.text, kind); }
+    const r = await api<{ item: Described }>(`/mod/capture/describe/${encodeURIComponent(it.id)}/as`, { method: 'POST', body: { kind } });
+    refreshAll();
+    return r.item;
+  }
+
+  /** The task line's aspect chips: the nine Life aspects, in Life's order. */
+  const aspects = ASPECT_KEYS.map((k) => ({ key: k, name: ASPECT_NAME[k] }));
 
   return {
     day, frames, doneTicks, water, waterTarget,
@@ -427,8 +485,8 @@ export function useCapture() {
     cleanDay: cleanData && cleanData.setup ? cleanData.day : null,
     cleanReady: !cleanData || cleanData.setup,
     book: book ? { title: book.title, page: book.page, pages: book.pages } : null,
-    areas: areaOptions,
-    photo, addWater, toggle, skip, mealText, wake, journalLine, page, task, slip, unslip, smart, smartGet, smartFiled, smartUndo,
+    aspects,
+    photo, addWater, toggle, skip, mealText, wake, journalLine, page, task, describe, describeUndo, describeAs, slip, unslip, smart, smartGet, smartFiled, smartUndo,
     retry: (f: FrameId) => putShot(f, null),
   };
 }

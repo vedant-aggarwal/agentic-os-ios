@@ -2,7 +2,7 @@ import { StyleSheet, View } from 'react-native';
 import { type SheetRequest, useSheetRequest } from '../bus';
 import { useVoiceHost, VoiceContext } from '../voice';
 import { EditIdeaSheet } from './EditIdeaSheet';
-import { EditTaskSheet } from './EditTaskSheet';
+import { EditTaskSheet, TaskToast } from './EditTaskSheet';
 import { IdeaSheet } from './IdeaSheet';
 import { JobSheet } from './JobSheet';
 import { NewProjectSheet, ProjectSettingsSheet } from './ProjectSheet';
@@ -11,7 +11,8 @@ import { TaskSheet } from './TaskSheet';
 
 // The one host for the hub's capture sheets and push to talk. Mount it once, over everything (it fills its parent
 // and passes touches through when nothing is shown). openSheet() anywhere shows the matching sheet in the same render;
-// the fan's mic events (bus.emitMic) record ideas through the recorder this host owns.
+// the fan's mic events (bus.emitMic) record ideas through the recorder this host owns. A task's full view (openTask)
+// opens here from any screen, and the line with Undo it leaves when it closes (TaskToast) is drawn here too.
 //
 // A job can carry an idea and tasks: openSheet({ kind: 'job', project, idea, tasks }) once the bus type has them
 // (they are read here when present).
@@ -24,6 +25,7 @@ export function WorkSheets() {
       <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
         {req ? <SheetFor key={req.seq} req={req} /> : null}
         <RecorderOverlay live={rec.live} offline={rec.offline} />
+        <TaskToast />
       </View>
     </VoiceContext.Provider>
   );
@@ -40,6 +42,6 @@ function SheetFor({ req }: { req: SheetRequest }) {
     case 'project': return <NewProjectSheet name={req.name} />;
     case 'projectSettings': return <ProjectSettingsSheet project={req.project} />;
     case 'editIdea': return <EditIdeaSheet idea={req.idea} />;
-    case 'editTask': return <EditTaskSheet task={req.task} />;
+    case 'editTask': return <EditTaskSheet task={req.task} focus={req.focus} />;
   }
 }

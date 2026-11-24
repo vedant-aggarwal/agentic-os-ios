@@ -7,18 +7,22 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { haptic, SURF, t, tint } from '@/aspects/kit/tokens';
 import { Chip, Toast } from '@/capture/parts';
+import { ASPECT_KEYS, ASPECT_NAME, aspectOfArea } from '@/lib/aspects';
 import { DEMO } from '@/lib/demo';
 import { nora as noraApi, type FeedItem, type NoraHome } from '@/lib/nora';
 import type { Task } from '@/lib/today';
 import { Ball, useTurn } from '@/nora/Sphere';
 import { noraUi } from '@/nora/state';
-import { C, F } from '@/theme';
+import { ASPECT_COLOR, C, F, type AspectKey } from '@/theme';
 import { Chevron, Dots, NORA, NORA_TEXT, Tick } from '@/today2/parts';
+import { openTask, type TaskFocus } from '@/work/bus';
 import { areaColor, CreateSheet } from './Create';
-import { addDays, istDay, useHomeData, type Draft, type HomeData, type Tag } from './data';
+import { addDays, istDay, useHomeData, type HomeData, type Tag } from './data';
 
 // Home (the dock's Home orb): Nora at the top with what she is on, her three tasks, then his own task list in the
-// manner of Google Tasks: add, tick, area tags, Tag Nora, and what she found under each task. Show all opens her page.
+// manner of Google Tasks: add, tick, Life aspect tags, Tag Nora, and what she found under each task. Show all opens her
+// page. A tap or a hold (held without moving; held and dragged reorders) opens the task's full view (openTask), and so
+// does a card of Nora's for a task she is tagged on.
 
 const dockClear = (bottom: number) => Math.max(bottom, 12) + 12 + 64 + 40;
 const msg = (e: unknown) => (e instanceof Error ? e.message : 'That didn’t save.');
@@ -93,20 +97,21 @@ function Header({ h, tags, title = 'Nora', onBack }: { h: NoraHome | null; tags:
 }
 
 // ── Nora's tasks ─────────────────────────────────────────────────────────────────────────────────────────────────
-type NoraItem = { id: string; lead: 'working' | 'time' | 'queued' | 'needs' | 'error'; time?: string; title: string };
+type NoraItem = { id: string; lead: 'working' | 'time' | 'queued' | 'needs' | 'error'; time?: string; title: string; /** her card for one of his tasks */ task?: Task };
 function noraItems(d: HomeData): NoraItem[] {
   const out: NoraItem[] = [];
   const h = d.home, tasks = d.today?.tasks ?? [];
   const title = (id: string) => tasks.find((x) => x.id === id)?.title ?? id;
+  const task = (id: string): Task => tasks.find((x) => x.id === id) ?? { id, title: id, status: 'todo', area: null, due: null, scheduled: null, owner: 'me', completedAt: null };
   for (const a of h?.asks ?? []) out.push({ id: `ask:${a.id}`, lead: 'needs', title: a.title });
   if (h?.busy) out.push({ id: 'busy', lead: 'working', title: h.busy.title });
   const tags = Object.values(d.tags);
-  for (const g of tags.filter((x) => x.state === 'ask')) out.push({ id: `tag:${g.taskId}`, lead: 'needs', title: title(g.taskId) });
-  for (const g of tags.filter((x) => x.state === 'working')) out.push({ id: `tag:${g.taskId}`, lead: 'working', title: title(g.taskId) });
-  for (const g of tags.filter((x) => x.state === 'error')) out.push({ id: `tag:${g.taskId}`, lead: 'error', title: title(g.taskId) });
+  for (const g of tags.filter((x) => x.state === 'ask')) out.push({ id: `tag:${g.taskId}`, lead: 'needs', title: title(g.taskId), task: task(g.taskId) });
+  for (const g of tags.filter((x) => x.state === 'working')) out.push({ id: `tag:${g.taskId}`, lead: 'working', title: title(g.taskId), task: task(g.taskId) });
+  for (const g of tags.filter((x) => x.state === 'error')) out.push({ id: `tag:${g.taskId}`, lead: 'error', title: title(g.taskId), task: task(g.taskId) });
   for (const u of h?.upcoming ?? []) out.push({ id: `up:${u.id}`, lead: 'time', time: u.time, title: u.title.replace(/^\d{1,2}:\d{2}\s*:?\s*/, '') });
-  for (const g of tags.filter((x) => x.state === 'queued')) out.push({ id: `tag:${g.taskId}`, lead: 'queued', title: title(g.taskId) });
-  for (const x of tasks.filter((x) => x.owner === 'nora' && x.status !== 'done' && x.status !== 'dropped')) out.push({ id: `own:${x.id}`, lead: 'queued', title: x.title });
+  for (const g of tags.filter((x) => x.state === 'queued')) out.push({ id: `tag:${g.taskId}`, lead: 'queued', title: title(g.taskId), task: task(g.taskId) });
+  for (const x of tasks.filter((x) => x.owner === 'nora' && x.status !== 'done' && x.status !== 'dropped')) out.push({ id: `own:${x.id}`, lead: 'queued', title: x.title, task: x });
   return out;
 }
 
@@ -134,7 +139,8 @@ function NoraCards({ items, onOpen }: { items: NoraItem[]; onOpen: () => void })
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={st.cards} style={st.cardsWrap}>
       {items.slice(0, 3).map((it) => (
-        <Pressable key={it.id} accessibilityRole="button" onPress={onOpen} style={({ pressed }) => [st.card, { width: w }, pressed && { backgroundColor: SURF.pressed }]}>
+        <Pressable key={it.id} accessibilityRole="button" accessibilityHint={it.task ? 'Opens the task and what Nora is doing with it' : 'Opens her page'}
+          onPress={() => (it.task ? openTask(it.task) : onOpen())} style={({ pressed }) => [st.card, { width: w }, pressed && { backgroundColor: SURF.pressed }]}>
           <Lead it={it} />
           <Text numberOfLines={3} style={st.cardTitle}>{it.title}</Text>
         </Pressable>
@@ -146,16 +152,17 @@ function NoraCards({ items, onOpen }: { items: NoraItem[]; onOpen: () => void })
 // ── the home page ────────────────────────────────────────────────────────────────────────────────────────────────
 function HomePage({ d, say, hide, onNora }: { d: HomeData; say: Say; hide: () => void; onNora: () => void }) {
   const insets = useSafeAreaInsets();
-  const [list, setList] = useState<string | null>(null); // area slug, 'none', or null for all lists
+  const [list, setList] = useState<AspectKey | 'none' | null>(null); // a Life aspect, 'none', or null for all
   const [picking, setPicking] = useState(false);
-  const [sheet, setSheet] = useState<{ edit: (Draft & { id: string }) | null } | null>(null);
+  const [adding, setAdding] = useState(false);
   const [showDone, setShowDone] = useState(false);
   const [holding, setHolding] = useState<Set<string>>(new Set());
   const today = istDay(), tomorrow = addDays(today, 1);
-  useEffect(() => noraUi.onCreate(() => setSheet({ edit: null })), []);
+  useEffect(() => noraUi.onCreate(() => setAdding(true)), []);
 
+  const aspectOf = useCallback((area: string | null) => aspectOfArea(d.life, area), [d.life]);
   const mine = useMemo(() => (d.today?.tasks ?? []).filter((x) => !x.parent && (x.owner == null || x.owner === 'me')
-    && (list == null || (list === 'none' ? !x.area : x.area === list))), [d.today, list]);
+    && (list == null || (list === 'none' ? !aspectOf(x.area) : aspectOf(x.area) === list))), [d.today, list, aspectOf]);
   const buckets = useMemo(() => {
     const open = mine.filter((x) => ['inbox', 'todo', 'doing'].includes(x.status) || (x.status === 'done' && holding.has(x.id)));
     // his own order first (a drag sets position), newest on ties; Later keeps date order
@@ -188,9 +195,10 @@ function HomePage({ d, say, hide, onNora }: { d: HomeData; say: Say; hide: () =>
     else d.tag(x.id, x.title).then(() => say('Nora has it'), (e) => say(msg(e)));
   };
   const justDragged = useRef(false);
-  const editOf = (x: Task) => {
+  const seed = (x: Task) => ({ id: x.id, title: x.title, status: x.status, due: x.due, area: x.area, owner: x.owner, repeat: x.repeat ?? null });
+  const editOf = (x: Task, focus: TaskFocus = 'view') => {
     if (justDragged.current) return; // the finger lifting off a drag is not a tap
-    setSheet({ edit: { id: x.id, title: x.title, notes: '', area: x.area, due: x.due, nora: !!d.tags[x.id] } });
+    openTask(seed(x), focus);
   };
 
   // ── drag to reorder: hold a row, drag it within or across buckets; a drop in another bucket takes that bucket's date ──
@@ -246,8 +254,12 @@ function HomePage({ d, say, hide, onNora }: { d: HomeData; say: Say; hide: () =>
     }
   };
 
-  const areaName = (slug: string | null) => (slug ? d.areas.find((a) => a.slug === slug)?.name ?? slug : null);
-  const listLabel = list == null ? 'All lists' : list === 'none' ? 'No area' : areaName(list) ?? list;
+  // a row names the Life aspect its area leads with; an area with none mapped shows its own name
+  const areaName = (slug: string | null) => {
+    const a = aspectOf(slug);
+    return a ? ASPECT_NAME[a] : slug ? d.areas.find((x) => x.slug === slug)?.name ?? slug : null;
+  };
+  const listLabel = list == null ? 'All' : list === 'none' ? 'No aspect' : ASPECT_NAME[list];
   const freshKey = d.fresh ? keyOf(d.fresh) : null;
   const row = (x: Task, first: boolean, showDue: boolean, b?: BucketKey) => {
     const k = keyOf(x.id);
@@ -255,7 +267,8 @@ function HomePage({ d, say, hide, onNora }: { d: HomeData; say: Say; hide: () =>
     const idle = () => {};
     return (
       <TaskRow key={k} x={x} first={first} d={d} showDue={showDue} areaName={areaName(x.area)} color={areaColor(d.life, x.area)} fresh={k === freshKey}
-        onTick={saving ? idle : () => tick(x)} onOpen={saving ? idle : () => editOf(x)} onDate={saving ? idle : () => editOf(x)}
+        onTick={saving ? idle : () => tick(x)} onOpen={saving ? idle : () => editOf(x)} onDate={saving ? idle : () => editOf(x, 'date')}
+        onHold={saving ? undefined : () => openTask(seed(x))}
         onNora={saving ? idle : () => toggleNora(x)} onDelete={saving ? idle : () => remove(x)} say={say}
         onPlace={b && x.status !== 'done' ? (y, h) => rowBox.current.set(k, { b, y, h }) : undefined}
         drag={b && x.status !== 'done' && !saving ? {
@@ -266,6 +279,10 @@ function HomePage({ d, say, hide, onNora }: { d: HomeData; say: Say; hide: () =>
     );
   };
   const nothing = !buckets.today.length && !buckets.tomorrow.length && !buckets.later.length && !buckets.none.length;
+  // what he must not forget, said once over the list: late, due today, and what Nora is waiting on him for
+  const late = buckets.today.filter((x) => x.status !== 'done' && !!x.due && x.due < today).length;
+  const dueToday = buckets.today.filter((x) => x.status !== 'done' && x.due === today).length;
+  const waiting = Object.values(d.tags).filter((g) => g.state === 'ask').length + (d.home?.asks.length ?? 0);
 
   // ── a task just added: scroll it into view and light it up; the light fades once the sheet is closed ──
   const scroller = useRef<ComponentRef<typeof ScrollView>>(null);
@@ -286,10 +303,10 @@ function HomePage({ d, say, hide, onNora }: { d: HomeData; say: Say; hide: () =>
   }, [freshKey, insets.top, insets.bottom]);
   const { clearFresh } = d;
   useEffect(() => {
-    if (!freshKey || sheet) return;
+    if (!freshKey || adding) return;
     const id = setTimeout(clearFresh, 1600);
     return () => clearTimeout(id);
-  }, [freshKey, sheet, clearFresh]);
+  }, [freshKey, adding, clearFresh]);
 
   return (
     <>
@@ -317,10 +334,22 @@ function HomePage({ d, say, hide, onNora }: { d: HomeData; say: Say; hide: () =>
           </View>
           {picking ? (
             <Animated.View entering={FadeIn.duration(140)} style={st.pickChips}>
-              <Chip text="All lists" on={list == null} color={C.text} onPress={() => { setList(null); setPicking(false); }} />
-              {d.areas.map((a) => <Chip key={a.slug} text={a.name} on={list === a.slug} color={areaColor(d.life, a.slug)} onPress={() => { setList(a.slug); setPicking(false); }} />)}
-              <Chip text="No area" on={list === 'none'} color={C.text} onPress={() => { setList('none'); setPicking(false); }} />
+              <Chip text="All" on={list == null} color={C.text} onPress={() => { setList(null); setPicking(false); }} />
+              {ASPECT_KEYS.map((a) => <Chip key={a} text={ASPECT_NAME[a]} on={list === a} color={ASPECT_COLOR[a]} onPress={() => { setList(a); setPicking(false); }} />)}
+              <Chip text="No aspect" on={list === 'none'} color={C.text} onPress={() => { setList('none'); setPicking(false); }} />
             </Animated.View>
+          ) : null}
+          {d.today && (late || dueToday || waiting) ? (
+            <View style={st.owed} accessibilityRole="summary">
+              {late ? <Text style={[st.owedText, { color: C.danger }]}>{`${late} late`}</Text> : null}
+              {dueToday ? <Text style={st.owedText}>{`${dueToday} due today`}</Text> : null}
+              {waiting ? (
+                <Pressable accessibilityRole="button" accessibilityHint="Opens Nora's page" onPress={onNora} hitSlop={8} style={st.metaItem}>
+                  <View style={[st.dot6, { backgroundColor: NORA }]} />
+                  <Text style={[st.owedText, { color: NORA_TEXT }]}>{`${waiting} waiting on you`}</Text>
+                </Pressable>
+              ) : null}
+            </View>
           ) : null}
 
           {!d.today && !d.error ? (
@@ -332,14 +361,14 @@ function HomePage({ d, say, hide, onNora }: { d: HomeData; say: Say; hide: () =>
             </View>
           ) : (
             <Animated.View layout={LinearTransition.duration(220)} style={st.group} onLayout={(e) => { groupY.current = e.nativeEvent.layout.y; }}>
-              <Pressable accessibilityRole="button" onPress={() => setSheet({ edit: null })} style={({ pressed }) => [st.add, pressed && { backgroundColor: SURF.pressed }]}>
+              <Pressable accessibilityRole="button" onPress={() => setAdding(true)} style={({ pressed }) => [st.add, pressed && { backgroundColor: SURF.pressed }]}>
                 <Svg width={20} height={20} viewBox="0 0 24 24"><Path d="M12 5v14M5 12h14" stroke={C.muted} strokeWidth={2} strokeLinecap="round" /></Svg>
                 <Text style={st.addText}>Add a task</Text>
               </Pressable>
               {nothing ? (
                 <View style={st.empty}><Text style={t.strong}>Nothing open</Text><Text style={t.small}>Tasks you add here show on Today on their due day.</Text></View>
               ) : null}
-              {buckets.today.length ? <Bucket label="Today" onY={(y) => bucketY.current.set('today', y)}>{buckets.today.map((x, i) => row(x, i === 0, x.due !== today, 'today'))}</Bucket> : null}
+              {buckets.today.length ? <Bucket label="Today" note={late ? `${late} late` : null} onY={(y) => bucketY.current.set('today', y)}>{buckets.today.map((x, i) => row(x, i === 0, x.due !== today, 'today'))}</Bucket> : null}
               {buckets.tomorrow.length ? <Bucket label="Tomorrow" onY={(y) => bucketY.current.set('tomorrow', y)}>{buckets.tomorrow.map((x, i) => row(x, i === 0, false, 'tomorrow'))}</Bucket> : null}
               {buckets.later.length ? <Bucket label="Later" onY={(y) => bucketY.current.set('later', y)}>{buckets.later.map((x, i) => row(x, i === 0, true, 'later'))}</Bucket> : null}
               {buckets.none.length ? (
@@ -361,12 +390,9 @@ function HomePage({ d, say, hide, onNora }: { d: HomeData; say: Say; hide: () =>
           )}
         </View>
       </ScrollView>
-      <CreateSheet open={!!sheet} initial={sheet?.edit ?? null} areas={d.areas} life={d.life} onClose={() => setSheet(null)}
-        onSave={async (draft) => {
-          if (sheet?.edit) await d.edit(sheet.edit.id, draft);
-          else { await d.add(draft); say(draft.nora ? 'Task added. Nora has it.' : 'Task added'); }
-        }}
-        onDelete={sheet?.edit ? () => { const id = sheet.edit!.id; setSheet(null); const x = d.today?.tasks.find((y) => y.id === id); if (x) remove(x); } : undefined} />
+      {/* new tasks; an existing one opens its full view (openTask), where it is edited */}
+      <CreateSheet open={adding} life={d.life} onClose={() => setAdding(false)}
+        onSave={async (draft) => { await d.add(draft); say(draft.nora ? 'Task added. Nora has it.' : 'Task added'); }} />
     </>
   );
 }
@@ -374,10 +400,10 @@ function HomePage({ d, say, hide, onNora }: { d: HomeData; say: Say; hide: () =>
 type BucketKey = 'today' | 'tomorrow' | 'later' | 'none';
 const BUCKETS: BucketKey[] = ['today', 'tomorrow', 'later', 'none'];
 
-function Bucket({ label, children, onY }: { label: string; children: ReactNode; onY?: (y: number) => void }) {
+function Bucket({ label, note, children, onY }: { label: string; note?: string | null; children: ReactNode; onY?: (y: number) => void }) {
   return (
     <View onLayout={(e) => onY?.(e.nativeEvent.layout.y)}>
-      <Text style={st.bucket}>{label}</Text>
+      <Text style={st.bucket}>{label}{note ? <Text style={{ color: C.danger }}>{`  ${note}`}</Text> : null}</Text>
       {children}
     </View>
   );
@@ -385,10 +411,11 @@ function Bucket({ label, children, onY }: { label: string; children: ReactNode; 
 
 // ── a task row: swipe left for Date, Nora, Delete; what Nora is doing on it underneath ─────────────────────────────
 type Drag = { onLift: () => void; onMove: (dy: number) => void; onDrop: (dy: number) => void };
-function TaskRow({ x, first, d, showDue, areaName, color, fresh, onTick, onOpen, onDate, onNora, onDelete, say, onPlace, drag }: {
+function TaskRow({ x, first, d, showDue, areaName, color, fresh, onTick, onOpen, onDate, onNora, onDelete, say, onPlace, drag, onHold }: {
   x: Task; first: boolean; d: HomeData; showDue: boolean; areaName: string | null; color: string; fresh: boolean;
   onTick: () => void; onOpen: () => void; onDate: () => void; onNora: () => void; onDelete: () => void; say: Say;
   onPlace?: (y: number, h: number) => void; drag?: Drag;
+  /** held: the task's full view. A row that drags opens it when let go where it was lifted. */ onHold?: () => void;
 }) {
   const ref = useRef<SwipeableMethods>(null);
   // a task just added glows, then fades
@@ -404,7 +431,7 @@ function TaskRow({ x, first, d, showDue, areaName, color, fresh, onTick, onOpen,
     runOnJS: true,
     onActivate: () => { ref.current?.close(); setLifted(true); lift.set(withSpring(1)); drag?.onLift(); },
     onUpdate: (e) => { ty.set(e.translationY); drag?.onMove(e.translationY); },
-    onDeactivate: (e) => { drag?.onDrop(e.translationY); },
+    onDeactivate: (e) => { drag?.onDrop(e.translationY); if (Math.abs(e.translationY) < 8) onHold?.(); },
     onFinalize: () => { ty.set(withSpring(0, { damping: 18, stiffness: 220 })); lift.set(withSpring(0)); setLifted(false); },
   });
   const liftStyle = useAnimatedStyle(() => ({
@@ -426,14 +453,15 @@ function TaskRow({ x, first, d, showDue, areaName, color, fresh, onTick, onOpen,
             <Action label="Delete" color={tint(C.danger, 0.2)} icon="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12" onPress={act(onDelete)} />
           </View>
         )}>
-        <Pressable accessibilityRole="button" accessibilityHint="Edit the task" onPress={onOpen} style={[st.task, !first && st.rule]}>
+        <Pressable accessibilityRole="button" accessibilityHint="Opens the task" onPress={onOpen} onLongPress={drag ? undefined : onHold} delayLongPress={350}
+          style={[st.task, !first && st.rule]}>
           <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, st.glow, glowStyle]} />
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text numberOfLines={2} style={[st.taskTitle, done && st.doneTitle]}>{x.title}</Text>
             {areaName || showDue || tag ? (
               <View style={st.meta}>
                 {areaName ? <View style={st.metaItem}><View style={[st.dot6, { backgroundColor: color }]} /><Text style={st.metaText}>{areaName}</Text></View> : null}
-                {showDue && x.due ? <Text style={[st.metaText, { color: C.faint }, t.num]}>{dueLabel(x.due)}</Text> : null}
+                {showDue && x.due ? <Text style={[st.metaText, { color: x.due < istDay() && !done ? C.danger : C.faint }, t.num]}>{dueLabel(x.due)}</Text> : null}
                 {tag ? <View style={st.metaItem}><View style={[st.dot6, { backgroundColor: NORA }]} /><Text style={[st.metaText, { color: NORA_TEXT }]}>Nora</Text></View> : null}
               </View>
             ) : null}
@@ -512,6 +540,11 @@ function NoraPage({ d, say, onBack }: { d: HomeData; say: Say; onBack: () => voi
   const h = d.home;
   const tasks = d.today?.tasks ?? [];
   const title = (id: string) => tasks.find((x) => x.id === id)?.title ?? id;
+  // a task she is tagged on opens to that task: its details and what she did or will do with it
+  const open = (id: string) => {
+    const x = tasks.find((y) => y.id === id);
+    openTask(x ? { id, title: x.title, status: x.status, due: x.due, area: x.area, owner: x.owner } : { id, title: title(id) });
+  };
   const tags = Object.values(d.tags);
   const [answered, setAnswered] = useState<Record<string, string>>({});
   const items = h ? [...h.items, ...h.older.filter((x) => !h.items.some((y) => y.id === x.id))] : [];
@@ -549,7 +582,7 @@ function NoraPage({ d, say, onBack }: { d: HomeData; say: Say; onBack: () => voi
           <>
             {h?.busy ? <PageRow first lead={<Dots color={NORA} />} title={h.busy.title} sub={`Until ${new Date(Date.parse(h.busy.until) + 5.5 * 3600_000).toISOString().slice(11, 16)}`} /> : null}
             {tags.filter((g) => g.state === 'working' || g.state === 'ask').map((g, i) => (
-              <PageRow key={g.taskId} first={!h?.busy && i === 0} lead={g.state === 'ask' ? <View style={[st.dot8, { backgroundColor: NORA }]} /> : <Dots color={NORA} />}
+              <PageRow key={g.taskId} first={!h?.busy && i === 0} onPress={() => open(g.taskId)} lead={g.state === 'ask' ? <View style={[st.dot8, { backgroundColor: NORA }]} /> : <Dots color={NORA} />}
                 title={title(g.taskId)} sub={g.state === 'ask' ? g.question ?? 'Needs one answer' : 'On it'} />
             ))}
           </>
@@ -562,7 +595,7 @@ function NoraPage({ d, say, onBack }: { d: HomeData; say: Say; onBack: () => voi
             {(h?.upcoming ?? []).map((u, i) => <PageRow key={u.id} first={i === 0} lead={<ClockIcon />} title={u.title.replace(/^\d{1,2}:\d{2}\s*:?\s*/, '')} sub={u.time} />)}
             {h?.calls.morning ? <PageRow first={!h.upcoming?.length} lead={<PhoneIcon />} title="Morning call with you" sub={h.calls.morning} /> : null}
             {h?.calls.night ? <PageRow first={!h.upcoming?.length && !h.calls.morning} lead={<PhoneIcon />} title="Night call with you" sub={h.calls.night} /> : null}
-            {tags.filter((g) => g.state === 'queued').map((g) => <PageRow key={g.taskId} first={false} lead={<View style={st.ring12} />} title={title(g.taskId)} sub="Her task, not started" />)}
+            {tags.filter((g) => g.state === 'queued').map((g) => <PageRow key={g.taskId} first={false} onPress={() => open(g.taskId)} lead={<View style={st.ring12} />} title={title(g.taskId)} sub="Her task, not started" />)}
           </>
         ) : <EmptyCard text="Nothing lined up." />}
       </PageSection>
@@ -570,10 +603,11 @@ function NoraPage({ d, say, onBack }: { d: HomeData; say: Say; onBack: () => voi
       {tags.some((g) => g.state === 'found' || g.state === 'error') ? (
         <PageSection title="Found for you">
           {tags.filter((g) => g.state === 'found' || g.state === 'error').map((g, i) => (
-            <View key={g.taskId} style={[st.pageRow, i > 0 && st.rule, { flexDirection: 'column', alignItems: 'stretch', gap: 6 }]}>
+            <Pressable key={g.taskId} accessibilityRole="button" accessibilityHint="Opens the task" onPress={() => open(g.taskId)}
+              style={({ pressed }) => [st.pageRow, i > 0 && st.rule, { flexDirection: 'column', alignItems: 'stretch', gap: 6 }, pressed && { backgroundColor: SURF.pressed }]}>
               <Text style={st.taskTitle}>{title(g.taskId)}</Text>
               <Text style={[st.nbBody, g.state === 'error' && { color: C.danger }]}>{g.text ?? (g.state === 'error' ? 'Could not finish.' : 'Done.')}</Text>
-            </View>
+            </Pressable>
           ))}
         </PageSection>
       ) : null}
@@ -595,15 +629,17 @@ function NoraPage({ d, say, onBack }: { d: HomeData; say: Say; onBack: () => voi
 function PageSection({ title, children }: { title: string; children: ReactNode }) {
   return <View style={{ gap: 10 }}><Text accessibilityRole="header" style={t.heading}>{title}</Text><View style={st.group}>{children}</View></View>;
 }
-function PageRow({ lead, title, sub, first }: { lead?: ReactNode; title: string; sub?: string | null; first: boolean }) {
+function PageRow({ lead, title, sub, first, onPress }: { lead?: ReactNode; title: string; sub?: string | null; first: boolean; onPress?: () => void }) {
   return (
-    <View style={[st.pageRow, !first && st.rule]}>
+    <Pressable disabled={!onPress} accessibilityRole={onPress ? 'button' : undefined} onPress={onPress}
+      style={({ pressed }) => [st.pageRow, !first && st.rule, pressed && !!onPress && { backgroundColor: SURF.pressed }]}>
       {lead ? <View style={st.leadCol}>{lead}</View> : null}
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={st.taskTitle} numberOfLines={2}>{title}</Text>
         {sub ? <Text style={[st.metaText, { color: C.faint }, t.num]} numberOfLines={2}>{sub}</Text> : null}
       </View>
-    </View>
+      {onPress ? <Chevron color={C.faint} /> : null}
+    </Pressable>
   );
 }
 function EmptyCard({ text, caption }: { text: string; caption?: string }) {
@@ -639,6 +675,8 @@ const st = StyleSheet.create({
   add: { height: 52, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16 },
   addText: { fontFamily: F.regular, fontSize: 16, lineHeight: 21, color: C.faint },
   empty: { paddingHorizontal: 16, paddingBottom: 16, gap: 4 },
+  owed: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', columnGap: 14, rowGap: 4, marginTop: 6 },
+  owedText: { fontFamily: F.medium, fontSize: 14, lineHeight: 20, color: C.textSoft },
   bucket: { fontFamily: F.medium, fontSize: 13, lineHeight: 18, color: C.faint, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 2 },
   task: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingVertical: 12, paddingHorizontal: 16, backgroundColor: '#1A1C22' },
   rule: { borderTopWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.08)' },

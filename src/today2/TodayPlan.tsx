@@ -8,6 +8,7 @@ import { takePhoto } from '@/capture/shoot';
 import type { BodyToday } from '@/lib/body';
 import type { Area, AspectProgress, LifePayload, TodayPayload } from '@/lib/today';
 import { ASPECT_COLOR, C } from '@/theme';
+import { openTask } from '@/work/bus';
 import { IST, routineFlags, routineReach, useDay } from './day';
 import { MealText, mealNow } from './overlays';
 import { Plan } from './Plan';
@@ -120,9 +121,12 @@ export function TodayPlan({ today, life, areas, body, say, hide, onOpen, onToggl
       const hmNow = `${String(n.getUTCHours()).padStart(2, '0')}:${String(Math.floor(n.getUTCMinutes() / 5) * 5).padStart(2, '0')}`;
       cap.wake(hmNow).then(() => say(`Woke at ${hmNow}`), fail);
     } else if (it.id === 'gym') onOpen('agenticos://body/gym');
-    else if (it.id.startsWith('t:')) say(it.done ? 'Done' : `${it.title}, until ${new Date((it.end ?? it.start) + IST).toISOString().slice(11, 16)}`);
+    else if (it.id.startsWith('t:')) {
+      const x = today.tasks.find((y) => y.id === it.id.slice(2));
+      if (x) openTask({ id: x.id, title: x.title, status: x.status, due: x.due, area: x.area, owner: x.owner, repeat: x.repeat ?? null });
+    }
     else say(it.sub ? `${it.title}, ${it.sub}` : it.title);
-  }, [cap, onOpen, say, fail]);
+  }, [cap, onOpen, say, fail, today]);
 
   // ── the smart photo: one shot, the PC reads it and files it where it belongs ──
   const [reading, setReading] = useState(false);

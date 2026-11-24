@@ -117,7 +117,9 @@ function PhoneToday() {
   const mic = useWispr(!!t.view && native, NORA_KEYS);
   const kbMic = useKeyboardMic(); // records for the keyboard extension (agenticos://flow)
   const agent = useAgent(!!t.view && native);
-  const noraOpen = useNora().chat;
+  const nu = useNora();
+  const noraOpen = nu.chat;
+  const callUp = !!nu.call; // a call owns the mic: the PC mic page stays shut while one is up (lib/calls.ts)
   const b = useBody(!!t.view); // today's workout, water and protein, under the Body part of the plan
   const tt = useTodayToast();
   const signedIn = !!t.view;
@@ -218,7 +220,7 @@ function PhoneToday() {
       <Dock bottom={insets.bottom} width={width} aspects={planned} onNotBuilt={notBuilt}
         onAspect={openAspect} onHome={aspect ? closeAspect : undefined} hidden={immersive} />
       {/* opens by itself while a volume press has Wispr going, and closes once it has sent */}
-      <PcMicSheet open={micOpen || (live && !closedLive)} onScreen={() => setRemoteOpen(true)} origin={micCenter(insets.top, width)} phase={mic.phase}
+      <PcMicSheet open={!callUp && (micOpen || (live && !closedLive))} onScreen={() => setRemoteOpen(true)} origin={micCenter(insets.top, width)} phase={mic.phase}
         since={mic.since} error={mic.error} source={mic.source} sourceNote={mic.sourceNote} onSource={mic.setSource}
         onClose={() => { setMicOpen(false); if (live) setClosedLive(true); }}
         onTalkIn={mic.startTalk} onTalkOut={mic.endTalk} onHandsFree={mic.toggleHandsFree}

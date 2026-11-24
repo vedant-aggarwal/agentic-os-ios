@@ -3,7 +3,7 @@ import { type GestureResponderEvent, RefreshControl, SectionList, type SectionLi
 import { C } from '@/theme';
 import type { Idea, JobBrief, NeedItem, OrcaAgent, ProjectCard, RepoState, ResolvedItem, SessionBrief, Task } from '../types';
 import { NeedCard } from './NeedCard';
-import { openSheet } from '../bus';
+import { openSheet, openTask } from '../bus';
 import { notBuilt, openJob, openOrcaAgent, openProject, openResolved } from './nav';
 import { orcaLive, OrcaRow } from './orca';
 import { ResolvedRow } from './resolved';
@@ -105,7 +105,7 @@ export function HubList({ sections, header, refreshing, onRefresh, handlers, ski
             onLongPress={(e) => onHold?.(item.project, e)} onAction={(a) => onProjectAction?.(item.project, a)} />
         );
       case 'idea': return <IdeaRow idea={item.idea} onPress={() => openSheet({ kind: 'editIdea', idea: item.idea })} />;
-      case 'task': return <TaskLine task={item.task} onPress={() => openSheet({ kind: 'editTask', task: item.task })} />;
+      case 'task': return <TaskLine task={item.task} onPress={() => openTask(item.task)} onLongPress={() => openTask(item.task)} />;
       case 'session': return <SessionRow session={item.session} onPress={() => notBuilt('Reading sessions')} />;
       case 'repo': return <RepoRow repo={item.repo} folders={item.folders} onPress={() => notBuilt('Uncommitted changes')} />;
       case 'empty': return <EmptyLine text={item.text} add={item.add} />;

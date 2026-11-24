@@ -344,6 +344,8 @@ export const work = {
   loadOrca,
   clearNotice: () => set((s) => ({ ...s, notice: null })),
   notify: (text: string) => set((s) => ({ ...s, notice: text })),
+  /** Another surface (the task view) changed something on the PC: read home, and the project it touched, again. */
+  refetch: (project: string | null) => scheduleRefetch(project),
 
   addIdea(project: string | null, title: string, body?: string, source = 'app') {
     const key = newKey();

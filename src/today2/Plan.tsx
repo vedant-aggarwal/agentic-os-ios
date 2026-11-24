@@ -7,7 +7,12 @@ import { takePhoto } from '@/capture/shoot';
 import { frameOf, type FrameId } from '@/capture/moments';
 import type { BodyToday } from '@/lib/body';
 import type { Task } from '@/lib/today';
+import { ASPECT_NAME } from '@/lib/aspects';
+import { useGet } from '@/lib/mod';
+import { DEMO } from '@/lib/demo';
 import { noraUi } from '@/nora/state';
+import { openTask } from '@/work/bus';
+import type { Tag } from '@/home/data';
 import { GymCard } from '@/today/GymCard';
 import { ASPECT_COLOR, C, F, type AspectKey } from '@/theme';
 import { count, MEALS, routineFlags, type CheckId, type Day, type RoutineItem, type SkipId } from './day';
@@ -19,7 +24,9 @@ import type { Say } from './TodayPlan';
 
 // Today's sections, top to bottom: Core habits, Body, Diet, Mind, Financial (Mission, Money, Growth), Habits to
 // leave, then any other aspect with tasks. A finished section sinks under "Done today", rows kept as quiet lines.
-// A task or routine row can be cancelled for today: tap its tick twice, or hold the row (Cancel for today).
+// A routine row can be cancelled for today: tap its tick twice, or hold the row (Cancel for today). A task card's tick
+// does the same on a double tap; a tap or hold on the card opens the task's full view (edit, move, cancel, delete).
+// Above the sections, a short "Due now" list: late and due-today tasks, and what Nora is waiting on him for.
 
 const A = ASPECT_COLOR;
 const SHOWN_CARDS = 10;
@@ -92,10 +99,8 @@ export function Plan({ d, body, now, onOpen, onToggleTask, onCancelTask, onResto
     undo(x.repeat || x.next ? `${x.title} skipped today` : `${x.title} cancelled`, () => onRestoreTask(x.id));
   };
   const restoreTask = (x: Task) => { hold(x.id, true); onRestoreTask(x.id); say(`${x.title} is back`); };
-  const holdTask = (x: Task) => {
-    haptic.success();
-    setMenu({ title: x.title, kind: x.repeat || x.next ? 'repeat' : 'once', cancelled: x.status === 'dropped', onCancel: () => cancelTask(x), onRestore: () => restoreTask(x) });
-  };
+  const openOf = (x: Task) => openTask({ id: x.id, title: x.title, status: x.status, due: x.due, area: x.area, owner: x.owner, repeat: x.repeat ?? null });
+  const holdOf = (x: Task) => { haptic.success(); openOf(x); };
 
   const wakeHm = cap.wakeAt;
   const logWake = async () => {
@@ -114,10 +119,41 @@ export function Plan({ d, body, now, onOpen, onToggleTask, onCancelTask, onResto
     return (
       <CardRow tasks={list.slice(0, SHOWN_CARDS)} color={color} today={cap.day} steady={steady}
         onTick={(id) => { const x = list.find((y) => y.id === id); hold(id, !!x && shut(x)); onToggleTask(id); }}
-        onCancel={cancelTask} onRestore={restoreTask} onHold={holdTask} more={Math.max(0, list.length - SHOWN_CARDS)} onMore={onHome} />
+        onCancel={cancelTask} onRestore={restoreTask} onOpen={openOf} onHold={holdOf} more={Math.max(0, list.length - SHOWN_CARDS)} onMore={onHome} />
     );
   };
   const dueOf = (k: AspectKey | 'none') => (T.get(k) ?? []).filter((x) => x.due === cap.day);
+
+  // ── due now: late and due-today open tasks, any aspect, plus what Nora waits on him for ──
+  const tagsRead = useGet<{ tags: Record<string, Tag> }>(DEMO ? null : '/mod/tasknora/tags');
+  const waiting = Object.values(tagsRead.data?.tags ?? {}).filter((g) => g.state === 'ask').length;
+  const owed = [...T.entries()].flatMap(([k, l]) => l.map((x) => ({ x, k })))
+    .filter(({ x }) => !!x.due && x.due <= cap.day && (x.status === 'todo' || x.status === 'doing' || (x.id in steady && x.status === 'done')))
+    .sort((a, b) => String(a.x.due).localeCompare(String(b.x.due)));
+  const late = owed.filter(({ x }) => x.due! < cap.day).length;
+  const dueNow = owed.length || waiting ? (
+    <View style={st.due}>
+      <View style={st.dueHead}>
+        <Text style={t.section}>Due now</Text>
+        <View style={{ flex: 1 }} />
+        {late ? <Text style={[st.dueCount, { color: C.danger }]}>{`${late} late`}</Text> : null}
+        {owed.length - late ? <Text style={st.dueCount}>{`${owed.length - late} today`}</Text> : null}
+      </View>
+      <Group>
+        {owed.slice(0, 4).map(({ x, k }, i) => (
+          <Row key={x.id} first={i === 0} title={x.title} done={x.status === 'done'} color={k === 'none' ? C.muted : A[k]}
+            sub={`${x.due! < cap.day ? 'Late' : 'Today'}${k === 'none' ? '' : ` · ${ASPECT_NAME[k]}`}`} subColor={x.due! < cap.day ? C.danger : undefined}
+            onPress={() => openOf(x)} onHold={() => holdOf(x)} tickLabel={`${x.title}, done`}
+            onTick={() => { hold(x.id, x.status === 'done'); onToggleTask(x.id); }} />
+        ))}
+        {owed.length > 4 ? <Row title={`${owed.length - 4} more on Home`} done={false} color={C.muted} onPress={onHome} first={false} /> : null}
+        {waiting ? (
+          <Row first={!owed.length} title={`Nora is waiting on you for ${waiting === 1 ? 'one answer' : `${waiting} answers`}`} done={false} color={NORA}
+            onPress={() => noraUi.openHome()} right={<View style={[st.dot, { backgroundColor: NORA }]} />} />
+        ) : null}
+      </Group>
+    </View>
+  ) : null;
 
   const sections: Built[] = [];
 
@@ -373,6 +409,7 @@ export function Plan({ d, body, now, onOpen, onToggleTask, onCancelTask, onResto
 
   return (
     <View style={st.wrap}>
+      {dueNow}
       {open.map((x) => x.node)}
       {done.length ? (
         <View style={st.doneHead}><Text style={[t.section, { color: C.faint }]}>Done today</Text><View style={st.doneRule} /></View>
@@ -473,6 +510,10 @@ const st = StyleSheet.create({
   thread: { flexDirection: 'row', gap: 12, marginTop: -4 },
   threadLine: { width: 2, marginLeft: 21, borderRadius: 1, marginBottom: 12 },
   doneHead: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  due: { gap: 10 },
+  dueHead: { flexDirection: 'row', alignItems: 'center', gap: 12, marginLeft: 4, marginRight: 4 },
+  dueCount: { fontFamily: F.medium, fontSize: 14, lineHeight: 20, color: C.textSoft },
+  dot: { width: 8, height: 8, borderRadius: 4, marginRight: 16 },
   doneRule: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(255,255,255,0.12)' },
 });
 

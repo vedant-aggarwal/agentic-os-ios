@@ -13,8 +13,9 @@ import { Sym } from '@/components/Sym';
 import { Glyph, Icon } from '@/aspects/kit/controls';
 import { haptic, tint } from '@/aspects/kit/tokens';
 import { useDictate } from '@/nora/useDictate';
-import { ASPECT_COLOR, C, F } from '@/theme';
-import { useCapture, type SmartItem } from './data';
+import { ASPECT_COLOR, C, F, type AspectKey } from '@/theme';
+import { openTask } from '@/work/bus';
+import { DESCRIBE_KINDS, useCapture, type Described, type DescribeKind, type SmartItem } from './data';
 import {
   COLUMNS, dayMinute, focusFrame, FRAMES, frameOf, nowItems, tickOf, waterBehind, type FrameId, type NowItem, type TickId,
 } from './moments';
@@ -31,9 +32,12 @@ import { takePhoto } from './shoot';
 //   Water    one mark per 250 ml of the target; +250 adds a glass.
 //   Self     Body, Mind and Soul side by side, each a short list of ticks; Clean's slip sits under it (held).
 //   Now      up to three actions for this hour, nearest the thumb.
-//   A line   add a task (area, today, tag Nora), or a journal line or a book page when one of those asked for it;
-//            the mic beside it dictates into that line (the app's GPT dictation; nothing goes to Nora or the PC's
-//            typing). Tap to start, tap again to stop and edit; the arrow stops and saves in one tap.
+//   A line   "Describe anything": a meal, a spend, a task, an idea, a journal line or a weight, typed or said; the PC
+//            works out which and files it on its page, and a card says what it did, with Undo and "Not right?" to
+//            re-file it as another kind. The line's Task chip turns it into a plain task (aspect, today, tag Nora). A
+//            journal line or a book page takes the line over when one of those asked for it. The mic beside it
+//            dictates into the line (the app's GPT dictation; nothing goes to Nora or the PC's typing). Tap to start,
+//            tap again to stop and edit; the arrow stops and saves in one tap.
 // It stays open after each capture, so several can go in one visit. Where each write lands: ./data.ts.
 
 const NORA = '#F0457A';
@@ -122,15 +126,18 @@ function Surface({ p: pv, open, from, floor, onClose }: {
   const turn = useAnimatedStyle(() => ({ transform: [{ rotate: `${45 * pv.value}deg` }] }));
 
   // ── the line at the bottom ──
-  const [mode, setMode] = useState<Mode>({ kind: 'task' });
+  const [mode, setMode] = useState<Mode>({ kind: 'describe' });
   const [text, setText] = useState('');
   const [typing, setTyping] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [area, setArea] = useState<string | null>(null);
+  const [aspect, setAspect] = useState<AspectKey | null>(null);
   const [due, setDue] = useState(true);
   const [tagNora, setTagNora] = useState(false);
   const input = useRef<ComponentRef<typeof TextInput>>(null);
-  const toTask = useCallback(() => { setMode({ kind: 'task' }); setText(''); }, []);
+  const toLine = useCallback(() => { setMode({ kind: 'describe' }); setText(''); }, []);
+  // what the last described line became, until he closes it or describes the next
+  const [filed, setFiled] = useState<Described | null>(null);
+  const [fixing, setFixing] = useState(false);
   // the mic: GPT dictation into this line, the same streamed path as Nora's composer, and nothing else
   const dict = useDictate();
   const talking = dict.state !== 'idle';
@@ -139,7 +146,7 @@ function Surface({ p: pv, open, from, floor, onClose }: {
   const micTap = async () => {
     if (dict.state === 'finishing') return;
     if (dict.state === 'idle') {
-      if (mode.kind === 'wake') toTask();
+      if (mode.kind === 'wake') toLine();
       input.current?.blur();
       void dict.start();
       return;
@@ -156,13 +163,18 @@ function Surface({ p: pv, open, from, floor, onClose }: {
     setBusy(true);
     try {
       if (mode.kind === 'journal') {
-        await d.journalLine(v); haptic.medium(); say("In today's journal"); toTask(); input.current?.blur();
+        await d.journalLine(v); haptic.medium(); say("In today's journal"); toLine(); input.current?.blur();
       } else if (mode.kind === 'page') {
         const n = Math.round(Number(v.replace(/[^0-9.]/g, '')));
         if (!v.match(/\d/) || !Number.isFinite(n) || n < 0) throw new Error('A page number, like 142.');
-        say(await d.page(n)); haptic.medium(); toTask(); input.current?.blur();
+        say(await d.page(n)); haptic.medium(); toLine(); input.current?.blur();
+      } else if (mode.kind === 'describe') {
+        setFiled(null); setFixing(false);
+        const it = await d.describe(v);
+        if (!alive.current) return;
+        haptic.success(); setText(''); input.current?.blur(); setFiled(it);
       } else {
-        say(await d.task({ title: v, area, today: due, tagNora })); haptic.medium(); setText(''); setTagNora(false);
+        say(await d.task({ title: v, aspect, today: due, tagNora })); haptic.medium(); setText(''); setTagNora(false);
       }
     } catch (e) { fail(e); }
     setBusy(false);
@@ -180,7 +192,7 @@ function Surface({ p: pv, open, from, floor, onClose }: {
   const saveWake = async () => {
     if (mode.kind !== 'wake') return;
     const hm = mode.hm;
-    toTask();
+    toLine();
     if (hm === d.wakeAt) return;
     try { await d.wake(hm); haptic.medium(); say(`Woke at ${hm}`); } catch (e) { fail(e); }
   };
@@ -193,7 +205,7 @@ function Surface({ p: pv, open, from, floor, onClose }: {
     if (on && t.kind === 'time') return void wake();
     if (on && t.kind === 'line') return ask({ kind: 'journal' });
     if (on && t.kind === 'page') { if (!d.book) { fail(new Error('No book open. Pick one in Mind > Read.')); return; } return ask({ kind: 'page' }); }
-    if (!on && id === 'wake' && mode.kind === 'wake') toTask();
+    if (!on && id === 'wake' && mode.kind === 'wake') toLine();
     if (id === 'clean' && !d.cleanReady) { fail(new Error('Start Clean in Soul first.')); return; }
     if (on) haptic.medium(); else haptic.light();
     try { const msg = await d.toggle(id, on); if (msg) say(msg); } catch (e) { fail(e); }
@@ -277,8 +289,25 @@ function Surface({ p: pv, open, from, floor, onClose }: {
     void tick(n.id);
   };
 
-  const tag = mode.kind === 'journal' ? { text: 'Journal', color: ASPECT_COLOR.soul } : mode.kind === 'page' ? { text: 'Book', color: ASPECT_COLOR.mind } : null;
-  const placeholder = mode.kind === 'journal' ? 'A line for today' : mode.kind === 'page' ? (d.book ? `Page in ${d.book.title}` : 'Page') : 'Add a task';
+  // ── a described line: take it back, or file it as another kind ──
+  const [fixBusy, setFixBusy] = useState(false);
+  const undoFiled = async () => {
+    if (!filed || fixBusy) return;
+    setFixBusy(true);
+    try { await d.describeUndo(filed); haptic.light(); setFiled(null); say('Taken back'); } catch (e) { fail(e); }
+    setFixBusy(false);
+  };
+  const refile = async (kind: DescribeKind) => {
+    if (!filed || fixBusy) return;
+    setFixBusy(true);
+    try { const it = await d.describeAs(filed, kind); haptic.success(); setFiled(it); setFixing(false); } catch (e) { fail(e); }
+    setFixBusy(false);
+  };
+
+  const tag = mode.kind === 'journal' ? { text: 'Journal', color: ASPECT_COLOR.soul } : mode.kind === 'page' ? { text: 'Book', color: ASPECT_COLOR.mind }
+    : mode.kind === 'task' ? { text: 'Task', color: C.text } : null;
+  const placeholder = mode.kind === 'journal' ? 'A line for today' : mode.kind === 'page' ? (d.book ? `Page in ${d.book.title}` : 'Page')
+    : mode.kind === 'task' ? 'Add a task' : 'Describe anything';
   // composing: the panel steps back to the line (and its chips) while the field has focus or holds words
   const composing = typing || talking || (mode.kind !== 'wake' && text.length > 0);
   const showAll = !composing;
@@ -293,7 +322,7 @@ function Surface({ p: pv, open, from, floor, onClose }: {
 
       <Animated.View accessibilityViewIsModal layout={LinearTransition.duration(220)}
         style={[st.panel, { bottom: height - floor, maxHeight: floor - insets.top - 8, transformOrigin: `${from.x - 8}px 100%` }, grow]}>
-        <ScrollView bounces={false} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={[st.body, composing && mode.kind !== 'task' && st.bodyEmpty]}>
+        <ScrollView bounces={false} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={[st.body, composing && (mode.kind === 'journal' || mode.kind === 'page') && st.bodyEmpty]}>
           {showAll ? (
             <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(120)} style={st.sections}>
               <View style={st.pad}>
@@ -346,12 +375,20 @@ function Surface({ p: pv, open, from, floor, onClose }: {
             </Animated.View>
           ) : null}
 
+          {composing && mode.kind === 'describe' ? (
+            <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(100)}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="always" contentContainerStyle={st.chips}>
+                <Chip text="Just a task" on={false} color={C.text} onPress={() => setMode({ kind: 'task' })} />
+              </ScrollView>
+            </Animated.View>
+          ) : null}
+
           {composing && mode.kind === 'task' ? (
             <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(100)}>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="always" contentContainerStyle={st.chips}>
                 <Chip text="Today" on={due} color={C.text} onPress={() => setDue(!due)} />
-                {d.areas.map((a) => (
-                  <Chip key={a.slug} text={a.name} on={area === a.slug} color={a.aspect ? ASPECT_COLOR[a.aspect] : C.text} onPress={() => setArea(area === a.slug ? null : a.slug)} />
+                {d.aspects.map((a) => (
+                  <Chip key={a.key} text={a.name} on={aspect === a.key} color={ASPECT_COLOR[a.key]} onPress={() => setAspect(aspect === a.key ? null : a.key)} />
                 ))}
                 <Chip text="Nora" on={tagNora} color={NORA} onPress={() => setTagNora(!tagNora)}
                   glyph={<Glyph sf="sparkle" d={SPARK} size={14} color={tagNora ? NORA : C.muted} filled />} />
@@ -360,12 +397,20 @@ function Surface({ p: pv, open, from, floor, onClose }: {
           ) : null}
         </ScrollView>
 
+        {filed && !composing ? (
+          <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(120)} style={st.filedAt}>
+            <FiledCard it={filed} fixing={fixing} busy={fixBusy} onUndo={() => { void undoFiled(); }} onFix={() => setFixing(!fixing)}
+              onAs={(k) => { void refile(k); }} onClose={() => { setFiled(null); setFixing(false); }}
+              onOpen={filed.kind === 'task' && filed.ref && filed.status === 'filed' ? () => { const r = filed.ref!; onClose(); openTask({ id: r, title: filed.text }); } : undefined} />
+          </Animated.View>
+        ) : null}
+
         <View style={st.line}>
           {mode.kind === 'wake' ? (
             <WakeLine hm={mode.hm} onMove={moveWake} onDone={() => { void saveWake(); }} />
           ) : (
             <Field ref={input} value={text} onChange={setText} onSubmit={() => { void submit(); }} placeholder={placeholder} tag={tag}
-              onTag={() => { toTask(); input.current?.blur(); }} onFocus={() => setTyping(true)} onBlur={() => setTyping(false)}
+              onTag={() => { toLine(); input.current?.blur(); }} onFocus={() => setTyping(true)} onBlur={() => setTyping(false)}
               keyboard={mode.kind === 'page' ? 'number-pad' : 'default'} busy={busy || dict.state === 'finishing'}
               live={talking ? (dict.live || '') : null} />
           )}
@@ -405,6 +450,50 @@ function NowFor({ n, water, target, onPress }: { n: NowItem; water: number; targ
       : t.kind === 'page' ? <Glyph sf="book" d={BOOK} size={20} color={color} />
         : <Icon name="check" size={20} color={color} />;
   return <NowCard title={t.label === 'Woke' ? 'Woke up' : t.label} sub={t.verb} color={color} glyph={glyph} onPress={onPress} />;
+}
+
+const KIND_COLOR: Record<DescribeKind, string> = {
+  task: C.text, meal: ASPECT_COLOR.body, spend: ASPECT_COLOR.money, idea: ASPECT_COLOR.growth, journal: ASPECT_COLOR.soul, weight: ASPECT_COLOR.body,
+};
+
+/** What a described line became: the kind, where it went, what was filed; Undo, and "Not right?" to file it as another kind. */
+function FiledCard({ it, fixing, busy, onUndo, onFix, onAs, onClose, onOpen }: {
+  it: Described; fixing: boolean; busy: boolean; onUndo: () => void; onFix: () => void; onAs: (k: DescribeKind) => void; onClose: () => void;
+  /** a filed task opens in its full view */ onOpen?: () => void;
+}) {
+  const kind = DESCRIBE_KINDS.find((k) => k.kind === it.kind);
+  const color = it.kind ? KIND_COLOR[it.kind] : C.muted;
+  const head = [kind?.label ?? 'Filed', it.where && !it.where.toLowerCase().startsWith((kind?.label ?? '-').toLowerCase()) ? it.where : null, it.by === 'rules' ? 'guessed offline' : null].filter(Boolean).join(' · ');
+  return (
+    <View style={st.filed} accessibilityLiveRegion="polite">
+      <View style={st.filedTop}>
+        <View style={[st.filedDot, { backgroundColor: color }]} />
+        <Text style={[st.filedHead, { color }]} numberOfLines={1}>{head}</Text>
+        <View style={{ flex: 1 }} />
+        <Tap label="Close" onPress={onClose} feel="none" style={st.filedX}><Icon name="close" size={12} color={C.muted} /></Tap>
+      </View>
+      <Pressable accessibilityRole={onOpen ? 'button' : 'text'} accessibilityHint={onOpen ? 'Opens the task' : undefined} disabled={!onOpen} onPress={onOpen}>
+        <Text style={st.filedSaid}>{it.said ?? 'Filed'}</Text>
+      </Pressable>
+      {it.status === 'filed' ? (
+        <View style={st.filedActs}>
+          {it.canUndo ? <Tap label="Undo" onPress={onUndo} feel="light" style={st.filedBtn}><Text style={st.filedBtnText}>Undo</Text></Tap> : null}
+          <Tap label="Not right? File it as something else" onPress={onFix} feel="tick" style={[st.filedBtn, fixing && st.filedBtnOn]}>
+            <Text style={st.filedBtnText}>Not right?</Text>
+          </Tap>
+          {onOpen ? <Tap label="Open the task" onPress={onOpen} feel="light" style={st.filedBtn}><Text style={st.filedBtnText}>Open</Text></Tap> : null}
+          {busy ? <ActivityIndicator size="small" color={C.muted} /> : null}
+        </View>
+      ) : null}
+      {fixing ? (
+        <View style={st.filedKinds}>
+          {DESCRIBE_KINDS.filter((k) => k.kind !== it.kind).map((k) => (
+            <Chip key={k.kind} text={k.label} on={false} color={KIND_COLOR[k.kind]} onPress={() => onAs(k.kind)} />
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
 }
 
 /** Wake time: logged already; nudge it in 5 minute steps. */
@@ -509,4 +598,16 @@ const st = StyleSheet.create({
   closeBody: { position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, borderRadius: 24 },
   flight: { position: 'absolute', overflow: 'hidden', backgroundColor: '#22252D', boxShadow: '0 18px 40px rgba(0,0,0,0.55)' },
   toastAt: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
+  filedAt: { paddingHorizontal: 12, paddingTop: 12 },
+  filed: { borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.06)', padding: 14, gap: 8 },
+  filedTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  filedDot: { width: 8, height: 8, borderRadius: 4 },
+  filedHead: { fontFamily: F.semibold, fontSize: 13, lineHeight: 18, flexShrink: 1 },
+  filedX: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.07)', marginRight: -4, marginTop: -4 },
+  filedSaid: { fontFamily: F.medium, fontSize: 16, lineHeight: 22, color: C.text },
+  filedActs: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 },
+  filedBtn: { height: 34, paddingHorizontal: 14, borderRadius: 17, justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.09)' },
+  filedBtnOn: { backgroundColor: 'rgba(255,255,255,0.18)' },
+  filedBtnText: { fontFamily: F.semibold, fontSize: 14, lineHeight: 18, color: C.text },
+  filedKinds: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
 });

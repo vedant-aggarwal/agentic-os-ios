@@ -229,6 +229,7 @@ type CardActs = {
   /** double tap a card's tick: cancel for today */ onCancel?: (x: Task) => void;
   /** tap a cancelled card's tick */ onRestore?: (x: Task) => void;
   /** hold a card: its menu */ onHold?: (x: Task) => void;
+  /** tap a card (not its tick): the task's full view */ onOpen?: (x: Task) => void;
 };
 export function CardRow({ tasks, color, today, onTick, more, onMore, steady, ...acts }: {
   tasks: Task[]; color: string; today: string; onTick: (id: string) => void; more?: number; onMore?: () => void;
@@ -255,15 +256,16 @@ export function CardRow({ tasks, color, today, onTick, more, onMore, steady, ...
   );
 }
 
-function Card({ x, w, color, today, onTick, onCancel, onRestore, onHold }: { x: Task; w: number; color: string; today: string; onTick: (id: string) => void } & CardActs) {
+function Card({ x, w, color, today, onTick, onCancel, onRestore, onHold, onOpen }: { x: Task; w: number; color: string; today: string; onTick: (id: string) => void } & CardActs) {
   const done = x.status === 'done', cancelled = x.status === 'dropped'; // Today only holds dropped tasks cancelled today
   // a repeating one was skipped (its next one is filed); a one-off was dropped
   const due = cancelled ? (x.next || x.repeat ? 'Skipped' : 'Cancelled')
     : !x.due ? 'No date' : x.due === today ? 'Today' : x.due < today ? 'Late' : x.due.slice(5);
   const hold = onHold ? () => onHold(x) : undefined;
   return (
-    // the card itself only takes a hold (no button around the tick, for screen readers)
-    <Pressable accessible={false} onLongPress={hold} delayLongPress={400} style={[s.card, { width: w }, (done || cancelled) && { opacity: 0.5 }]}>
+    // a tap on the card opens the task, a hold its menu; the tick is its own button (the card stays out of the screen
+    // reader's way so the tick keeps its own focus)
+    <Pressable accessible={false} onPress={onOpen ? () => onOpen(x) : undefined} onLongPress={hold} delayLongPress={400} style={({ pressed }) => [s.card, { width: w }, (done || cancelled) && { opacity: 0.5 }, pressed && !!onOpen && { transform: [{ scale: 0.98 }] }]}>
       <Text numberOfLines={3} style={[s.cardTitle, cancelled && s.struck]}>{x.title}</Text>
       <View style={s.cardFoot}>
         <Text style={[t.caption, t.num, due === 'Today' && { color: C.textSoft }, due === 'Late' && { color: C.danger }]}>{due}</Text>

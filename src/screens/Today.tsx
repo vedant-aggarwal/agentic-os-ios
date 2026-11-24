@@ -210,8 +210,9 @@ function PhoneToday() {
         <AspectHost aspect={aspect} origin={{ x: width / 2, y: height - orb }} dock={immersive ? insets.bottom : dockClearance(insets.bottom)}
           entry={entry} onEntryDone={doneEntry} onClose={closeAspect} onOpen={openAspect} onNotice={setLocal} onImmersive={setImmersive} />
       </LifeContext>
-      <EdgeBlur height={insets.bottom + 150} strength={35} curve={2.6} />
-      <EdgeGlow height={insets.bottom + 200} orb={orb} />
+      {/* a page's full-screen flow hides the dock, so the blur and glow under it go too (they washed out its buttons) */}
+      {!immersive ? <EdgeBlur height={insets.bottom + 150} strength={35} curve={2.6} /> : null}
+      {!immersive ? <EdgeGlow height={insets.bottom + 200} orb={orb} /> : null}
       <TodayToast toast={tt.toast} bottom={insets.bottom + 112} />
       <Notice text={kbMic.state === 'recording' ? 'Listening for the keyboard. Swipe back to your app and talk.' : kbMic.error ?? local ?? t.notice} bottom={insets.bottom + 112} onClear={clear} />
       <Dock bottom={insets.bottom} width={width} aspects={planned} onNotBuilt={notBuilt}

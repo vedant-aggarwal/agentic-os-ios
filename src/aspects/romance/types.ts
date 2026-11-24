@@ -22,10 +22,13 @@ export type Review = {
   openers: Partial<Record<Place, { id: string; line: string }>> | null;
   by: 'ai' | 'rules'; v: string; model?: string; ms?: number; at: string;
 };
+/** Did he try the last thing to try. Asked at the start of every debrief; the next reading steps up or down from it. */
+export type TriedAnswer = 'yes' | 'partly' | 'no';
+export type Tried = { answer: TriedAnswer; try: string | null };
 export type DebriefStatus = 'saved' | 'transcribing' | 'reviewing' | 'reviewed' | 'failed';
 export type Debrief = Doc & {
   day: string; at: string; session: string | null; kind: 'voice' | 'chips';
-  chips: { well?: string[]; stuck?: string[]; feel?: string | null } | null; text?: string | null;
+  chips: { well?: string[]; stuck?: string[]; feel?: string | null } | null; text?: string | null; tried?: Tried | null;
   file?: string; secs?: number | null; status: DebriefStatus; failed_step?: 'transcribe' | 'review' | 'short' | null;
   error?: string | null; transcript?: string | null; review?: Review | null;
 };

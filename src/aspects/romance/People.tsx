@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import {
-  addDays, Button, Card, CheckRing, Chip, Divider, Empty, Failed, Field, Glyph, haptic, Icon, Press, Row, Screen, Section, Segmented, Sheet,
+  addDays, Button, Card, CheckRing, Chip, dayOf, Divider, Empty, Failed, Field, Glyph, haptic, Icon, Press, Row, Screen, Section, Segmented, Sheet,
   Skeleton, shortDay, t, tint, today, useAspect, weekday,
 } from '@/aspects/kit';
 import { call, newId, type Draft } from '@/lib/mod';
@@ -17,7 +17,7 @@ type Entry = { person: Person; follow: Follow | null };
 export function metLine(e: Entry) {
   const m = e.follow?.met;
   const where = m?.place ? (m.place === 'other' ? 'somewhere else' : placeAt(m.place)) : e.person.where ? `at ${e.person.where}` : null;
-  const day = m?.day ?? e.person.added ?? e.person.created_at?.slice(0, 10) ?? null;
+  const day = m?.day ?? e.person.added ?? (e.person.created_at ? dayOf(e.person.created_at) : null);
   const when = day ? sinceDay(day) : null;
   return ['Met', where, when && /^\d+ [A-Z]/.test(when) ? `on ${when}` : when].filter(Boolean).join(' ');
 }
@@ -161,7 +161,7 @@ export function PersonScreen({ id, onClose, onNext, onTalked }: { id: string | n
             ) : (
               <Button label="Set a next step" kind="soft" onPress={() => onNext(e.person.id)} />
             )}
-            {f?.done?.length ? <Text style={t.caption}>Done: {f.done.slice(-3).map((x) => `${x.what.toLowerCase()} ${whenIn(x.at.slice(0, 10))}`).join(', ')}.</Text> : null}
+            {f?.done?.length ? <Text style={t.caption}>Done: {f.done.slice(-3).map((x) => `${x.what.toLowerCase()} ${whenIn(dayOf(x.at))}`).join(', ')}.</Text> : null}
           </Section>
 
           <Section title="A message you could send">

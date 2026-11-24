@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, LinearTransition, ReduceMotion, ZoomIn } from 'react-native-reanimated';
 import Svg, { Circle } from 'react-native-svg';
 import {
@@ -37,64 +37,67 @@ export function PrimerScreen({ open, onClose, onStart }: { open: boolean; onClos
   };
 
   return (
-    <Screen open={open} onClose={onClose} title="Before you go">
-      <Section title="Where are you?">
-        <View style={s.chips}>
-          {PLACES.map((k) => <Chip key={k} label={PLACE[k]} selected={where === k} onPress={() => { setPlace(k); setTurn(0); }} />)}
-        </View>
-      </Section>
+    <Screen open={open} onClose={onClose} title="Before you go" scroll={false}>
+      {/* the primer scrolls; I'm out stays pinned under it, one tap away */}
+      <ScrollView style={s.flex} contentContainerStyle={s.primer} showsVerticalScrollIndicator={false}>
+        <Section title="Where are you?">
+          <View style={s.chips}>
+            {PLACES.map((k) => <Chip key={k} label={PLACE[k]} selected={where === k} onPress={() => { setPlace(k); setTurn(0); }} />)}
+          </View>
+        </Section>
 
-      {!p.data && p.busy ? (
-        <View style={s.gap12}><Skeleton height={112} radius={24} /><Skeleton height={136} radius={24} /></View>
-      ) : (
-        <>
-          <Card style={s.gap8}>
-            <Text style={t.label}>One thing to try</Text>
-            <Text style={t.lead}>{p.data?.try.text ?? 'Say hello to one person. That is the whole step.'}</Text>
-            <Text style={t.caption}>{tryFrom(p.data)}</Text>
-          </Card>
-          <Card style={s.gap8}>
-            <View style={s.between}>
-              <Text style={t.label}>A way in</Text>
-              {openers.length > 1 ? (
-                <Press label="Another opener" onPress={() => setTurn((n) => n + 1)} feel="tick" hitSlop={12} style={s.another}>
-                  <Text style={[t.label, { color: a.color }]}>Another</Text>
-                </Press>
-              ) : null}
+        {!p.data && p.busy ? (
+          <View style={s.gap12}><Skeleton height={112} radius={24} /><Skeleton height={136} radius={24} /></View>
+        ) : (
+          <>
+            <Card style={s.gap8}>
+              <Text style={t.label}>One thing to try</Text>
+              <Text style={t.lead}>{p.data?.try.text ?? 'Say hello to one person. That is the whole step.'}</Text>
+              <Text style={t.caption}>{tryFrom(p.data)}</Text>
+            </Card>
+            <Card style={s.gap8}>
+              <View style={s.between}>
+                <Text style={t.label}>A way in</Text>
+                {openers.length > 1 ? (
+                  <Press label="Another opener" onPress={() => setTurn((n) => n + 1)} feel="tick" hitSlop={12} style={s.another}>
+                    <Text style={[t.label, { color: a.color }]}>Another</Text>
+                  </Press>
+                ) : null}
+              </View>
+              {opener ? (
+                <Animated.View key={opener.id} entering={FadeIn.duration(160).reduceMotion(ReduceMotion.System)} style={s.gap8}>
+                  <Text style={t.lead}>{opener.line}</Text>
+                  <Text style={t.small}>{opener.when}</Text>
+                </Animated.View>
+              ) : (
+                <Text style={t.body}>Ask one honest question about the place you are both in.</Text>
+              )}
+              <Text style={t.caption}>A question about the place, said once. Not a line to recite.</Text>
+            </Card>
+          </>
+        )}
+
+        <Section title="How many will be friendly, do you think?">
+          <View style={s.chips}>
+            {(Object.keys(EXPECT) as Expect[]).map((k) => (
+              <Chip key={k} label={EXPECT[k]} selected={expect === k} onPress={() => setExpect(expect === k ? null : k)} />
+            ))}
+          </View>
+          <Text style={t.caption}>Optional. Your debrief compares it with what happened.</Text>
+        </Section>
+
+        <View style={s.gap8}>
+          {(p.data?.respect ?? RESPECT_FALLBACK).map((line) => (
+            <View key={line} style={s.respect}>
+              <View style={[s.bullet, { backgroundColor: tint(a.color, 0.6) }]} />
+              <Text style={[t.small, s.flex]}>{line}</Text>
             </View>
-            {opener ? (
-              <Animated.View key={opener.id} entering={FadeIn.duration(160).reduceMotion(ReduceMotion.System)} style={s.gap8}>
-                <Text style={t.lead}>{opener.line}</Text>
-                <Text style={t.small}>{opener.when}</Text>
-              </Animated.View>
-            ) : (
-              <Text style={t.body}>Ask one honest question about the place you are both in.</Text>
-            )}
-            <Text style={t.caption}>A question about the place, said once. Not a line to recite.</Text>
-          </Card>
-        </>
-      )}
-
-      <Section title="How many will be friendly, do you think?">
-        <View style={s.chips}>
-          {(Object.keys(EXPECT) as Expect[]).map((k) => (
-            <Chip key={k} label={EXPECT[k]} selected={expect === k} onPress={() => setExpect(expect === k ? null : k)} />
           ))}
         </View>
-        <Text style={t.caption}>Optional. Your debrief compares it with what happened.</Text>
-      </Section>
 
-      <View style={s.gap8}>
-        {(p.data?.respect ?? RESPECT_FALLBACK).map((line) => (
-          <View key={line} style={s.respect}>
-            <View style={[s.bullet, { backgroundColor: tint(a.color, 0.6) }]} />
-            <Text style={[t.small, s.flex]}>{line}</Text>
-          </View>
-        ))}
-      </View>
-
-      {p.stale ? <Text style={t.caption}>Your PC isn&apos;t answering, so this is the last primer it sent. The outing still counts.</Text> : null}
-      <Button label="I'm out" kind="accent" onPress={start} />
+        {p.stale ? <Text style={t.caption}>Your PC isn&apos;t answering, so this is the last primer it sent. The outing still counts.</Text> : null}
+      </ScrollView>
+      <Button label="I'm out" kind="accent" onPress={start} wrap={s.pinned} />
     </Screen>
   );
 }
@@ -245,7 +248,9 @@ const s = StyleSheet.create({
   gap12: { gap: 12 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   between: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  another: { minHeight: 24, justifyContent: 'center' },
+  another: { minHeight: 44, minWidth: 44, justifyContent: 'center', alignItems: 'flex-end', marginVertical: -10 },
+  primer: { gap: 24, paddingTop: 4, paddingBottom: 16 },
+  pinned: { paddingTop: 8 },
   respect: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
   bullet: { width: 6, height: 6, borderRadius: 3, marginTop: 7 },
   elapsed: { width: 56, textAlign: 'right' },

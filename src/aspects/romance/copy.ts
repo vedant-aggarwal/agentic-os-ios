@@ -1,4 +1,4 @@
-import type { Budget, Depth, Expect, Place } from './types';
+import type { Budget, Depth, Expect, Place, TriedAnswer } from './types';
 
 // Words the page shows. Discreet on purpose: nothing here gives away what the page is about at a glance.
 // The chip ids match the server's bank (server/modules/romance-bank.ts), which turns them into a plain review.
@@ -20,6 +20,9 @@ export const STUCK: Record<string, string> = {
   noask: "I didn't ask to stay in touch", talked: 'I talked more than I listened',
 };
 export const FEEL: Record<string, string> = { calm: 'Calm', nervous: 'Nervous', good: 'Good', flat: 'Flat' };
+
+/** The first question of every debrief: did he try the last thing to try. */
+export const TRIED: Record<TriedAnswer, string> = { yes: 'Tried it', partly: 'Partly', no: 'Not this time' };
 
 /** What to say in a debrief, one at a time under the mic. Concrete, never "why am I like this". */
 export const PROMPTS = ['What happened, from the start?', 'What is one thing that went well?', 'Where did it stall?', 'What would you try next time?'];

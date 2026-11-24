@@ -7,20 +7,22 @@ import type { Debrief, Follow, Outing, Person, Pref, Primer } from './types';
 // Romance's reads. Outings and debriefs are what the PC has with this phone's unsent writes laid over them, so a
 // count made offline shows at once and stays after the app is closed.
 
+// A debrief still in the outbox while the PC is away is marked `waiting`: it shows as saved on this phone, not as being
+// read, and nothing polls the PC for it.
 function useOverlay<T extends { id: string }>(coll: 'sessions' | 'debriefs', items: T[] | null, live: T | null = null): T[] | null {
-  const { outbox } = useLocal();
+  const { outbox, away } = useLocal();
   return useMemo(() => {
     const pending = outbox.filter((p) => p.coll === coll);
     if (items == null && !pending.length && !live) return null;
     const map = new Map<string, T>((items ?? []).map((x) => [x.id, x]));
     for (const p of pending) {
-      if (p.kind === 'put') map.set(p.id, { ...(map.get(p.id) ?? {}), ...(p.doc as unknown as T) });
+      if (p.kind === 'put') map.set(p.id, { ...(map.get(p.id) ?? {}), ...(p.doc as unknown as T), ...(coll === 'debriefs' && away ? { waiting: true } : {}) });
       else if (p.kind === 'del') map.delete(p.id);
       else map.set(p.id, { id: p.id, day: p.day, at: p.at, session: p.session, kind: 'voice', chips: null, status: 'saved', secs: p.secs, waiting: true } as unknown as T);
     }
     if (live) map.set(live.id, live);
     return [...map.values()];
-  }, [items, outbox, coll, live]);
+  }, [items, outbox, away, coll, live]);
 }
 
 export function useOutings() {
@@ -34,7 +36,7 @@ export function useDebriefs() {
   const c = useCollection<Debrief>('romance', 'debriefs');
   const items = useOverlay<Debrief>('debriefs', c.items);
   const sorted = useMemo(() => (items ? [...items].sort((a, b) => String(b.at).localeCompare(String(a.at))) : null), [items]);
-  return { items: sorted, error: items == null ? c.error : null, busy: c.busy, refresh: c.refresh, put: c.put, remove: c.remove };
+  return { items: sorted, error: items == null ? c.error : null, pullError: c.error, busy: c.busy, refresh: c.refresh, put: c.put, remove: c.remove };
 }
 
 /** The primer from the PC, or the last one it sent when it can't be reached. */

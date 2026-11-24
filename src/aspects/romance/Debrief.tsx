@@ -3,16 +3,16 @@ import { useEffect, useRef, useState } from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, ReduceMotion, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import {
-  Button, Card, Chip, dayLabel, Divider, Empty, Failed, Field, haptic, Icon, IconButton, Loading, Press, R, Screen, Section, Skeleton, SURF, t,
+  Button, Card, Chip, dayLabel, dayOf, Divider, Empty, Failed, Field, haptic, Icon, IconButton, Loading, Press, R, Screen, Section, Skeleton, SURF, t,
   timer, tint, today, useAspect,
 } from '@/aspects/kit';
 import { ApiError, call, collection, newId, upload } from '@/lib/mod';
 import { C } from '@/theme';
-import { FEEL, PROMPTS, STUCK, WELL } from './copy';
+import { FEEL, PROMPTS, STUCK, TRIED, WELL } from './copy';
 import { useDebriefs } from './data';
 import { queueAudio, queuePut } from './local';
 import { placeName, useNow, whenIn } from './parts';
-import type { Debrief, Outing, Review } from './types';
+import type { Debrief, Outing, Review, TriedAnswer } from './types';
 
 type Audio = typeof import('expo-audio');
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -25,7 +25,9 @@ type Rec = { prepareToRecordAsync: () => Promise<void>; record: () => void; stop
 const useRecorder: () => Rec = audio ? () => audio.useAudioRecorder(audio.RecordingPresets.HIGH_QUALITY) as unknown as Rec : () => null;
 
 // ── the debrief screen ───────────────────────────────────────────────────────────────────────────────────────────
-export function DebriefScreen({ target, onClose }: { target: { outing: Outing | null; view: string | null } | null; onClose: () => void }) {
+export function DebriefScreen({ target, lastTry, onClose }: {
+  target: { outing: Outing | null; view: string | null } | null; lastTry: string | null; onClose: () => void;
+}) {
   const a = useAspect();
   const d = useDebriefs();
   const rec = useRecorder();
@@ -38,6 +40,7 @@ export function DebriefScreen({ target, onClose }: { target: { outing: Outing | 
   const [stuck, setStuck] = useState<string[]>([]);
   const [feel, setFeel] = useState<string | null>(null);
   const [text, setText] = useState('');
+  const [tried, setTried] = useState<TriedAnswer | null>(null); // did he try the last thing to try
   const open = !!target;
   const now = useNow(500, phase === 'recording');
   const secs = phase === 'recording' ? Math.floor((now - started) / 1000) : 0;
@@ -48,24 +51,38 @@ export function DebriefScreen({ target, onClose }: { target: { outing: Outing | 
   const [lastKey, setLastKey] = useState<string | null>(null);
   if (key !== lastKey) {
     setLastKey(key);
-    if (key) { setMode('talk'); setPhase('idle'); setMicError(null); setMade(null); setWell([]); setStuck([]); setFeel(null); setText(''); }
+    if (key) { setMode('talk'); setPhase('idle'); setMicError(null); setMade(null); setWell([]); setStuck([]); setFeel(null); setText(''); setTried(null); }
   }
 
   const viewId = made ?? target?.view ?? null;
   const shown = viewId ? d.items?.find((x) => x.id === viewId) ?? null : null;
-  const working = !!shown && (shown.status === 'transcribing' || shown.status === 'reviewing' || (shown.status === 'saved' && !shown.review));
+  // one still on this phone (the PC is away) is not being read, so nothing waits on the PC for it
+  const waiting = !!(shown as (Debrief & { waiting?: boolean }) | null)?.waiting;
+  const working = !!shown && !waiting && (shown.status === 'transcribing' || shown.status === 'reviewing' || (shown.status === 'saved' && !shown.review));
 
-  // while the PC works on it, look again every few seconds
+  // while the PC works on it, look again every few seconds; slower each time the PC doesn't answer
+  const pullError = useRef<string | null>(null);
+  useEffect(() => { pullError.current = d.pullError; });
   useEffect(() => {
     if (!open || !working) return;
-    const id = setInterval(() => void collection('romance', 'debriefs').refresh(), 3000);
-    return () => clearInterval(id);
+    let gap = 3000, stop = false;
+    let id: ReturnType<typeof setTimeout>;
+    const tick = async () => {
+      await collection('romance', 'debriefs').refresh();
+      if (stop) return;
+      gap = pullError.current ? Math.min(gap * 2, 60_000) : 3000;
+      id = setTimeout(() => void tick(), gap);
+    };
+    id = setTimeout(() => void tick(), gap);
+    return () => { stop = true; clearTimeout(id); };
   }, [open, working]);
 
   // two minutes is the most
   useEffect(() => { if (phase === 'recording' && secs >= CAP) stopRef.current(); }, [phase, secs]);
 
   const outing = target?.outing ?? null;
+  const askTry = outing?.primer?.try ?? lastTry; // the thing to try he went out with
+  const triedDoc = tried ? { answer: tried, try: askTry ?? null } : null;
   const startRec = async () => {
     setMicError(null);
     if (!audio || !rec) { setMicError('This build has no microphone for this yet. Tap instead.'); return; }
@@ -95,7 +112,7 @@ export function DebriefScreen({ target, onClose }: { target: { outing: Outing | 
     const at = new Date().toISOString();
     const day = today();
     const type = Platform.OS === 'web' ? 'audio/webm' : 'audio/mp4';
-    const q = `id=${id}&secs=${length}&day=${day}&at=${encodeURIComponent(at)}${outing ? `&session=${encodeURIComponent(outing.id)}` : ''}`;
+    const q = `id=${id}&secs=${length}&day=${day}&at=${encodeURIComponent(at)}${outing ? `&session=${encodeURIComponent(outing.id)}` : ''}${triedDoc ? `&tried=${triedDoc.answer}${triedDoc.try ? `&tried_try=${encodeURIComponent(triedDoc.try)}` : ''}` : ''}`;
     try {
       await upload(`/mod/romance/debriefs/audio?${q}`, uri, type);
       await collection('romance', 'debriefs').refresh();
@@ -112,7 +129,7 @@ export function DebriefScreen({ target, onClose }: { target: { outing: Outing | 
   const saveChips = () => {
     const id = newId('db');
     const doc = { id, day: today(), at: new Date().toISOString(), session: outing?.id ?? null, kind: 'chips', status: 'saved',
-      chips: { well, stuck, feel }, text: text.trim() || null, review: null };
+      chips: { well, stuck, feel }, text: text.trim() || null, tried: triedDoc, review: null };
     queuePut('debriefs', doc);
     haptic.medium();
     setMade(id);
@@ -131,8 +148,21 @@ export function DebriefScreen({ target, onClose }: { target: { outing: Outing | 
     <Screen open={open} onClose={onClose} title="Debrief">
       {context ? <Text style={[t.small, s.centre]}>{context}</Text> : null}
 
+      {!shown && askTry ? (
+        <Card style={s.gap12}>
+          <View style={s.gap4}>
+            <Text style={t.label}>Last time&apos;s thing to try</Text>
+            <Text style={t.body}>{askTry}</Text>
+          </View>
+          <Text style={t.small}>Did you try it?</Text>
+          <View style={s.chips}>
+            {(Object.keys(TRIED) as TriedAnswer[]).map((k) => <Chip key={k} label={TRIED[k]} selected={tried === k} onPress={() => setTried(tried === k ? null : k)} />)}
+          </View>
+        </Card>
+      ) : null}
+
       {shown ? (
-        <Result d={shown} working={working} onRetry={retry} />
+        <Result d={shown} working={working} offline={!!d.pullError} onRetry={retry} />
       ) : mode === 'talk' ? (
         <View style={s.talk}>
           <Text style={[t.lead, s.centre]}>{phase === 'recording' ? PROMPTS[Math.min(PROMPTS.length - 1, Math.floor(secs / 20))] : 'Talk for a minute about how it went.'}</Text>
@@ -191,9 +221,10 @@ function Mic({ recording, busy, color, onPress }: { recording: boolean; busy: bo
 }
 
 // ── what came back ──────────────────────────────────────────────────────────────────────────────────────────────
-function Result({ d, working, onRetry }: { d: Debrief; working: boolean; onRetry: () => void }) {
+function Result({ d, working, offline, onRetry }: { d: Debrief; working: boolean; offline: boolean; onRetry: () => void }) {
   const waiting = (d as Debrief & { waiting?: boolean }).waiting;
   if (waiting) return <Card><Text style={t.body}>Saved on this phone. It goes to your PC when it answers, and the reading comes back here.</Text></Card>;
+  if (working && !d.review && offline) return <Card><Text style={t.body}>Your PC has it but isn&apos;t answering right now. The reading shows here once it&apos;s back.</Text></Card>;
   if (working && !d.review) {
     return <Loading label={d.status === 'transcribing' ? 'Writing down what you said. This takes up to a minute; you can leave and come back.' : 'Nora is reading it. Usually a few seconds; you can leave and come back.'} />;
   }
@@ -234,7 +265,7 @@ export function ReviewCard({ review, kind, compact }: { review: Review; kind?: D
           <Text style={t.body}>{review.pattern}</Text>
         </View>
       ) : null}
-      <Text style={t.caption}>{review.by === 'ai' ? `Read by Nora ${whenIn(review.at.slice(0, 10))}` : kind === 'voice' ? 'A plain reading, made without Nora' : 'A plain reading from what you tapped, made without Nora'}</Text>
+      <Text style={t.caption}>{review.by === 'ai' ? `Read by Nora ${whenIn(dayOf(review.at))}` : kind === 'voice' ? 'A plain reading, made without Nora' : 'A plain reading from what you tapped, made without Nora'}</Text>
     </Animated.View>
   );
 }
@@ -306,6 +337,7 @@ export function DebriefsScreen({ open, onClose }: { open: boolean; onClose: () =
 }
 
 export function statusWords(d: Debrief) {
+  if ((d as Debrief & { waiting?: boolean }).waiting) return 'Saved on this phone. It reaches your PC when it answers.';
   if (d.status === 'transcribing') return 'Being written down on your PC';
   if (d.status === 'reviewing' || (d.status === 'saved' && !d.review)) return 'Being read';
   if (d.status === 'failed') return 'Not read yet. Open it to try again.';
@@ -314,6 +346,7 @@ export function statusWords(d: Debrief) {
 
 const s = StyleSheet.create({
   flex: { flex: 1 },
+  gap4: { gap: 4 },
   gap8: { gap: 8 },
   gap12: { gap: 12 },
   gap16: { gap: 16 },

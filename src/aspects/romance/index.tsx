@@ -2,13 +2,13 @@ import { useCallback, useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, ReduceMotion } from 'react-native-reanimated';
 import {
-  Button, Card, CheckRing, dayLabel, Divider, Empty, Failed, Glyph, haptic, Icon, Page, Press, Row, Section, Skeleton, t, timer, today, useAspect, useEntry,
+  Button, Card, CheckRing, dayLabel, Divider, Empty, Failed, Glyph, haptic, Icon, Page, Press, Row, Section, Skeleton, t, timer, today, undoable, useAspect, useEntry,
 } from '@/aspects/kit';
 import { openLink } from '@/lib/links';
 import { C } from '@/theme';
 import { DebriefScreen, DebriefsScreen, statusWords } from './Debrief';
 import { undebriefed, useDebriefs, useOutings, usePeople, usePrefs, usePrimer, weekOf } from './data';
-import { queuePut, setLive, useLocal, useOutbox } from './local';
+import { localState, queuePut, setLive, useLocal, useOutbox } from './local';
 import { EndedScreen, OutScreen, PrimerScreen } from './Out';
 import { AddSheet, LookingSheet, metLine, NextSheet, nextLine, PeopleScreen, PersonScreen, TalkedSheet, TargetSheet } from './People';
 import { DotWeek, placeAt, placeName, useNow, whenIn } from './parts';
@@ -102,12 +102,23 @@ export default function Romance() {
       .catch((err: Error) => a.notice(err.message));
     a.notice('Done. Set the next step on their page.');
   };
+  // End is one tap with an Undo that brings the outing back, still running, with its count
+  const resume = (o: Outing) => {
+    if (localState().live) return; // another outing has started since
+    const back: Outing = { ...o, end: null };
+    setLive(back, null);
+    queuePut('sessions', back as unknown as Rec);
+    setEnded(null);
+    setDebrief(null);
+    setOutOpen(true);
+  };
+  const afterEnd = (o: Outing) => { setEnded(o); undoable('Outing ended', () => resume(o)); };
   const endLive = () => {
     if (!live) return;
     const done = { ...live, end: new Date().toISOString() };
     queuePut('sessions', done as unknown as Rec);
     setLive(null, done.id);
-    setEnded(done);
+    afterEnd(done);
   };
 
   return (
@@ -119,11 +130,11 @@ export default function Romance() {
           <PeopleScreen open={peopleOpen} onClose={closePeople} onOpen={setPerson} onAdd={() => setAdd({ place: null, session: null })} onLooking={() => setLooking(true)} />
           <PersonScreen id={person} onClose={closePerson} onNext={setNextFor} onTalked={setTalkedFor} />
           <PrimerScreen open={primerOpen} onClose={closePrimer} onStart={() => { setPrimerOpen(false); setOutOpen(true); }} />
-          <OutScreen open={outOpen} onClose={closeOut} onEnded={(o) => { setOutOpen(false); setEnded(o); }} />
+          <OutScreen open={outOpen} onClose={closeOut} onEnded={(o) => { setOutOpen(false); afterEnd(o); }} />
           <EndedScreen outing={ended} onClose={closeEnded}
             onDebrief={() => { const o = ended; setEnded(null); setDebrief({ outing: o, view: null }); }}
             onAdd={() => setAdd({ place: ended && ended.place !== 'logged' ? ended.place : null, session: ended?.id ?? null })} />
-          <DebriefScreen target={debrief} onClose={closeDebrief} />
+          <DebriefScreen target={debrief} lastTry={primer.data?.try.text ?? null} onClose={closeDebrief} />
           <AddSheet open={!!add} met={add} onClose={() => setAdd(null)} onAdded={(id) => { setEnded(null); setPerson(id); }} />
           <NextSheet id={nextFor} onClose={() => setNextFor(null)} />
           <TalkedSheet id={talkedFor} onClose={() => setTalkedFor(null)} />

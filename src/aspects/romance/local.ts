@@ -20,7 +20,8 @@ export type Pending =
   | { kind: 'put'; coll: 'sessions' | 'debriefs'; id: string; doc: Record<string, unknown> }
   | { kind: 'del'; coll: 'sessions' | 'debriefs'; id: string }
   | { kind: 'audio'; coll: 'debriefs'; id: string; uri: string; type: string; query: string; at: string; session: string | null; day: string; secs: number };
-type State = { live: Outing | null; outbox: Pending[]; primer: Primer | null; ended: string | null };
+// away: the last send found the PC unreachable (cleared by the next one that goes through)
+type State = { live: Outing | null; outbox: Pending[]; primer: Primer | null; ended: string | null; away?: boolean };
 
 const KEY = 'aos.romance.local';
 const EMPTY: State = { live: null, outbox: [], primer: null, ended: null };
@@ -109,10 +110,11 @@ export function flush(): Promise<void> {
           if (fs && Platform.OS !== 'web' && p.uri.includes('/romance/')) try { new fs.File(p.uri).delete(); } catch {}
         }
         lastError = null;
+        if (state.away) set({ away: false });
       } catch (e) {
         const status = e instanceof ApiError ? e.status : 0;
         // away, busy or broken on the PC's side: keep everything and try later
-        if (status === 0 || status >= 500 || status === 408 || status === 429) { lastError = (e as Error).message; break; }
+        if (status === 0 || status >= 500 || status === 408 || status === 429) { lastError = (e as Error).message; if (!state.away) set({ away: true }); break; }
         // the PC refused this one record (it can never go through): drop it so the rest can
         lastError = (e as Error).message;
       }

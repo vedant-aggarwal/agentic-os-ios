@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import { useCallback, useMemo, useState } from 'react';
-import { type GestureResponderEvent, View } from 'react-native';
+import type { GestureResponderEvent } from 'react-native';
 import { tap } from '@/components/Glass';
 import { SignIn } from '@/components/SignIn';
 import { openSheet } from '@/work/bus';
@@ -13,11 +13,10 @@ import { orcaLive, orcaWaiting, orcaWorking } from '@/work/ui/orca';
 import { type MenuAt, ProjectMenu } from '@/work/ui/ProjectMenu';
 import { isIdeaProject, type ProjectTab, ProjectTabs } from '@/work/ui/projects';
 import { Shell, useShellInsets } from '@/work/ui/Shell';
-import { DesignSwitcher } from '@/work/variants/Switcher';
-import { useWorkDesign } from '@/work/variants/useDesign';
+import { design } from '@/work/variants/liquid';
 
-// The Work orb's tap. Top: the chosen design's head (his Claude and Codex limits, whether Orca is there; see
-// src/work/variants), then
+// The Work orb's tap. Top: the Liquid head (his Claude and Codex limits as glass capsules, whether Orca is there;
+// src/work/variants/liquid), then
 // everything waiting on him, what's running (app jobs and Orca agents), his projects (Active as tiles, idea
 // projects behind a switch), what finished in Orca lately, and the inbox. Draws from the phone's copy at once.
 
@@ -35,7 +34,6 @@ const QUICK = [
 export default function WorkHome() {
   const home = useWorkHome();
   const orca = useOrca();
-  const design = useWorkDesign();
   const pad = useShellInsets(false);
   const { hidden, hide, unhide } = useAnswered();
   const [refreshing, setRefreshing] = useState(false);
@@ -175,12 +173,7 @@ export default function WorkHome() {
   };
   const Head = design.Header;
   const Ambient = design.Ambient;
-  const header = (
-    <View>
-      <DesignSwitcher active={design.key} />
-      <Head orca={orca.data} orcaError={orca.error} onOrcaPress={orcaInfo} counts={counts} />
-    </View>
-  );
+  const header = <Head orca={orca.data} orcaError={orca.error} onOrcaPress={orcaInfo} counts={counts} />;
 
   return (
     <Shell

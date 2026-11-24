@@ -3,7 +3,8 @@ import type { OrcaState, ProjectCard } from '../types';
 
 // The Work page's design slots. A design draws the page's head (title, Orca status, the usage limits), may lay an
 // ambient layer behind the list, and may restyle section headers and Active project tiles. Rows, cards, sheets and
-// all behaviour stay shared (src/work/ui), so every design works the same way.
+// all behaviour stay shared (src/work/ui). Vedant picked Liquid (src/work/variants/liquid) on 2026-11-24; Orbit,
+// Terminal, Editorial and the earlier design are in commit 725749c.
 
 export type HeaderProps = {
   /** Orca's agents and usage; null until the PC answers. `orca.up` false: Orca isn't running on the PC. */

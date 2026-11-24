@@ -2,9 +2,9 @@ import { Children, isValidElement, useEffect, type ReactNode } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { C, F } from '@/theme';
-import { Chip, Divider, Icon, MOTION, Press, R, rupees, Sheet, SP, SURF, t, tint, useAspect } from '@/aspects/kit';
+import { Chip, Divider, MOTION, Press, R, Ring, rupees, Sheet, SP, SURF, t, tint, useAspect } from '@/aspects/kit';
 
-// Money's own pieces: the month line, the bands of the home screen, grouped rows, the amount input.
+// Money's own pieces: the month line, the hero number, grouped rows for the statement screen, the amount input.
 
 const clamp01 = (v: number) => Math.min(Math.max(Number.isFinite(v) ? v : 0, 0), 1);
 
@@ -36,22 +36,7 @@ export function MonthLine({ earned, owed, target, height = 12 }: { earned: numbe
   );
 }
 
-/** A part of the home screen. Its title opens that part. */
-export function Band({ title, onOpen, right, children }: { title: string; onOpen: () => void; right?: string | null; children: ReactNode }) {
-  return (
-    <View style={s.band}>
-      <Press label={`Open ${title}`} onPress={onOpen} scale={0.99} style={s.bandHead}>
-        <Text accessibilityRole="header" style={t.heading}>{title}</Text>
-        <View style={s.fill} />
-        {right ? <Text style={[t.label, t.num]}>{right}</Text> : null}
-        <Icon name="right" size={16} color={C.faint} />
-      </Press>
-      {children}
-    </View>
-  );
-}
-
-/** Rows that belong together on one surface, with hairlines between them. */
+/** Rows that belong together on one surface, with hairlines between them (the statement screen's lists). */
 export function Group({ children }: { children: ReactNode }) {
   const kids = Children.toArray(children).filter(isValidElement);
   return (
@@ -66,21 +51,38 @@ export function Group({ children }: { children: ReactNode }) {
   );
 }
 
-/** A small heading inside a screen, with an optional figure on the right. */
+/** A heading inside a screen, with an optional figure or action on the right. */
 export function Head({ title, right, action, onAction }: { title: string; right?: string | null; action?: string; onAction?: () => void }) {
   const a = useAspect();
   return (
     <View style={s.head}>
-      <Text accessibilityRole="header" style={t.section}>{title}</Text>
+      <Text accessibilityRole="header" style={t.headline}>{title}</Text>
       <View style={s.fill} />
-      {right ? <Text style={[t.label, t.num]}>{right}</Text> : null}
+      {right ? <Text style={[t.subhead, t.num, { color: C.muted }]}>{right}</Text> : null}
       {action && onAction ? (
         <Press label={`${action}, ${title}`} onPress={onAction} hitSlop={12} feel="light">
-          <Text style={[t.label, { color: a.color }]}>{action}</Text>
+          <Text style={[t.subhead, { color: a.color }]}>{action}</Text>
         </Press>
       ) : null}
     </View>
   );
+}
+
+/** The screen's one big number: as large as fits, smaller for long amounts so it never clips. */
+export function HeroNumber({ value, color, label }: { value: string; color?: string; label?: string }) {
+  const size = value.length <= 7 ? 64 : value.length <= 9 ? 52 : 44;
+  return (
+    <Text accessibilityLabel={label} numberOfLines={1}
+      style={[t.hero, t.num, { fontSize: size, lineHeight: size + 4, letterSpacing: size >= 64 ? -2.6 : -1.8 }, color ? { color } : null]}>
+      {value}
+    </Text>
+  );
+}
+
+/** A small ring for a row: how far along something is. */
+export function MiniRing({ progress, size = 36 }: { progress: number; size?: number }) {
+  const a = useAspect();
+  return <Ring size={size} progress={progress} stroke={3.5} color={a.color} />;
 }
 
 /** The rupee amount being typed, large, with the keypad up. */
@@ -123,33 +125,19 @@ export function CategorySheet({ open, onClose, cats, value, onPick, title = 'Cat
   );
 }
 
-/** Two short words and a value, side by side: "Today ... ₹120". */
-export function Line({ label, value, sub, onPress, a11y }: { label: string; value: string; sub?: string | null; onPress?: () => void; a11y?: string }) {
-  const body = (
-    <>
-      <View style={s.fill}>
-        <Text style={t.strong}>{label}</Text>
-        {sub ? <Text style={t.small}>{sub}</Text> : null}
-      </View>
-      <Text style={[t.lead, t.num]}>{value}</Text>
-      {onPress ? <Icon name="right" size={16} color={C.faint} /> : null}
-    </>
-  );
-  if (!onPress) return <View style={s.lineRow}>{body}</View>;
-  return <Press label={a11y ?? `${label}, ${value}`} onPress={onPress} scale={0.99} style={s.lineRow}>{body}</Press>;
-}
-
 export const s = StyleSheet.create({
   fill: { flex: 1, minWidth: 0 },
   line: { flexDirection: 'row', overflow: 'hidden', backgroundColor: SURF.track },
-  band: { gap: SP[12] },
-  bandHead: { flexDirection: 'row', alignItems: 'center', gap: SP[8], minHeight: 44 },
-  group: { borderRadius: R.card, borderCurve: 'continuous', backgroundColor: SURF.card, paddingHorizontal: SP[16], borderWidth: StyleSheet.hairlineWidth, borderColor: SURF.line },
+  group: { borderRadius: R.group, borderCurve: 'continuous', backgroundColor: SURF.group, paddingHorizontal: SP[16], borderWidth: StyleSheet.hairlineWidth, borderColor: SURF.hair },
   head: { flexDirection: 'row', alignItems: 'center', gap: SP[8], minHeight: 24 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: SP[12] },
+  between: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: SP[12] },
+  gap4: { gap: SP[4] },
+  gap8: { gap: SP[8] },
+  gap12: { gap: SP[12] },
   amount: { flexDirection: 'row', alignItems: 'center', gap: SP[8], minHeight: 56 },
   amountInput: { flex: 1, minWidth: 0, width: '100%', padding: 0, fontFamily: F.semibold, fontSize: 30, lineHeight: 36, letterSpacing: -0.6, color: C.text, outlineWidth: 0 },
   chipRow: { gap: SP[8], paddingHorizontal: SP[16] },
   bleed: { marginHorizontal: -SP[16], flexGrow: 0 },
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: SP[8] },
-  lineRow: { flexDirection: 'row', alignItems: 'center', gap: SP[12], minHeight: 56, paddingVertical: SP[8] },
 });

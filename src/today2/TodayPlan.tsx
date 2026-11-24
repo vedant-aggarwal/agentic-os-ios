@@ -7,7 +7,7 @@ import { Toast } from '@/capture/parts';
 import { takePhoto } from '@/capture/shoot';
 import type { BodyToday } from '@/lib/body';
 import type { Area, AspectProgress, LifePayload, TodayPayload } from '@/lib/today';
-import { ASPECT_COLOR, C } from '@/theme';
+import { ASPECT_COLOR, C, type AspectKey } from '@/theme';
 import { openTask } from '@/work/bus';
 import { IST, routineFlags, routineReach, useDay } from './day';
 import { MealText, mealNow } from './overlays';
@@ -54,7 +54,7 @@ function splitTitle(title: string, location: string | null) {
 
 export function TodayPlan({ today, life, areas, body, say, hide, onOpen, onToggleTask, onCancelTask, onRestoreTask, onHome, onRoutine }: {
   today: TodayPayload; life: LifePayload; areas: Area[]; body: BodyToday | null; say: Say; hide: () => void;
-  onOpen: (link: string) => void; onToggleTask: (id: string) => void; onHome: () => void;
+  onOpen: (link: string) => void; onToggleTask: (id: string) => void; onHome: (list: AspectKey | 'none' | null) => void;
   /** cancel a task for today (a repeating one skips to its next), and bring it back */
   onCancelTask: (id: string) => void; onRestoreTask: (id: string) => void;
   /** today's routine ticks per aspect, each time one changes: the screen adds them to the hero's crystals */

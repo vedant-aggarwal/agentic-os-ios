@@ -38,7 +38,9 @@ export function Plan({ d, body, now, onOpen, onToggleTask, onCancelTask, onResto
   /** cancel a task for today (a repeating one skips to its next), and bring it back */
   onCancelTask: (id: string) => void; onRestoreTask: (id: string) => void;
   /** a meal typed instead of photographed: opens the line for it */ onTypeMeal: (id: FrameId) => void;
-  say: Say; hide: () => void; onHome: () => void;
+  say: Say; hide: () => void;
+  /** Opens Home on that aspect's tasks (null: all of them). */
+  onHome: (list: AspectKey | 'none' | null) => void;
 }) {
   const { cap } = d;
   const [dial, setDial] = useState(false);
@@ -119,7 +121,7 @@ export function Plan({ d, body, now, onOpen, onToggleTask, onCancelTask, onResto
     return (
       <CardRow tasks={list.slice(0, SHOWN_CARDS)} color={color} today={cap.day} steady={steady}
         onTick={(id) => { const x = list.find((y) => y.id === id); hold(id, !!x && shut(x)); onToggleTask(id); }}
-        onCancel={cancelTask} onRestore={restoreTask} onOpen={openOf} onHold={holdOf} more={Math.max(0, list.length - SHOWN_CARDS)} onMore={onHome} />
+        onCancel={cancelTask} onRestore={restoreTask} onOpen={openOf} onHold={holdOf} more={Math.max(0, list.length - SHOWN_CARDS)} onMore={() => onHome(k)} />
     );
   };
   const dueOf = (k: AspectKey | 'none') => (T.get(k) ?? []).filter((x) => x.due === cap.day);
@@ -146,7 +148,7 @@ export function Plan({ d, body, now, onOpen, onToggleTask, onCancelTask, onResto
             onPress={() => openOf(x)} onHold={() => holdOf(x)} tickLabel={`${x.title}, done`}
             onTick={() => { hold(x.id, x.status === 'done'); onToggleTask(x.id); }} />
         ))}
-        {owed.length > 4 ? <Row title={`${owed.length - 4} more on Home`} done={false} color={C.muted} onPress={onHome} first={false} /> : null}
+        {owed.length > 4 ? <Row title={`${owed.length - 4} more on Home`} done={false} color={C.muted} onPress={() => onHome(null)} first={false} /> : null}
         {waiting ? (
           <Row first={!owed.length} title={`Nora is waiting on you for ${waiting === 1 ? 'one answer' : `${waiting} answers`}`} done={false} color={NORA}
             onPress={() => noraUi.openHome()} right={<View style={[st.dot, { backgroundColor: NORA }]} />} />

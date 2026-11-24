@@ -12,7 +12,7 @@ import { DEMO } from '@/lib/demo';
 import { nora as noraApi, type FeedItem, type NoraHome } from '@/lib/nora';
 import type { Task } from '@/lib/today';
 import { Ball, useTurn } from '@/nora/Sphere';
-import { noraUi } from '@/nora/state';
+import { noraUi, useNora } from '@/nora/state';
 import { ASPECT_COLOR, C, F, type AspectKey } from '@/theme';
 import { Chevron, Dots, NORA, NORA_TEXT, Tick } from '@/today2/parts';
 import { openTask, type TaskFocus } from '@/work/bus';
@@ -152,8 +152,12 @@ function NoraCards({ items, onOpen }: { items: NoraItem[]; onOpen: () => void })
 // ── the home page ────────────────────────────────────────────────────────────────────────────────────────────────
 function HomePage({ d, say, hide, onNora }: { d: HomeData; say: Say; hide: () => void; onNora: () => void }) {
   const insets = useSafeAreaInsets();
-  const [list, setList] = useState<AspectKey | 'none' | null>(null); // a Life aspect, 'none', or null for all
+  // Today's "N more on Home" opens Home on that aspect's list (a new ask, by its seq, wins over his last pick)
+  const asked = useNora().homeList;
+  const [askSeen, setAskSeen] = useState(asked?.seq ?? 0);
+  const [list, setList] = useState<AspectKey | 'none' | null>(asked?.list ?? null); // a Life aspect, 'none', or null for all
   const [picking, setPicking] = useState(false);
+  if (asked && asked.seq !== askSeen) { setAskSeen(asked.seq); setList(asked.list); setPicking(false); }
   const [adding, setAdding] = useState(false);
   const [showDone, setShowDone] = useState(false);
   const [holding, setHolding] = useState<Set<string>>(new Set());

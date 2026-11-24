@@ -198,7 +198,7 @@ function PhoneToday() {
           {t.state.status === 'ready' ? (
             <TodayPlan today={t.state.today} life={t.state.life} areas={t.state.areas} body={b.body} say={tt.say} hide={tt.hide}
               onOpen={openLink} onToggleTask={(id) => { void toggle(id); }} onCancelTask={(id) => { void cancel(id); }} onRestoreTask={(id) => { void restore(id); }}
-              onHome={() => setAspect(null)} onRoutine={setRoutine} />
+              onHome={(list) => noraUi.openHome(list)} onRoutine={setRoutine} />
           ) : null}
           <Pressable accessibilityRole="button" onPress={async () => { await signOut(); t.reload(); }} style={s.more}>
             <Text style={[s.moreText, { color: C.faint }]}>Sign out</Text>

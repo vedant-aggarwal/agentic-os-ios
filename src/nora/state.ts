@@ -3,15 +3,22 @@ import { useSyncExternalStore } from 'react';
 import { Linking, Platform } from 'react-native';
 import { setCallScreen } from '@/lib/calls';
 import { DEMO } from '@/lib/demo';
+import type { AspectKey } from '@/theme';
 import { NORA_LINE } from './line';
 
 // Which of Nora's three surfaces is open: Home (her day, under the dock), Chat (over everything) and a call (over
 // everything). The dock's buttons, deep links (agenticos://nora...) and notification taps all go through here.
 
 export type CallAsk = { incomingId?: string | null; reason?: string; follow?: boolean; seq: number };
-type S = { home: boolean; chat: boolean; mic: number; micSend: number; call: CallAsk | null; replyTo: { id: string; from: string } | null };
+/** The list Home should show when it opens: a Life aspect, 'none' (no aspect) or null (all). `seq` makes a repeat ask
+ * apply again after he changed the filter by hand. */
+export type HomeList = { list: AspectKey | 'none' | null; seq: number };
+type S = {
+  home: boolean; chat: boolean; mic: number; micSend: number; call: CallAsk | null; replyTo: { id: string; from: string } | null;
+  homeList: HomeList | null;
+};
 
-let s: S = { home: false, chat: false, mic: 0, micSend: 0, call: null, replyTo: null };
+let s: S = { home: false, chat: false, mic: 0, micSend: 0, call: null, replyTo: null, homeList: null };
 let seq = 0;
 const subs = new Set<() => void>();
 const set = (p: Partial<S>) => {
@@ -36,7 +43,8 @@ const createSubs = new Set<() => void>();
 let createWaiting = false;
 
 export const noraUi = {
-  openHome: () => set({ home: true }),
+  /** Home; with `list`, showing that aspect's tasks (Today's "N more on Home"). */
+  openHome: (list?: AspectKey | 'none' | null) => set(list === undefined ? { home: true } : { home: true, homeList: { list, seq: ++seq } }),
   /** Home with the create sheet up. */
   openCreate: () => {
     set({ home: true });

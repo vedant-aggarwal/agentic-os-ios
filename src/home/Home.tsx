@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef, type ReactNode } from 'react';
 import { Pressable, RefreshControl, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { GestureDetector, ScrollView, usePanGesture } from 'react-native-gesture-handler';
 import Swipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
-import Animated, { FadeIn, FadeOut, LinearTransition, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeOut, LinearTransition, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { haptic, SURF, t, tint } from '@/aspects/kit/tokens';
@@ -21,7 +21,6 @@ import { addDays, istDay, useHomeData, type Draft, type HomeData, type Tag } fro
 // manner of Google Tasks: add, tick, area tags, Tag Nora, and what she found under each task. Show all opens her page.
 
 const dockClear = (bottom: number) => Math.max(bottom, 12) + 12 + 64 + 40;
-const SHOWN_NO_DATE = 3;
 const msg = (e: unknown) => (e instanceof Error ? e.message : 'That didn’t save.');
 
 type Say = (text: string, action?: { label: string; onPress: () => void } | null) => void;
@@ -150,7 +149,6 @@ function HomePage({ d, say, hide, onNora }: { d: HomeData; say: Say; hide: () =>
   const [list, setList] = useState<string | null>(null); // area slug, 'none', or null for all lists
   const [picking, setPicking] = useState(false);
   const [sheet, setSheet] = useState<{ edit: (Draft & { id: string }) | null } | null>(null);
-  const [allNoDate, setAllNoDate] = useState(false);
   const [showDone, setShowDone] = useState(false);
   const [holding, setHolding] = useState<Set<string>>(new Set());
   const today = istDay(), tomorrow = addDays(today, 1);
@@ -197,11 +195,12 @@ function HomePage({ d, say, hide, onNora }: { d: HomeData; say: Say; hide: () =>
 
   // ── drag to reorder: hold a row, drag it within or across buckets; a drop in another bucket takes that bucket's date ──
   const bucketY = useRef(new Map<BucketKey, number>());
+  // rows are kept by their row key: a task just added keeps its first (temporary) id as its key once the server names it
   const rowBox = useRef(new Map<string, { b: BucketKey; y: number; h: number }>());
+  const keyOf = (id: string) => d.alias[id] ?? id;
   const [drop, setDrop] = useState<number | null>(null);
-  const shownNoDate = allNoDate ? buckets.none : buckets.none.slice(0, SHOWN_NO_DATE);
-  const lists: Record<BucketKey, Task[]> = { today: buckets.today, tomorrow: buckets.tomorrow, later: buckets.later, none: shownNoDate };
-  const top = (id: string) => { const r = rowBox.current.get(id); return r ? { ...r, top: (bucketY.current.get(r.b) ?? 0) + r.y } : null; };
+  const lists: Record<BucketKey, Task[]> = { today: buckets.today, tomorrow: buckets.tomorrow, later: buckets.later, none: buckets.none };
+  const top = (id: string) => { const r = rowBox.current.get(keyOf(id)); return r ? { ...r, top: (bucketY.current.get(r.b) ?? 0) + r.y } : null; };
   function placeFor(id: string, dy: number) {
     const me = top(id);
     if (!me) return null;
@@ -226,7 +225,7 @@ function HomePage({ d, say, hide, onNora }: { d: HomeData; say: Say; hide: () =>
     setTimeout(() => { justDragged.current = false; }, 400);
     setDrop(null);
     const p = placeFor(x.id, dy);
-    const me = rowBox.current.get(x.id);
+    const me = rowBox.current.get(keyOf(x.id));
     if (!p || !me) return;
     const L = lists[p.b], i = L.indexOf(x);
     if (p.b === me.b && (L[i - 1] ?? null) === p.prev && (L[i + 1] ?? null) === p.next) return; // dropped where it was
@@ -249,22 +248,53 @@ function HomePage({ d, say, hide, onNora }: { d: HomeData; say: Say; hide: () =>
 
   const areaName = (slug: string | null) => (slug ? d.areas.find((a) => a.slug === slug)?.name ?? slug : null);
   const listLabel = list == null ? 'All lists' : list === 'none' ? 'No area' : areaName(list) ?? list;
-  const row = (x: Task, first: boolean, showDue: boolean, b?: BucketKey) => (
-    <TaskRow key={x.id} x={x} first={first} d={d} showDue={showDue} areaName={areaName(x.area)} color={areaColor(d.life, x.area)}
-      onTick={() => tick(x)} onOpen={() => editOf(x)} onDate={() => editOf(x)} onNora={() => toggleNora(x)} onDelete={() => remove(x)} say={say}
-      drag={b && x.status !== 'done' ? {
-        onLayout: (y, h) => rowBox.current.set(x.id, { b, y, h }),
-        onLift: () => { haptic.medium(); onMove(x.id, 0); },
-        onMove: (dy) => onMove(x.id, dy),
-        onDrop: (dy) => onDrop(x, dy),
-      } : undefined} />
-  );
-  const noDate = shownNoDate;
+  const freshKey = d.fresh ? keyOf(d.fresh) : null;
+  const row = (x: Task, first: boolean, showDue: boolean, b?: BucketKey) => {
+    const k = keyOf(x.id);
+    const saving = x.id.startsWith('tmp'); // added a moment ago, the server hasn't named it yet
+    const idle = () => {};
+    return (
+      <TaskRow key={k} x={x} first={first} d={d} showDue={showDue} areaName={areaName(x.area)} color={areaColor(d.life, x.area)} fresh={k === freshKey}
+        onTick={saving ? idle : () => tick(x)} onOpen={saving ? idle : () => editOf(x)} onDate={saving ? idle : () => editOf(x)}
+        onNora={saving ? idle : () => toggleNora(x)} onDelete={saving ? idle : () => remove(x)} say={say}
+        onPlace={b && x.status !== 'done' ? (y, h) => rowBox.current.set(k, { b, y, h }) : undefined}
+        drag={b && x.status !== 'done' && !saving ? {
+          onLift: () => { haptic.medium(); onMove(x.id, 0); },
+          onMove: (dy) => onMove(x.id, dy),
+          onDrop: (dy) => onDrop(x, dy),
+        } : undefined} />
+    );
+  };
   const nothing = !buckets.today.length && !buckets.tomorrow.length && !buckets.later.length && !buckets.none.length;
+
+  // ── a task just added: scroll it into view and light it up; the light fades once the sheet is closed ──
+  const scroller = useRef<ComponentRef<typeof ScrollView>>(null);
+  const scrollY = useRef(0), viewH = useRef(0), listY = useRef(0), groupY = useRef(0);
+  useEffect(() => {
+    if (!freshKey) return;
+    let tries = 0;
+    const id = setInterval(() => {
+      const r = rowBox.current.get(freshKey);
+      if (!r && ++tries < 15) return;
+      clearInterval(id);
+      if (!r) return;
+      const y = listY.current + groupY.current + (bucketY.current.get(r.b) ?? 0) + r.y;
+      const seenTop = scrollY.current + insets.top + 56, seenBottom = scrollY.current + viewH.current - dockClear(insets.bottom);
+      if (y < seenTop || y + r.h > seenBottom) scroller.current?.scrollTo({ y: Math.max(0, y - insets.top - 120), animated: true });
+    }, 80);
+    return () => clearInterval(id);
+  }, [freshKey, insets.top, insets.bottom]);
+  const { clearFresh } = d;
+  useEffect(() => {
+    if (!freshKey || sheet) return;
+    const id = setTimeout(clearFresh, 1600);
+    return () => clearTimeout(id);
+  }, [freshKey, sheet, clearFresh]);
 
   return (
     <>
-      <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled"
+      <ScrollView ref={scroller} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled"
+        onScroll={(e) => { scrollY.current = e.nativeEvent.contentOffset.y; }} scrollEventThrottle={32} onLayout={(e) => { viewH.current = e.nativeEvent.layout.height; }}
         contentContainerStyle={[st.content, { paddingTop: insets.top + 8, paddingBottom: dockClear(insets.bottom) + 24 }]}
         refreshControl={<RefreshControl refreshing={d.refreshing} onRefresh={() => void d.load(false)} tintColor={C.muted} />}>
         <Header h={d.home} tags={d.tags} />
@@ -277,7 +307,7 @@ function HomePage({ d, say, hide, onNora }: { d: HomeData; say: Say; hide: () =>
           <NoraCards items={noraItems(d)} onOpen={onNora} />
         </View>
 
-        <View>
+        <View onLayout={(e) => { listY.current = e.nativeEvent.layout.y; }}>
           <View style={st.headRow}>
             <Text accessibilityRole="header" style={t.heading}>My tasks</Text>
             <Pressable accessibilityRole="button" accessibilityLabel={`List: ${listLabel}`} onPress={() => setPicking((v) => !v)} hitSlop={8} style={st.picker}>
@@ -301,7 +331,7 @@ function HomePage({ d, say, hide, onNora }: { d: HomeData; say: Say; hide: () =>
               <Pressable accessibilityRole="button" onPress={() => void d.load(false)}><Text style={[t.label, { color: C.text }]}>Try again</Text></Pressable>
             </View>
           ) : (
-            <Animated.View layout={LinearTransition.duration(220)} style={st.group}>
+            <Animated.View layout={LinearTransition.duration(220)} style={st.group} onLayout={(e) => { groupY.current = e.nativeEvent.layout.y; }}>
               <Pressable accessibilityRole="button" onPress={() => setSheet({ edit: null })} style={({ pressed }) => [st.add, pressed && { backgroundColor: SURF.pressed }]}>
                 <Svg width={20} height={20} viewBox="0 0 24 24"><Path d="M12 5v14M5 12h14" stroke={C.muted} strokeWidth={2} strokeLinecap="round" /></Svg>
                 <Text style={st.addText}>Add a task</Text>
@@ -314,13 +344,7 @@ function HomePage({ d, say, hide, onNora }: { d: HomeData; say: Say; hide: () =>
               {buckets.later.length ? <Bucket label="Later" onY={(y) => bucketY.current.set('later', y)}>{buckets.later.map((x, i) => row(x, i === 0, true, 'later'))}</Bucket> : null}
               {buckets.none.length ? (
                 <Bucket label="No date" onY={(y) => bucketY.current.set('none', y)}>
-                  {noDate.map((x, i) => row(x, i === 0, false, 'none'))}
-                  {buckets.none.length > SHOWN_NO_DATE ? (
-                    <Pressable accessibilityRole="button" onPress={() => setAllNoDate((v) => !v)} style={st.more}>
-                      <Text style={st.moreText}>{allNoDate ? 'Show fewer' : `${buckets.none.length - SHOWN_NO_DATE} more with no date`}</Text>
-                      <View style={{ transform: [{ rotate: allNoDate ? '-90deg' : '90deg' }] }}><Chevron /></View>
-                    </Pressable>
-                  ) : null}
+                  {buckets.none.map((x, i) => row(x, i === 0, false, 'none'))}
                 </Bucket>
               ) : null}
               {buckets.done.length ? (
@@ -360,12 +384,17 @@ function Bucket({ label, children, onY }: { label: string; children: ReactNode; 
 }
 
 // ── a task row: swipe left for Date, Nora, Delete; what Nora is doing on it underneath ─────────────────────────────
-type Drag = { onLayout: (y: number, h: number) => void; onLift: () => void; onMove: (dy: number) => void; onDrop: (dy: number) => void };
-function TaskRow({ x, first, d, showDue, areaName, color, onTick, onOpen, onDate, onNora, onDelete, say, drag }: {
-  x: Task; first: boolean; d: HomeData; showDue: boolean; areaName: string | null; color: string;
-  onTick: () => void; onOpen: () => void; onDate: () => void; onNora: () => void; onDelete: () => void; say: Say; drag?: Drag;
+type Drag = { onLift: () => void; onMove: (dy: number) => void; onDrop: (dy: number) => void };
+function TaskRow({ x, first, d, showDue, areaName, color, fresh, onTick, onOpen, onDate, onNora, onDelete, say, onPlace, drag }: {
+  x: Task; first: boolean; d: HomeData; showDue: boolean; areaName: string | null; color: string; fresh: boolean;
+  onTick: () => void; onOpen: () => void; onDate: () => void; onNora: () => void; onDelete: () => void; say: Say;
+  onPlace?: (y: number, h: number) => void; drag?: Drag;
 }) {
   const ref = useRef<SwipeableMethods>(null);
+  // a task just added glows, then fades
+  const glow = useSharedValue(fresh ? 1 : 0);
+  useEffect(() => { glow.set(withTiming(fresh ? 1 : 0, { duration: fresh ? 160 : 900 })); }, [fresh, glow]);
+  const glowStyle = useAnimatedStyle(() => ({ opacity: glow.value }));
   // hold 350 ms: the row lifts and follows the finger; let go and it lands where the line shows
   const ty = useSharedValue(0), lift = useSharedValue(0);
   const [lifted, setLifted] = useState(false);
@@ -387,7 +416,7 @@ function TaskRow({ x, first, d, showDue, areaName, color, onTick, onOpen, onDate
   const act = (f: () => void) => () => { ref.current?.close(); f(); };
   return (
     <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(160)} layout={LinearTransition.duration(220)}
-      onLayout={(e) => drag?.onLayout(e.nativeEvent.layout.y, e.nativeEvent.layout.height)} style={[liftStyle, lifted && st.lifted]}>
+      onLayout={(e) => onPlace?.(e.nativeEvent.layout.y, e.nativeEvent.layout.height)} style={[liftStyle, lifted && st.lifted]}>
       <GestureDetector gesture={pan}>
       <Swipeable ref={ref} friction={1.6} rightThreshold={48} overshootRight={false}
         renderRightActions={() => (
@@ -398,6 +427,7 @@ function TaskRow({ x, first, d, showDue, areaName, color, onTick, onOpen, onDate
           </View>
         )}>
         <Pressable accessibilityRole="button" accessibilityHint="Edit the task" onPress={onOpen} style={[st.task, !first && st.rule]}>
+          <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, st.glow, glowStyle]} />
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text numberOfLines={2} style={[st.taskTitle, done && st.doneTitle]}>{x.title}</Text>
             {areaName || showDue || tag ? (
@@ -630,6 +660,7 @@ const st = StyleSheet.create({
   replyRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 6, borderRadius: 17, backgroundColor: 'rgba(255,255,255,0.06)', paddingHorizontal: 12 },
   replyInput: { flex: 1, fontFamily: F.regular, fontSize: 15, lineHeight: 20, color: C.text, paddingVertical: 8 },
   dropLine: { position: 'absolute', left: 16, right: 16, height: 2, borderRadius: 1, backgroundColor: NORA },
+  glow: { backgroundColor: tint(NORA, 0.16) },
   lifted: { boxShadow: '0 14px 30px rgba(0,0,0,0.5)', borderRadius: 12, overflow: 'hidden' },
   pageRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 16, minHeight: 56 },
   leadCol: { width: 24, alignItems: 'center' },

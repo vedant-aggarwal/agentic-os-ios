@@ -35,6 +35,10 @@ export function useHomeData(open: boolean) {
   const [tags, setTags] = useState<Record<string, Tag>>({});
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  // the task just added (Home scrolls to it and lights it up), and each added task's first id so its row keeps its key
+  const [fresh, setFresh] = useState<string | null>(null);
+  const [alias, setAlias] = useState<Record<string, string>>({});
+  const lowest = useRef<number | null>(null);
   const live = useRef<TodayPayload | null>(null);
   useEffect(() => { live.current = today; }, [today]);
 
@@ -124,16 +128,42 @@ export function useHomeData(open: boolean) {
     if (d.area) body.area = d.area;
     if (d.due) body.due = d.due;
     if (d.notes.trim()) body.notes = d.notes.trim();
+    // On top of its bucket at once, before the server answers: a position below every open task's, so it sorts first
+    // in Today, Tomorrow or No date (Later sorts by date, then this). The server files it on top of its area's list,
+    // which is not the top of Home's mixed buckets, so the position is sent after.
+    const open = (live.current?.tasks ?? []).filter((x) => !x.parent && x.status !== 'done' && x.status !== 'dropped');
+    const floor = Math.min(0, lowest.current ?? 0, ...open.map((x) => x.position ?? 0));
+    const position = floor - 1024;
+    lowest.current = position;
+    const tmp = `tmp${Date.now()}`;
+    const draft: Task = { id: tmp, title, status: 'todo', area: d.area, due: d.due, scheduled: null, owner: 'me', completedAt: null, position };
+    setToday((x) => (x ? { ...x, tasks: [draft, ...x.tasks] } : x));
+    setFresh(tmp);
     let t: Task;
-    if (DEMO) {
-      t = { id: `t${Date.now() % 100000}`, title, status: 'todo', area: d.area, due: d.due, scheduled: null, owner: 'me', completedAt: null };
-    } else t = await api<Task>('/tasks', { method: 'POST', body });
-    setToday((x) => (x ? { ...x, tasks: [t, ...x.tasks] } : x));
+    try {
+      t = DEMO ? { ...draft, id: `t${Date.now() % 100000}` } : await api<Task>('/tasks', { method: 'POST', body });
+    } catch (e) {
+      setToday((x) => (x ? { ...x, tasks: x.tasks.filter((y) => y.id !== tmp) } : x));
+      setFresh((f) => (f === tmp ? null : f));
+      throw e;
+    }
+    const top = (t.position ?? 0) <= position;
+    const shown: Task = { ...t, position: top ? t.position : position };
+    setAlias((a) => ({ ...a, [t.id]: tmp }));
+    setToday((x) => {
+      if (!x) return x;
+      if (x.tasks.some((y) => y.id === tmp)) return { ...x, tasks: x.tasks.map((y) => (y.id === tmp ? shown : y)) };
+      // a reload landed while it was saving
+      return { ...x, tasks: x.tasks.some((y) => y.id === t.id) ? x.tasks.map((y) => (y.id === t.id ? shown : y)) : [shown, ...x.tasks] };
+    });
+    setFresh((f) => (f === tmp ? t.id : f));
+    if (!DEMO && !top) api(`/tasks/${t.id}`, { method: 'PATCH', body: { position } }).catch(() => {});
     if (d.nora) await tag(t.id, title);
     after();
     return t;
   }
+  const clearFresh = useCallback(() => setFresh(null), []);
 
-  return { today, life, areas, home, tags, error, refreshing, load, toggle, remove, restore, edit, reorder, add, tag, untag, answer };
+  return { today, life, areas, home, tags, error, refreshing, load, toggle, remove, restore, edit, reorder, add, tag, untag, answer, fresh, clearFresh, alias };
 }
 export type HomeData = ReturnType<typeof useHomeData>;

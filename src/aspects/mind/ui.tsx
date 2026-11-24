@@ -58,6 +58,15 @@ export function minutes(m: number) {
   return h ? (mm ? `${h} h ${mm} min` : `${h} h`) : `${mm} min`;
 }
 
+/** A lesson's length as the course lists it ("8:50", "1:05:00", "12 min") in plain words: "9 min", "1 h 5 min". */
+export function durWords(d: string | null) {
+  if (!d) return null;
+  const p = d.trim().split(':').map(Number);
+  if (p.length < 2 || p.some((x) => !Number.isFinite(x))) return d;
+  const secs = p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2] : p[0] * 60 + p[1];
+  return minutes(Math.max(1, Math.round(secs / 60)));
+}
+
 /** A take's length in plain words: "66 seconds", "2 minutes". Takes stop at two minutes, so seconds read best. */
 export function secsWords(s: number) {
   const r = Math.round(s);
@@ -76,8 +85,8 @@ export function Steps({ items }: { items: { label: string; state: 'done' | 'now'
               : <View style={[s.dot, it.state === 'failed' && { borderColor: C.danger }]} />}
           </View>
           <View style={s.stepText}>
-            <Text style={[t.strong, it.state === 'next' && { color: C.faint }, it.state === 'failed' && { color: C.danger }]}>{it.label}</Text>
-            {it.note ? <Text style={t.small}>{it.note}</Text> : null}
+            <Text style={[t.callout, it.state === 'next' && { color: C.faint }, it.state === 'failed' && { color: C.danger }]}>{it.label}</Text>
+            {it.note ? <Text style={t.footnote}>{it.note}</Text> : null}
           </View>
         </View>
       ))}
@@ -92,12 +101,12 @@ export function ScoreRow({ name, value, note, before }: { name: string; value: n
   return (
     <View style={s.score} accessibilityLabel={`${name} ${value ?? 'not scored'}${delta ? `, ${delta > 0 ? 'up' : 'down'} ${Math.abs(delta)}` : ''}`}>
       <View style={s.scoreHead}>
-        <Text style={[t.strong, s.flex]}>{name}</Text>
-        {delta ? <Text style={[t.caption, t.num, delta > 0 && { color: a.color }]}>{delta > 0 ? `up ${delta}` : `down ${-delta}`}</Text> : null}
-        <Text style={[t.strong, t.num, s.scoreNum]}>{value ?? 'None yet'}</Text>
+        <Text style={[t.callout, s.flex]}>{name}</Text>
+        {delta ? <Text style={[t.footnote, t.num, delta > 0 && { color: a.color }]}>{delta > 0 ? `Up ${delta}` : `Down ${-delta}`}</Text> : null}
+        <Text style={[t.headline, t.num, s.scoreNum]}>{value ?? 'None yet'}</Text>
       </View>
-      <Bar progress={(value ?? 0) / 100} height={6} />
-      {note ? <Text style={t.small}>{note}</Text> : null}
+      <Bar progress={(value ?? 0) / 100} height={6} color={a.color} />
+      {note ? <Text style={t.footnote}>{note}</Text> : null}
     </View>
   );
 }
@@ -107,13 +116,13 @@ export function Quote({ children }: { children: ReactNode }) {
   const a = useAspect();
   return (
     <View style={[s.quote, { borderLeftColor: a.color }]}>
-      <Text style={[t.lead, s.quoteText]} selectable>{children}</Text>
+      <Text style={[t.headline, s.quoteText]} selectable>{children}</Text>
     </View>
   );
 }
 
 export function Muted({ children }: { children: ReactNode }) {
-  return <Text style={t.small}>{children}</Text>;
+  return <Text style={t.footnote}>{children}</Text>;
 }
 
 const s = StyleSheet.create({
@@ -127,5 +136,5 @@ const s = StyleSheet.create({
   scoreHead: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
   scoreNum: { minWidth: 32, textAlign: 'right' },
   quote: { borderLeftWidth: 2, paddingLeft: 12, paddingVertical: 2 },
-  quoteText: { color: C.text },
+  quoteText: { color: C.text, lineHeight: 26 },
 });

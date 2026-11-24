@@ -2,8 +2,8 @@ import { Image } from 'expo-image';
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import {
-  Bar, Button, Card, Chip, Empty, Failed, Field, Icon, IconButton, Row, Screen, Section, Sheet, Skeleton, Stepper, SURF,
-  dayLabel, haptic, shortDay, t, timer, useAspect,
+  Bar, Button, Card, Chip, Divider, Empty, Failed, Field, Icon, IconButton, Press, Row, Screen, Section, Sheet, Skeleton, Stepper, SURF,
+  dayLabel, haptic, shortDay, t, timer, undoable, useAspect,
 } from '@/aspects/kit';
 import { call, invalidate, useGet } from '@/lib/mod';
 import { C } from '@/theme';
@@ -41,6 +41,7 @@ export function ReadScreen({ open, onClose, onRecall, onSay }: {
   const v = g.data;
   const [adding, setAdding] = useState(false);
   const [sitting, setSitting] = useState<Sitting | null>(null);
+  const [editing, setEditing] = useState<Book | null>(null);
   // minutes so far, read when he taps, for a timed sitting
   const end = (b: Book & { pace: Pace }) => setSitting({ ...b, timed: b.sitting_since ? Math.max(1, Math.round((Date.now() - Date.parse(b.sitting_since)) / 60000)) : null });
   const [busy, setBusy] = useState<string | null>(null);
@@ -65,17 +66,17 @@ export function ReadScreen({ open, onClose, onRecall, onSay }: {
           return (
             <Card key={b.id}>
               <View style={s.gap16}>
-                <View style={s.bookHead}>
+                <Press label={`${b.title}: pages, on hold, finished or remove`} onPress={() => setEditing(b)} scale={0.98} feel="tick" style={s.bookHead}>
                   <Cover book={b} w={64} />
                   <View style={s.bookText}>
                     <Text style={t.heading} numberOfLines={3}>{b.title}</Text>
                     {b.author ? <Text style={t.small} numberOfLines={1}>{b.author}</Text> : null}
                     <View style={s.gap8}>
-                      <Text style={[t.label, t.num]}>{b.pages ? `Page ${b.page} of ${b.pages}` : `Page ${b.page}`}</Text>
+                      <Text style={[t.label, t.num]}>{b.pages ? `Page ${b.page} of ${b.pages}` : `Page ${b.page}, add the page count`}</Text>
                       {b.pages ? <Bar progress={b.page / b.pages} height={6} /> : null}
                     </View>
                   </View>
-                </View>
+                </Press>
                 {paceLine(b.pace) ? <Text style={[t.small, t.num]}>{paceLine(b.pace)}</Text> : null}
                 {since != null ? (
                   <View style={s.gap12}>
@@ -139,7 +140,7 @@ export function ReadScreen({ open, onClose, onRecall, onSay }: {
             <View>
               {[...v.paused, ...v.next].slice(0, 6).map((b) => (
                 <Row key={b.id} title={b.title} sub={b.status === 'paused' ? `On hold at page ${b.page}` : b.author}
-                  left={<Cover book={b} w={32} />}
+                  left={<Press label={`${b.title}: pages, start or remove`} onPress={() => setEditing(b)} feel="tick"><Cover book={b} w={32} /></Press>}
                   right={<Button label={b.status === 'paused' ? 'Pick up' : 'Start'} kind="quiet" small busy={busy === `n${b.id}`}
                     onPress={() => act(`n${b.id}`, '/mod/mind/read/add', { title: b.title, status: 'reading' }, `${b.title} is on the go`)} />} />
               ))}
@@ -150,7 +151,7 @@ export function ReadScreen({ open, onClose, onRecall, onSay }: {
         {v.done.length ? (
           <Section title="Finished">
             <View style={s.gap16}>
-              {v.done.slice(0, 6).map((b) => <Finished key={b.id} book={b} />)}
+              {v.done.slice(0, 6).map((b) => <Finished key={b.id} book={b} onOpen={() => setEditing(b)} />)}
             </View>
           </Section>
         ) : null}
@@ -166,29 +167,133 @@ export function ReadScreen({ open, onClose, onRecall, onSay }: {
       {body}
       <AddBookSheet open={adding} onClose={() => setAdding(false)} hasReading={!!v?.reading.length} />
       <SittingSheet book={sitting} onClose={() => setSitting(null)} onSay={(spec) => { setSitting(null); onSay(spec); }} />
+      <BookSheet book={editing} onClose={() => setEditing(null)} />
     </Screen>
   );
 }
 
-function Finished({ book }: { book: Book }) {
+/** "Sum it up from my takeaways": his own takeaways put together into a short summary (on the PC). */
+function useSummary(id: string) {
   const a = useAspect();
   const [busy, setBusy] = useState(false);
-  const sum = async () => {
+  const run = async () => {
     setBusy(true);
-    try { await call('/mod/mind/read/summary', { book: book.id }); invalidate(READ); } catch (e) { a.notice((e as Error).message); } finally { setBusy(false); }
+    try { await call('/mod/mind/read/summary', { book: id }); invalidate(READ); return true; }
+    catch (e) { a.notice((e as Error).message); return false; } finally { setBusy(false); }
   };
+  return { run, busy };
+}
+
+function Finished({ book, onOpen }: { book: Book; onOpen: () => void }) {
+  const sum = useSummary(book.id);
   return (
     <View style={s.finished}>
-      <Cover book={book} w={40} />
+      <Press label={`${book.title}: remove`} onPress={onOpen} feel="tick"><Cover book={book} w={40} /></Press>
       <View style={[s.flex, s.gap8]}>
-        <View>
+        <Press label={`${book.title}: remove`} onPress={onOpen} feel="tick" scale={0.99}>
           <Text style={t.strong} numberOfLines={2}>{book.title}</Text>
           <Text style={t.caption}>{book.finished ? `Finished ${shortDay(book.finished)}` : 'Finished'}</Text>
-        </View>
+        </Press>
         {book.summary ? <Text style={t.small} selectable>{book.summary.text}</Text>
-          : book.takeaways >= 2 ? <Button label="Sum it up from my takeaways" kind="soft" small onPress={sum} busy={busy} wrap={s.start} /> : null}
+          : book.takeaways >= 2 ? <Button label="Sum it up from my takeaways" kind="soft" small onPress={() => { void sum.run(); }} busy={sum.busy} wrap={s.start} /> : null}
       </View>
     </View>
+  );
+}
+
+/**
+ * One book's sheet: the page count (so a finish date and "The end" can show), on hold, finished, remove. Each change
+ * but the page count happens at once and offers Undo. After Finished it offers the summary when there are 2+ takeaways.
+ */
+function BookSheet({ book, onClose }: { book: Book | null; onClose: () => void }) {
+  const a = useAspect();
+  const b = useLast(book);
+  const [pages, setPages] = useState('');
+  const [busy, setBusy] = useState<string | null>(null);
+  const [finished, setFinished] = useState(false);
+  const [prev, setPrev] = useState(book);
+  if (prev !== book) {
+    setPrev(book);
+    if (book) { setPages(book.pages ? String(book.pages) : ''); setFinished(false); }
+  }
+  const sum = useSummary(b?.id ?? '');
+  if (!b) return <Sheet open={false} onClose={onClose}><View /></Sheet>;
+  const send = async (key: string, path: string, body: object) => {
+    setBusy(key);
+    try { await call(path, { book: b.id, ...body }); invalidate('/mod/mind/'); return true; }
+    catch (e) { a.notice((e as Error).message); return false; } finally { setBusy(null); }
+  };
+  const back = (body: object, path = '/mod/mind/read/edit') => async () => {
+    try { await call(path, { book: b.id, ...body }); invalidate('/mod/mind/'); }
+    catch (e) { a.notice((e as Error).message); }
+  };
+  const want = Number(pages.trim());
+  const pagesOk = /^\d{1,5}$/.test(pages.trim()) && want > 0 && want !== (b.pages ?? 0);
+  const was = b.status === 'done' ? 'reading' : b.status;
+  const savePages = async () => {
+    if (await send('pages', '/mod/mind/read/edit', { pages: want })) { haptic.success(); a.notice(`${want} pages`); }
+  };
+  const finish = async () => {
+    if (!(await send('finish', '/mod/mind/read/finish', {}))) return;
+    haptic.success();
+    undoable(`Finished ${b.title}`, back({ status: was, page: b.page }));
+    if (b.takeaways >= 2 && !b.summary) setFinished(true); else onClose();
+  };
+  const hold = async () => {
+    if (!(await send('hold', '/mod/mind/read/edit', { status: 'paused' }))) return;
+    undoable(`${b.title} on hold`, back({ status: b.status }));
+    onClose();
+  };
+  const start = async () => {
+    if (!(await send('start', '/mod/mind/read/edit', { status: 'reading' }))) return;
+    haptic.medium();
+    undoable(`${b.title} is on the go`, back({ status: b.status }));
+    onClose();
+  };
+  const remove = async () => {
+    if (!(await send('remove', '/mod/mind/read/remove', {}))) return;
+    undoable(`Removed ${b.title}`, back({}, '/mod/mind/read/restore'));
+    onClose();
+  };
+
+  return (
+    <Sheet open={!!book} onClose={onClose} title={finished ? 'Finished' : b.title}>
+      {finished ? (
+        <>
+          <Text style={t.body}>{`${b.title} is on your finished shelf. Your ${b.takeaways} takeaways can become your own short summary of it.`}</Text>
+          <Button label="Sum it up from my takeaways" kind="accent" busy={sum.busy} onPress={() => { void sum.run().then((ok) => { if (ok) onClose(); }); }} />
+          <Button label="Not now" kind="quiet" onPress={onClose} />
+        </>
+      ) : (
+        <>
+          <Text style={[t.small, t.num]}>{[b.author, b.status === 'done' ? (b.finished ? `Finished ${shortDay(b.finished)}` : 'Finished')
+            : b.pages ? `Page ${b.page} of ${b.pages}` : `Page ${b.page}`].filter(Boolean).join(', ')}</Text>
+          {b.status !== 'done' ? (
+            <View style={s.pagesRow}>
+              <View style={s.flex}>
+                <Field label="Pages in the book" value={pages} onChangeText={(x) => setPages(x.replace(/[^0-9]/g, ''))} placeholder="e.g. 280"
+                  keyboardType="number-pad" suffix="pages" maxLength={5} onSubmit={() => { if (pagesOk) void savePages(); }} />
+              </View>
+              <Button label="Save" kind="soft" small disabled={!pagesOk} busy={busy === 'pages'} onPress={savePages} wrap={s.pagesSave} />
+            </View>
+          ) : null}
+          {b.status === 'reading' ? (
+            <View style={s.buttons}>
+              <Button label="Finished" kind="accent" onPress={finish} busy={busy === 'finish'} icon={<Icon name="check" size={18} color="#14161C" />} wrap={s.flex} />
+              <Button label="Put on hold" kind="quiet" onPress={hold} busy={busy === 'hold'} />
+            </View>
+          ) : b.status !== 'done' ? (
+            <View style={s.buttons}>
+              <Button label={b.status === 'paused' ? 'Pick it up' : 'Start reading'} kind="accent" onPress={start} busy={busy === 'start'} wrap={s.flex} />
+              <Button label="Finished" kind="quiet" onPress={finish} busy={busy === 'finish'} />
+            </View>
+          ) : null}
+          <Divider />
+          <Button label="Remove from my books" kind="danger" small onPress={remove} busy={busy === 'remove'}
+            icon={<Sym name="trash" size={16} color={C.danger} />} wrap={s.start} />
+        </>
+      )}
+    </Sheet>
   );
 }
 
@@ -337,5 +442,7 @@ const s = StyleSheet.create({
   finished: { flexDirection: 'row', gap: 12 },
   lineRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
   dictate: { paddingBottom: 6 },
+  pagesRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 12 },
+  pagesSave: { marginBottom: 4 },
   quote: { borderLeftWidth: 2, paddingLeft: 12 },
 });

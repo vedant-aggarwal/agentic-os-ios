@@ -1,7 +1,7 @@
 import { useRef, useState, type ReactNode } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import {
-  Button, Card, CheckRing, Failed, Icon, Page, Press, Row, Section, Skeleton, Spark, SURF, num, t, tint, useAspect, useEntry, weekLetter,
+  Button, Card, CheckRing, Failed, Icon, Page, Press, Row, Section, Skeleton, Spark, SURF, num, t, tint, useAspect, useEntry, useOnReturn, weekLetter,
 } from '@/aspects/kit';
 import { useGet } from '@/lib/mod';
 import { C } from '@/theme';
@@ -33,6 +33,8 @@ export default function Mind() {
   const n = useRef(0);
   const take = (spec: TakeSpec, steps?: string[]) => { n.current += 1; setRun({ spec, n: n.current, steps }); };
   usePoll(() => { void g.refresh(); }, 4000, a.open && !!v?.pending.length);
+  // a tick on Today (speaking, the course) or a sitting logged elsewhere shows when he comes back
+  useOnReturn(() => { void g.refresh(); });
   // mind/<part>: speak, read, courses, recall, drill/<id>, review/<id>. mind/checkin (the evening push) has no
   // screen on the phone yet and lands on home with the rest.
   useEntry((e) => {
@@ -100,9 +102,10 @@ function Loop({ v, onTake, onPlace, onReview }: { v: HomeView; onTake: (s: TakeS
   const a = useAspect();
   const [plain, setPlain] = useState(false);
   const { course, book, today } = v.learn;
-  const learned = today.lessons > 0 || today.read > 0;
-  const said = v.say.today.length > 0;
+  // Today's "Communication course" and "Impromptu speaking" ticks count here too (a take or a lesson ticks them)
+  const learned = today.lessons > 0 || today.read > 0 || !!today.ticked;
   const last = v.say.today[0] ?? null;
+  const said = !!last || !!v.say.ticked;
   const prompt = learned && v.say.learned && !plain ? v.say.learned : null;
   const topic = v.say.topic;
   const spec: TakeSpec = prompt
@@ -111,7 +114,8 @@ function Loop({ v, onTake, onPlace, onReview }: { v: HomeView; onTake: (s: TakeS
 
   let learnTitle: string, learnSub: string | null, learnGo: Place;
   if (learned) {
-    learnTitle = [today.lessons ? (today.lessons === 1 ? 'A lesson done' : `${today.lessons} lessons done`) : null, today.read ? `${today.read} min of reading` : null].filter(Boolean).join(' and ');
+    learnTitle = [today.lessons ? (today.lessons === 1 ? 'A lesson done' : `${today.lessons} lessons done`) : null, today.read ? `${today.read} min of reading` : null].filter(Boolean).join(' and ')
+      || 'Course ticked on Today';
     learnSub = course?.next ? `Next: ${course.next.title}` : book ? `${book.title}, page ${book.page}` : null;
     learnGo = today.lessons ? 'courses' : 'read';
   } else if (course?.next) {
@@ -161,10 +165,10 @@ function Loop({ v, onTake, onPlace, onReview }: { v: HomeView; onTake: (s: TakeS
               <Text style={[t.small, s.flex]} numberOfLines={1}>{last.topic}</Text>
               <Icon name="right" size={14} color={C.faint} />
             </Press>
-          ) : null}
+          ) : said ? <Text style={t.small}>Ticked on Today</Text> : null}
           <View style={s.buttons}>
-            <Button label={said ? 'Another take' : 'Start'} kind={said ? 'soft' : 'accent'} onPress={() => onTake(spec)}
-              icon={<Icon name="mic" size={18} color={said ? a.color : '#14161C'} />} />
+            <Button label={last ? 'Another take' : 'Start'} kind={last ? 'soft' : 'accent'} onPress={() => onTake(spec)}
+              icon={<Icon name="mic" size={18} color={last ? a.color : '#14161C'} />} />
             {learned && v.say.learned ? (
               <Button label={plain ? 'Say what I learned' : "Today's topic"} kind="quiet" small onPress={() => setPlain((x) => !x)} />
             ) : null}

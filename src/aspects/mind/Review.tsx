@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import {
-  Button, Card, Chip, Divider, Failed, IconButton, Icon, Screen, Section, Segmented, Skeleton, dayLabel, timer, t, useAspect,
+  Button, Card, Chip, Divider, Failed, IconButton, Icon, Screen, Section, Segmented, Skeleton, dayLabel, timer, t, undoable, useAspect,
 } from '@/aspects/kit';
 import { call, fileSource, invalidate, useGet } from '@/lib/mod';
 import { C } from '@/theme';
@@ -143,8 +143,16 @@ export function ReviewScreen({ id, onClose, onAgain }: { id: string | null; onCl
   const remove = async () => {
     if (!take) return;
     setDeleting(true);
-    try { await call(`/mod/mind/takes/${take.id}`, undefined, 'DELETE'); invalidate('/mod/mind/'); a.notice('Take deleted'); onClose(); }
-    catch (e) { a.notice((e as Error).message); } finally { setDeleting(false); }
+    const id = take.id;
+    try {
+      await call(`/mod/mind/takes/${id}`, undefined, 'DELETE');
+      invalidate('/mod/mind/');
+      onClose();
+      // the PC keeps the record and the recording for a day, so Undo puts both back
+      undoable('Take deleted', async () => {
+        try { await call(`/mod/mind/takes/${id}/restore`); invalidate('/mod/mind/'); } catch (e) { a.notice((e as Error).message); }
+      });
+    } catch (e) { a.notice((e as Error).message); } finally { setDeleting(false); }
   };
   return (
     <Screen open={!!id} onClose={onClose} title="Review">

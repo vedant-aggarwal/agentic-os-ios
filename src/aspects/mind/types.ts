@@ -69,9 +69,9 @@ export type HomeView = {
   learn: {
     course: { id: string; title: string; lessons: number; done: number; next: { id: string; title: string; n: number; duration: string | null; url: string | null } | null; today: string[] } | null;
     book: { id: string; title: string; author: string | null; page: number; pages: number | null; cover: string | null; sitting_since: string | null; last: string | null; idle: number | null } | null;
-    today: { read: number; lessons: number }; courses: number; books: number;
+    today: { read: number; lessons: number; ticked?: boolean }; courses: number; books: number;
   };
-  say: { topic: Topic; learned: Learned | null; today: TakeLite[] };
+  say: { topic: Topic; learned: Learned | null; today: TakeLite[]; ticked?: boolean };
   week: { from: string; days: Day[]; learned: number; said: number; both: number };
   sharper: { trend: Progress['trend']; reviewed: number; takes: number; last: TakeLite | null };
   recall: { due: number };

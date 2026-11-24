@@ -24,6 +24,9 @@
 //   GET    /orca/agents/:id?limit=         -> OrcaRead   one Orca agent's conversation, newest last
 //   POST   /orca/agents/:id/prompt         { text, force? } -> { ok }  428 cold cache, 409 working, 501 a chat tab
 //   POST   /orca/launch                    { agent, folder, prompt } -> { agent: OrcaAgent | null, outcome }
+//   POST   /work/resolve                   { kind, id, force? } -> ResolveResult   409 while it works (force resolves anyway)
+//   GET    /work/resolved/:id              -> ResolvedRead   the saved chat, oldest first
+//   POST   /work/resolved/:id/continue     ContinueResolved -> { item, job?, agent?, where }   a new job that carries it on
 //
 // Writes from the phone carry an `Idempotency-Key` header, so a replayed offline write never doubles.
 
@@ -116,6 +119,8 @@ export type WorkHome = {
   needs: NeedItem[];
   live: JobBrief[];
   inbox: { ideas: Idea[]; tasks: Task[] };
+  /** What he swiped away lately, newest first (an older PC leaves it out). */
+  resolved?: ResolvedItem[];
   at: string;
 };
 export type ProjectHome = {
@@ -163,3 +168,22 @@ export type OrcaRead = { agent: OrcaAgent; entries: OrcaEntry[]; state: string; 
 /** stop: end its turn. allow / deny: answer its permission prompt. show: bring it up in Orca on the PC. end: close its tab. */
 export type OrcaControl = 'stop' | 'allow' | 'deny' | 'show' | 'end';
 export type OrcaLaunch = { agent?: 'claude' | 'codex'; folder: string; prompt: string; model?: string | null; effort?: string | null };
+
+// ---- Resolved: jobs and Orca agents he swiped away. The PC saved each chat first, so it can be read or carried on ----
+export type ResolvedItem = {
+  id: string; kind: 'job' | 'orca';
+  /** The job id (j12) or Orca session id it was. */
+  ref: string;
+  title: string; engine: string; project: string | null; folder: string | null;
+  /** The agent's own Claude Code or Codex session and transcript file, when the PC found them. */
+  sessionId: string | null; transcript: string | null;
+  chatFile: string; turns: number; last: string | null;
+  updatedAt: string | null; resolvedAt: string;
+  /** Its tab on the PC closed (Orca) or its process stopped (job). */
+  closed: boolean;
+  continuedIn: { kind: 'job' | 'orca'; id: string; at: string }[];
+};
+export type ResolvedTurn = { role: 'user' | 'assistant' | 'tool' | 'note'; text: string };
+export type ResolvedRead = { item: ResolvedItem; turns: ResolvedTurn[] };
+export type ResolveResult = { item: ResolvedItem; closed: boolean; note: string | null };
+export type ContinueResolved = { text?: string; engine?: Engine; where?: 'orca' | 'app'; perm?: Perm; folder?: string | null };

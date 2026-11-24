@@ -6,7 +6,9 @@ import { newKey, workApi } from './api';
 import { readCache, writeCache } from './cache';
 import { demoHome, demoOrca, demoProject } from './demo';
 import { openSSE } from './sse';
-import type { FeedChange, Folder, Idea, JobBrief, NewJob, OrcaLaunch, OrcaState, ProjectCard, ProjectHome, Task, WorkHome } from './types';
+import type {
+  ContinueResolved, FeedChange, Folder, Idea, JobBrief, NewJob, OrcaLaunch, OrcaState, ProjectCard, ProjectHome, ResolvedItem, Task, WorkHome,
+} from './types';
 
 // The hub's one store. Screens read it through the hooks at the bottom; nothing renders from a fetch directly.
 // Order on every read: the phone's cached copy first (instant), then the PC's answer (ETag, so usually a 304),
@@ -14,6 +16,8 @@ import type { FeedChange, Folder, Idea, JobBrief, NewJob, OrcaLaunch, OrcaState,
 
 export type Load = 'loading' | 'ready' | 'error' | 'signedOut';
 type Slot<T> = { data: T | null; load: Load; error: string | null };
+/** What the phone already knows about a row being resolved, so its Resolved row reads right before the PC answers. */
+export type ResolveHint = { title: string; project?: string | null; engine?: string };
 type State = {
   home: Slot<WorkHome>;
   projects: Record<string, Slot<ProjectHome>>;
@@ -50,6 +54,7 @@ function normHome(h: WorkHome | null | undefined): WorkHome | null {
   return {
     ...h, projects: h.projects, needs: Array.isArray(h.needs) ? h.needs : [], live: Array.isArray(h.live) ? h.live : [],
     inbox: { ideas: Array.isArray(h.inbox?.ideas) ? h.inbox.ideas : [], tasks: Array.isArray(h.inbox?.tasks) ? h.inbox.tasks : [] },
+    resolved: Array.isArray(h.resolved) ? h.resolved : [],
   };
 }
 
@@ -179,9 +184,11 @@ function patchJob(j: JobBrief) {
     const home = s.home.data ? { ...s.home.data, live: upsert(s.home.data.live, isLive) } : null;
     const projects = { ...s.projects };
     const slot = j.project ? projects[j.project] : undefined;
+    // A resolved job's last updates (it stopping) must not put it back on its project's list.
+    const gone = (s.home.data?.resolved ?? []).some((r) => r.kind === 'job' && r.ref === j.id);
     if (slot?.data) {
       projects[j.project!] = {
-        ...slot, data: { ...slot.data, live: upsert(slot.data.live, isLive), jobs: upsert(slot.data.jobs, () => true) },
+        ...slot, data: { ...slot.data, live: upsert(slot.data.live, isLive), jobs: upsert(slot.data.jobs, () => !gone) },
       };
     }
     return { ...s, home: home ? { ...s.home, data: home } : s.home, projects };
@@ -459,6 +466,79 @@ export const work = {
     }
   },
 
+  /**
+   * Resolves a job or an Orca agent: it leaves every list at once and shows under Resolved; the PC saves its chat, then
+   * closes it (an Orca tab closes on the PC). 'working' when the PC says it is still working (nothing changed then):
+   * ask him, then call again with force.
+   */
+  async resolve(kind: 'job' | 'orca', id: string, hint: ResolveHint, force = false): Promise<'ok' | 'working' | 'failed'> {
+    const snap = state;
+    const at = nowIso();
+    const temp: ResolvedItem = {
+      id: `tmp-${kind}-${id}`, kind, ref: id, title: hint.title, engine: hint.engine ?? 'claude', project: hint.project ?? null, folder: null,
+      sessionId: null, transcript: null, chatFile: '', turns: 0, last: null, updatedAt: null, resolvedAt: at, closed: false, continuedIn: [],
+    };
+    set((s) => {
+      const strip = (l: JobBrief[]) => l.filter((j) => j.id !== id);
+      const projects = { ...s.projects };
+      if (kind === 'job') {
+        for (const [slug, slot] of Object.entries(projects)) {
+          if (slot.data) projects[slug] = { ...slot, data: { ...slot.data, live: strip(slot.data.live), jobs: strip(slot.data.jobs), needs: slot.data.needs.filter((n) => n.jobId !== id) } };
+        }
+      }
+      const home = s.home.data ? {
+        ...s.home.data,
+        live: kind === 'job' ? strip(s.home.data.live) : s.home.data.live,
+        needs: kind === 'job' ? s.home.data.needs.filter((n) => n.jobId !== id) : s.home.data.needs,
+        resolved: [temp, ...(s.home.data.resolved ?? []).filter((r) => !(r.kind === kind && r.ref === id))],
+      } : s.home.data;
+      const orca = kind === 'orca' && s.orca.data ? { ...s.orca, data: { ...s.orca.data, agents: s.orca.data.agents.filter((a) => a.id !== id) } } : s.orca;
+      return { ...s, projects, orca, home: { ...s.home, data: home } };
+    });
+    if (DEMO) {
+      // the preview has no PC: the row settles as if the chat were saved
+      set((s) => {
+        const done = { ...temp, id: `r_demo_${id}`, turns: 3, closed: true };
+        const home = s.home.data ? { ...s.home.data, resolved: (s.home.data.resolved ?? []).map((r) => (r.id === temp.id ? done : r)) } : s.home.data;
+        return { ...s, home: { ...s.home, data: home }, notice: kind === 'orca' ? 'Resolved. On the real PC its tab in Orca closes too.' : 'Resolved.' };
+      });
+      return 'ok';
+    }
+    try {
+      const out = await workApi.resolve({ kind, id, ...(force ? { force: true } : {}) }, newKey());
+      set((s) => {
+        const home = s.home.data ? { ...s.home.data, resolved: (s.home.data.resolved ?? []).map((r) => (r.id === temp.id ? out.item : r)) } : s.home.data;
+        return { ...s, home: { ...s.home, data: home }, notice: out.note ?? (kind === 'orca' ? 'Resolved. Its tab in Orca is closed.' : 'Resolved.') };
+      });
+      scheduleRefetch(out.item.project);
+      scheduleOrca();
+      return 'ok';
+    } catch (e) {
+      state = snap; emit();
+      if (e instanceof ApiError && e.status === 409) return 'working';
+      set((s) => ({ ...s, notice: (e as Error).message }));
+      return 'failed';
+    }
+  },
+
+  /** Carries a resolved session on in a new job; null on failure (the notice says why). Takes a few seconds in Orca. */
+  async continueResolved(id: string, b: ContinueResolved) {
+    if (DEMO) { set((s) => ({ ...s, notice: 'Demo: the new job starts on the real PC, with the saved chat handed over.' })); return null; }
+    try {
+      const out = await workApi.continueResolved(id, b, newKey());
+      set((s) => {
+        const home = s.home.data ? { ...s.home.data, resolved: (s.home.data.resolved ?? []).map((r) => (r.id === id ? out.item : r)) } : s.home.data;
+        return { ...s, home: { ...s.home, data: home } };
+      });
+      if (out.job) patchJob(out.job);
+      if (out.where === 'orca') loadOrca();
+      return out;
+    } catch (e) {
+      set((s) => ({ ...s, notice: (e as Error).message }));
+      return null;
+    }
+  },
+
   /** Starts a job. Not optimistic: the PC answers at once with the job (status "starting"), then it streams. */
   async startJob(job: NewJob) {
     if (DEMO) { set((s) => ({ ...s, notice: 'Demo: jobs only start on the real server.' })); return null; }
@@ -514,5 +594,10 @@ export function useOrca() {
 }
 
 export const useWorkLive = () => useSyncExternalStore(subscribe, () => state.live);
+const NO_RESOLVED: ResolvedItem[] = [];
+/** What he resolved lately, newest first, from the phone's copy of the hub. */
+export const useResolvedList = () => useSyncExternalStore(subscribe, () => state.home.data?.resolved ?? NO_RESOLVED);
+/** One resolved item from the phone's copy of the hub (null until home has loaded, or when it isn't there). */
+export const useResolvedItem = (id: string) => useSyncExternalStore(subscribe, () => state.home.data?.resolved?.find((r) => r.id === id) ?? null);
 export const useWorkNotice = () => useSyncExternalStore(subscribe, () => state.notice);
 export { LIVE as LIVE_STATUSES };

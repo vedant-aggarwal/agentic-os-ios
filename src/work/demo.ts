@@ -1,4 +1,4 @@
-import type { Folder, JobBrief, NeedItem, OrcaAgent, OrcaState, ProjectCard, ProjectHome, WorkHome } from './types';
+import type { Folder, JobBrief, NeedItem, OrcaAgent, OrcaState, ProjectCard, ProjectHome, ResolvedItem, ResolvedRead, WorkHome } from './types';
 
 // Dev only (web build with `?demo`, see lib/demo.ts): the hub on sample data, for layout work without the PC.
 // The project list mirrors the seed in PROJECTS-HUB-SPEC.md section 12; jobs, ideas and tasks are samples.
@@ -56,6 +56,7 @@ export function demoHome(): WorkHome {
       ideas: [{ id: 'i1', title: 'Widget that opens straight into idea recording', body: null, project: null, status: 'open', source: 'voice', createdAt: ago(60) }],
       tasks: [{ id: 't1', title: 'Renew the Apple developer account', status: 'inbox', project: null, due: null }],
     },
+    resolved: RESOLVED,
     at: new Date().toISOString(),
   };
 }
@@ -112,5 +113,31 @@ export function demoOrca(): OrcaState {
       codex: { status: 'ok', plan: 'plus', error: null, at: new Date().toISOString(), session: null,
         weekly: { usedPercent: 79, resetsAt: reset(23), reset: 'Wed, 1:19 pm' }, extra: [] },
     },
+  };
+}
+
+const resolvedItem = (id: string, title: string, project: string | null, min: number, extra: Partial<ResolvedItem> = {}): ResolvedItem => ({
+  id, kind: 'orca', ref: `o-${id}`, title, engine: 'claude', project, folder: PROJECTS.find((p) => p.slug === project)?.folders[0]?.path ?? null,
+  sessionId: '93bb2093-fbaa-427f-ba2b-b8d2bcaec99c', transcript: null, chatFile: `${U}\\agentic-os-ios-ai\\data\\resolved\\${id}.md`, turns: 6,
+  last: null, updatedAt: ago(min + 5), resolvedAt: ago(min), closed: true, continuedIn: [], ...extra,
+});
+const RESOLVED: ResolvedItem[] = [
+  resolvedItem('r_demo1', 'BizBrain list order reversal', 'bizbrain', 12, { last: 'Send out now shows the newest bills at the top. Committed on feat/send-newest-first.' }),
+  resolvedItem('r_demo2', 'Voices page: copy button', 'agentic-os', 95, { kind: 'job', ref: 'j99', turns: 4, last: 'The copy button sits beside each take now.', continuedIn: [{ kind: 'orca', id: 'o1', at: ago(30) }] }),
+  resolvedItem('r_demo3', 'Reel script for Sheru', 'content-os', 300, { engine: 'codex', turns: 9, last: 'Script v3 is in scripts/sheru-07.md.' }),
+  resolvedItem('r_demo4', 'Reply to Skool member', null, 1500, { kind: 'orca', closed: false, turns: 2, last: 'Post the reply below as your answer.' }),
+];
+
+/** A resolved item's saved chat, for the preview. */
+export function demoResolvedRead(id: string): ResolvedRead {
+  const item = RESOLVED.find((r) => r.id === id) ?? RESOLVED[0];
+  return {
+    item,
+    turns: [
+      { role: 'user', text: 'Project: BizBrain.\n\nIdea: It\'s oldest to latest first. It should be reversed so that the latest ones come at the top.' },
+      { role: 'assistant', text: 'Tracing which desk list you meant; Send out is the likely one.' },
+      { role: 'tool', text: 'Read plan.ts · Edit plan.ts · Edit send.tsx · Bash: npx tsc --noEmit' },
+      { role: 'assistant', text: 'Send out now shows the newest bills at the top, on its own page and in the preview on the desk home.\n\n- **Unchanged:** Auto assign still gives the oldest bills out first.\n- **Files changed:** `src/desk/plan.ts`, `app/desk/send.tsx`\n\nLeft for you:\n- The shop tablet only gets this after a new Android build.' },
+    ],
   };
 }

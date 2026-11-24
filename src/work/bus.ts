@@ -1,12 +1,12 @@
 import { useEffect, useSyncExternalStore } from 'react';
-import type { Idea, Task } from './types';
+import type { Idea, ResolvedItem, Task } from './types';
 
 // How the fan, the hub pages and the capture sheets talk without importing each other.
 // Anyone calls openSheet(); the one <WorkSheets /> host (src/work/sheets) shows it.
 // Push to talk goes the same way: the fan reports mic events, the recorder owns the audio.
 
 export type SheetRequest =
-  | { kind: 'idea' | 'task' | 'job'; project: string | null; seq: number; text?: string; idea?: string | null; tasks?: string[] }
+  | { kind: 'idea' | 'task' | 'job'; project: string | null; seq: number; text?: string; idea?: string | null; tasks?: string[]; resume?: ResolvedItem }
   | { kind: 'project'; seq: number; name?: string }
   | { kind: 'projectSettings'; project: string; seq: number }
   | { kind: 'editIdea'; idea: Idea; seq: number }
@@ -18,7 +18,7 @@ const subs = new Set<() => void>();
 const subscribe = (f: () => void) => { subs.add(f); return () => { subs.delete(f); }; };
 
 type Open =
-  | { kind: 'idea' | 'task' | 'job'; project: string | null; text?: string; idea?: string | null; tasks?: string[] }
+  | { kind: 'idea' | 'task' | 'job'; project: string | null; text?: string; idea?: string | null; tasks?: string[]; resume?: ResolvedItem }
   | { kind: 'project'; name?: string }
   | { kind: 'projectSettings'; project: string }
   | { kind: 'editIdea'; idea: Idea }

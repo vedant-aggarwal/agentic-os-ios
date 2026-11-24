@@ -3,7 +3,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SignIn } from '@/components/SignIn';
 import { openSheet } from '@/work/bus';
-import { useOrca, useProjectHome, work } from '@/work/store';
+import { useOrca, useProjectHome, useResolvedList, work } from '@/work/store';
 import { HubList, type Item, type ListHandlers, type Sec } from '@/work/ui/HubList';
 import { IdeaIcon, JobIcon, SettingsIcon, TaskIcon } from '@/work/ui/icons';
 import { useAnswered } from '@/work/ui/NeedCard';
@@ -11,12 +11,15 @@ import { orcaLive, orcaWaiting } from '@/work/ui/orca';
 import { ProjectHeader } from '@/work/ui/ProjectHeader';
 import type { QuickAction } from '@/work/ui/QuickBar';
 import { Shell } from '@/work/ui/Shell';
+import { useResolveFlow } from '@/work/ui/useResolveFlow';
 
 // One project: what waits on him, what runs (app jobs and its Orca agents), its ideas and tasks, past jobs, its
-// recent Orca agents, outside sessions and uncommitted changes. The header draws at once from the hub's project card while the full ProjectHome loads.
+// recent Orca agents, outside sessions, uncommitted changes, and what was resolved here (swipe a job or agent left
+// to resolve it; hold a resolved row to carry it on). The header draws at once from the hub's project card while the full ProjectHome loads.
 
 const JOBS_CUT = 8;
 const ORCA_CUT = 4;
+const RESOLVED_CUT = 3;
 
 export default function ProjectHome() {
   const params = useLocalSearchParams<{ slug: string }>();
@@ -28,7 +31,11 @@ export default function ProjectHome() {
   const [refreshing, setRefreshing] = useState(false);
   const [allJobs, setAllJobs] = useState(false);
   const [allOrca, setAllOrca] = useState(false);
+  const [allResolved, setAllResolved] = useState(false);
   const orca = useOrca();
+  const flow = useResolveFlow();
+  const resolvedAll = useResolvedList();
+  const resolved = useMemo(() => resolvedAll.filter((r) => r.project === slug), [resolvedAll, slug]);
   const agents = useMemo(() => (orca.data?.up ? orca.data.agents.filter((a) => a.project === slug) : []), [orca.data, slug]);
 
   const reload = useCallback(() => Promise.all([work.loadProject(slug), work.loadHome(), work.loadOrca()]), [slug]);
@@ -38,7 +45,9 @@ export default function ProjectHome() {
   }, [reload]);
   const settings = useCallback(() => openSheet({ kind: 'projectSettings', project: slug }), [slug]);
 
-  const handlers = useMemo<ListHandlers>(() => ({ onHide: hide, onUndo: unhide, onSent: () => { reload(); } }), [hide, unhide, reload]);
+  const handlers = useMemo<ListHandlers>(() => ({
+    onHide: hide, onUndo: unhide, onSent: () => { reload(); }, onResolve: flow.onResolve, onResolvedHold: flow.onResolvedHold,
+  }), [hide, unhide, reload, flow.onResolve, flow.onResolvedHold]);
 
   const quick = useMemo<QuickAction[]>(() => [
     { key: 'idea', label: 'Idea', a11y: 'New idea', icon: <IdeaIcon />, onPress: () => openSheet({ kind: 'idea', project: slug }) },
@@ -115,8 +124,18 @@ export default function ProjectHome() {
         data: changes.map((r): Item => ({ kind: 'repo', key: `r:${r.folder}`, repo: r, folders: data.project.folders })),
       });
     }
+    if (resolved.length) {
+      const cut = !allResolved && resolved.length > RESOLVED_CUT + 1;
+      out.push({
+        key: 'resolved', title: 'Resolved', count: resolved.length,
+        data: [
+          ...(cut ? resolved.slice(0, RESOLVED_CUT) : resolved).map((r): Item => ({ kind: 'resolved', key: `x:${r.id}`, item: r })),
+          ...(cut ? [{ kind: 'more', key: 'resolved:more', label: `Show all ${resolved.length}`, onPress: () => setAllResolved(true) } as Item] : []),
+        ],
+      });
+    }
     return out;
-  }, [data, slot.load, slot.error, project?.name, hidden, allJobs, allOrca, agents, slug, reload]);
+  }, [data, slot.load, slot.error, project?.name, hidden, allJobs, allOrca, allResolved, resolved, agents, slug, reload]);
 
   if (slot.load === 'signedOut') return <SignIn onDone={() => { reload(); }} />;
 
@@ -125,7 +144,7 @@ export default function ProjectHome() {
     : <View style={s.titleBar} accessibilityLabel="Loading" />;
 
   return (
-    <Shell actions={quick} right={{ label: 'Project settings', icon: <SettingsIcon />, onPress: settings }}>
+    <Shell actions={quick} right={{ label: 'Project settings', icon: <SettingsIcon />, onPress: settings }} overlay={flow.overlay}>
       <HubList sections={sections} header={header} refreshing={refreshing} onRefresh={refresh} handlers={handlers} />
     </Shell>
   );

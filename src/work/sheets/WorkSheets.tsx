@@ -35,7 +35,7 @@ function SheetFor({ req }: { req: SheetRequest }) {
     case 'task': return <TaskSheet project={req.project} text={req.text} />;
     case 'job': {
       const r = req as typeof req & { idea?: string | null; tasks?: string[] };
-      return <JobSheet project={r.project} text={r.text} idea={r.idea ?? null} tasks={r.tasks ?? []} />;
+      return <JobSheet project={r.project} text={r.text} idea={r.idea ?? null} tasks={r.tasks ?? []} resume={req.resume} />;
     }
     case 'project': return <NewProjectSheet name={req.name} />;
     case 'projectSettings': return <ProjectSettingsSheet project={req.project} />;

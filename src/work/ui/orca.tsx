@@ -38,14 +38,16 @@ export function cacheWord(c: CacheState, working: boolean, now = Date.now()): { 
 }
 
 /** One Orca agent: state dot, title, where and what it's doing, its age and cache. */
-export function OrcaRow({ agent, where, onPress }: { agent: OrcaAgent; where?: string | null; onPress: () => void }) {
+export function OrcaRow({ agent, where, onPress, onResolve }: { agent: OrcaAgent; where?: string | null; onPress: () => void; onResolve?: () => void }) {
   const tone = orcaTone(agent);
   const cache = cacheWord(agent.cache, orcaWorking(agent));
   const live = tone !== 'quiet';
   const sub = live ? `${engineName(agent)} · ${orcaStateWord(agent)}` : agent.last ?? `${engineName(agent)} in Orca`;
   return (
     <Press onPress={onPress} style={s.row}
-      accessibilityLabel={[agent.title, `${engineName(agent)} in Orca`, orcaStateWord(agent), where, cache?.text].filter(Boolean).join(', ')}>
+      accessibilityLabel={[agent.title, `${engineName(agent)} in Orca`, orcaStateWord(agent), where, cache?.text].filter(Boolean).join(', ')}
+      accessibilityActions={onResolve ? [{ name: 'resolve', label: 'Resolve' }] : undefined}
+      onAccessibilityAction={onResolve ? (e) => { if (e.nativeEvent.actionName === 'resolve') onResolve(); } : undefined}>
       <View style={s.lead}><LiveDot tone={tone} pulse={tone === 'live'} /></View>
       <View style={s.mid}>
         <Text numberOfLines={1} style={T.row}>{agent.title}</Text>

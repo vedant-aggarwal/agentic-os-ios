@@ -9,11 +9,15 @@ import { C, F } from '@/theme';
 import { workApi } from '../api';
 import { closeSheet, openSheet } from '../bus';
 import { includedOf, useFanProjects, useOrca, useProjectHome, useWorkHome, useWorkNotice, work } from '../store';
-import type { Engine, EngineHealth, Idea, Perm, ProjectCard, Task } from '../types';
+import type { Engine, EngineHealth, Folder, Idea, Perm, ProjectCard, ResolvedItem, Task } from '../types';
+import { resolvedLine } from '../ui/resolved';
 import { appendText, useDictation } from '../voice';
 import { DictationLine, MicButton, ProjectChip, ProjectPicker, shortPath, startFolder } from './parts';
 import { Chip, Glyph, Press, PrimaryButton, Segmented, SectionLabel, Sheet, SheetFooter, SheetHeader, sheetStyles } from './Sheet';
 
+// With `resume` (a resolved session, from its hold menu) it is "Continue": the saved chat rides along as a skill card
+// (continue-resolved), the box asks what to do now (empty means carry on), and it starts where the old one ran.
+//
 // New job: Claude or Codex as two big buttons, the idea and tasks it carries as chips, Additional context (the mic
 // adds to it), the folder it starts in (tap for the project's other folders), and the permission mode. The engines'
 // logins are checked first (GET /engines/health): Start stays off while the chosen one can't run, with its reason.
@@ -64,20 +68,22 @@ function useHealth() {
   return { health, retry: () => { setHealth({ s: 'loading' }); setNonce((n) => n + 1); } };
 }
 
-export function JobSheet(props: { project: string | null; text?: string; idea?: string | null; tasks?: string[] }) {
+type JobProps = { project: string | null; text?: string; idea?: string | null; tasks?: string[]; resume?: ResolvedItem };
+
+export function JobSheet(props: JobProps) {
   return (
-    <Sheet label="New job">
+    <Sheet label={props.resume ? 'Continue working' : 'New job'}>
       <JobBody {...props} />
     </Sheet>
   );
 }
 
-function JobBody({ project: initial, text, idea, tasks }: { project: string | null; text?: string; idea?: string | null; tasks?: string[] }) {
+function JobBody({ project: initial, text, idea, tasks, resume }: JobProps) {
   const projects = useFanProjects();
   const notice = useWorkNotice();
   const orca = useOrca();
   const { health, retry } = useHealth();
-  const [engine, setEngine] = useState<Engine>(last.engine);
+  const [engine, setEngine] = useState<Engine>(resume?.engine === 'codex' || resume?.engine === 'claude' ? resume.engine : last.engine);
   const [perm, setPerm] = useState<Perm>(last.perm);
   const [whereRaw, setWhere] = useState<Where>(last.where);
   const [project, setProject] = useState(initial);
@@ -85,7 +91,7 @@ function JobBody({ project: initial, text, idea, tasks }: { project: string | nu
   const [context, setContext] = useState(text ?? '');
   const [ideaId, setIdeaId] = useState(idea ?? null);
   const [taskIds, setTaskIds] = useState(tasks ?? []);
-  const [folderPick, setFolderPick] = useState<string | null>(null);
+  const [folderPick, setFolderPick] = useState<string | null>(resume?.folder ?? null);
   const [choosingFolder, setChoosingFolder] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -95,15 +101,18 @@ function JobBody({ project: initial, text, idea, tasks }: { project: string | nu
   const dict = useDictation((words) => setContext(appendText(latest.current, words)));
 
   const card = project ? projects?.find((p) => p.slug === project) ?? null : null;
-  const folders = card?.folders ?? [];
-  const folder = folders.find((f) => f.path === folderPick) ?? startFolder(card);
+  // Continuing: the folder the old session ran in comes first, even when it isn't one of the project's.
+  const ranIn: Folder | null = resume?.folder ? { path: resume.folder, label: 'Where it ran' } : null;
+  const own = card?.folders ?? [];
+  const folders = ranIn && !own.some((f) => samePath(f.path, ranIn.path)) ? [ranIn, ...own] : own;
+  const folder = folders.find((f) => samePath(f.path, folderPick ?? '')) ?? (ranIn && !card ? ranIn : startFolder(card));
 
   const state = (e: Engine): 'checking' | 'ready' | 'broken' | 'unknown' =>
     health.s === 'loading' ? 'checking' : health.s === 'error' ? 'unknown' : health.h[e]?.ok ? 'ready' : 'broken';
   const chosen = state(engine);
   // a PC without the health route yet still starts jobs; one that can't be reached can't
   const engineOk = chosen === 'ready' || (chosen === 'unknown' && health.s === 'error' && health.status !== 0);
-  const hasWork = !!(context.trim() || ideaId || taskIds.length);
+  const hasWork = !!(context.trim() || ideaId || taskIds.length || resume);
   const canStart = engineOk && !!folder && hasWork && dict.state === 'idle' && !busy;
   // Orca is a choice only while it answers on the PC; otherwise the job runs in the app.
   const orcaUp = !!orca.data?.up;
@@ -113,6 +122,16 @@ function JobBody({ project: initial, text, idea, tasks }: { project: string | nu
     if (!canStart || !folder) return;
     remember(engine, perm, orcaUp ? whereRaw : last.where);
     setBusy(true); setFailed(false);
+    if (resume) {
+      const out = await work.continueResolved(resume.id, { text: context.trim(), engine, where, perm, folder: folder.path });
+      setBusy(false);
+      if (!out) { setFailed(true); return; }
+      closeSheet();
+      if (out.job) router.push(`/work/job/${out.job.id}` as Href);
+      else if (out.agent) router.push(`/work/orca/${out.agent.id}` as Href);
+      else work.notify('Started in Orca. It shows under Live in a few seconds.');
+      return;
+    }
     if (where === 'orca') {
       const inc = includedOf(project, ideaId, taskIds);
       if ((ideaId && !inc.idea) || inc.tasks.some((t) => !t)) {
@@ -143,7 +162,7 @@ function JobBody({ project: initial, text, idea, tasks }: { project: string | nu
 
   return (
     <>
-      <SheetHeader title="New job" />
+      <SheetHeader title={resume ? 'Continue working' : 'New job'} />
       <ScrollView style={s.scroll} contentContainerStyle={[sheetStyles.pad, { gap: 16, paddingTop: 4 }]} keyboardShouldPersistTaps="handled">
         <View style={{ gap: 8 }}>
           <View style={s.engines} accessibilityRole="radiogroup" accessibilityLabel="Engine">
@@ -164,15 +183,18 @@ function JobBody({ project: initial, text, idea, tasks }: { project: string | nu
           <HealthLine health={health} engine={engine} onRetry={retry} />
         </View>
 
+        {resume ? <ResumeCard item={resume} /> : null}
+
         {ideaId || taskIds.length ? (
           <Included project={project} idea={ideaId} tasks={taskIds}
             onDropIdea={() => setIdeaId(null)} onDropTask={(id) => setTaskIds((l) => l.filter((x) => x !== id))} />
         ) : null}
 
         <View style={{ gap: 8 }}>
-          <SectionLabel>{ideaId || taskIds.length ? 'Additional context' : 'What should it do?'}</SectionLabel>
+          <SectionLabel>{resume ? 'What to do now' : ideaId || taskIds.length ? 'Additional context' : 'What should it do?'}</SectionLabel>
           <View style={[sheetStyles.box, s.contextBox]}>
-            <TextInput value={context} onChangeText={setContext} multiline placeholder={ideaId || taskIds.length ? 'Anything it should know' : 'Describe the job'}
+            <TextInput value={context} onChangeText={setContext} multiline
+              placeholder={resume ? 'Leave empty to carry on where it stopped' : ideaId || taskIds.length ? 'Anything it should know' : 'Describe the job'}
               placeholderTextColor={C.faint} style={s.context} accessibilityLabel="Additional context" />
             <View style={s.contextMic}><MicButton d={dict} size={36} /></View>
           </View>
@@ -181,16 +203,18 @@ function JobBody({ project: initial, text, idea, tasks }: { project: string | nu
 
         <View style={{ gap: 8 }}>
           <SectionLabel>Starts in</SectionLabel>
-          {!project ? (
+          {!project && !ranIn ? (
             <Text style={sheetStyles.note}>Pick a project below. The job runs in its folder.</Text>
-          ) : projects === null ? (
+          ) : projects === null && !ranIn ? (
             <View style={s.inline}><ActivityIndicator size="small" color={C.muted} /><Text style={sheetStyles.note}>Loading the project</Text></View>
           ) : !folder ? (
             <View style={s.inline}>
               <Text style={[sheetStyles.note, { flex: 1 }]}>This project has no folder yet.</Text>
-              <Pressable accessibilityRole="button" hitSlop={8} onPress={() => { lightTap(); openSheet({ kind: 'projectSettings', project }); }}>
-                <Text style={s.link}>Link a folder</Text>
-              </Pressable>
+              {project ? (
+                <Pressable accessibilityRole="button" hitSlop={8} onPress={() => { lightTap(); openSheet({ kind: 'projectSettings', project }); }}>
+                  <Text style={s.link}>Link a folder</Text>
+                </Pressable>
+              ) : null}
             </View>
           ) : (
             <>
@@ -249,6 +273,30 @@ function JobBody({ project: initial, text, idea, tasks }: { project: string | nu
         <PrimaryButton label="Start" onPress={start} disabled={!canStart} busy={busy} />
       </SheetFooter>
     </>
+  );
+}
+
+const samePath = (a: string, b: string) => a.replace(/[\\/]+$/, '').replace(/\//g, '\\').toLowerCase() === b.replace(/[\\/]+$/, '').replace(/\//g, '\\').toLowerCase();
+
+/** The resolved session this job carries on, as the skill card it goes in with. It can't be dropped: it is the job. */
+function ResumeCard({ item }: { item: ResolvedItem }) {
+  return (
+    <View style={{ gap: 8 }}>
+      <SectionLabel>Included</SectionLabel>
+      <View style={[sheetStyles.box, s.resume]} accessible
+        accessibilityLabel={`Resume previous session: ${item.title}. ${resolvedLine(item)}. Goes in as the continue-resolved skill`}>
+        <View style={s.resumeIcon}><Glyph name="arrow.uturn.forward" size={15} color={C.text} alt="↻" /></View>
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text style={s.resumeKicker}>Resume previous session</Text>
+          <Text style={s.resumeTitle} numberOfLines={2}>{item.title}</Text>
+          <Text style={s.resumeSub} numberOfLines={1}>{resolvedLine(item)}</Text>
+          <View style={s.skillRow}>
+            <Text style={s.skill}>Skill · continue-resolved</Text>
+            {item.sessionId ? <Text style={s.resumeSub} numberOfLines={1}>{`Session ${item.sessionId.slice(0, 8)}`}</Text> : null}
+          </View>
+        </View>
+      </View>
+    </View>
   );
 }
 
@@ -338,4 +386,11 @@ const s = StyleSheet.create({
   folderLabel: { fontFamily: F.semibold, fontSize: 16, lineHeight: 24, color: C.text },
   folderPath: { fontFamily: F.regular, fontSize: 14, lineHeight: 20, color: C.faint },
   flex: { flex: 1, alignItems: 'flex-start' },
+  resume: { flexDirection: 'row', gap: 12, padding: 12 },
+  resumeIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.1)' },
+  resumeKicker: { fontFamily: F.semibold, fontSize: 12, lineHeight: 16, color: C.muted, textTransform: 'uppercase', letterSpacing: 0.4 },
+  resumeTitle: { fontFamily: F.semibold, fontSize: 16, lineHeight: 22, color: C.text },
+  resumeSub: { fontFamily: F.regular, fontSize: 13, lineHeight: 18, color: C.faint, flexShrink: 1 },
+  skillRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
+  skill: { fontFamily: F.medium, fontSize: 12, lineHeight: 16, color: C.text, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.1)', overflow: 'hidden' },
 });

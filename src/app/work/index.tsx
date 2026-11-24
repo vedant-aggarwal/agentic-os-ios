@@ -13,15 +13,19 @@ import { orcaLive, orcaWaiting, orcaWorking } from '@/work/ui/orca';
 import { type MenuAt, ProjectMenu } from '@/work/ui/ProjectMenu';
 import { isIdeaProject, type ProjectTab, ProjectTabs } from '@/work/ui/projects';
 import { Shell, useShellInsets } from '@/work/ui/Shell';
+import { useResolveFlow } from '@/work/ui/useResolveFlow';
 import { design } from '@/work/variants/liquid';
 
 // The Work orb's tap. Top: the Liquid head (his Claude and Codex limits as glass capsules, whether Orca is there;
 // src/work/variants/liquid), then
 // everything waiting on him, what's running (app jobs and Orca agents), his projects (Active as tiles, idea
-// projects behind a switch), what finished in Orca lately, and the inbox. Draws from the phone's copy at once.
+// projects behind a switch), what finished in Orca lately, the inbox, and what he resolved. Draws from the phone's
+// copy at once. Swipe a job or Orca row left to resolve it (its chat is saved, an Orca tab closes on the PC); hold a
+// resolved row to carry it on in a new job.
 
 const INBOX_CUT = 6;
 const RECENT_CUT = 4;
+const RESOLVED_CUT = 4;
 const DAY = 86_400_000;
 
 const newProject = () => openSheet({ kind: 'project' });
@@ -39,6 +43,8 @@ export default function WorkHome() {
   const [refreshing, setRefreshing] = useState(false);
   const [allInbox, setAllInbox] = useState(false);
   const [allRecent, setAllRecent] = useState(false);
+  const [allResolved, setAllResolved] = useState(false);
+  const flow = useResolveFlow();
   const [tab, setTab] = useState<ProjectTab>('active');
   const [menu, setMenu] = useState<MenuAt | null>(null);
 
@@ -59,7 +65,9 @@ export default function WorkHome() {
       if (action === 'pin') work.patchProject(project.slug, { pinned: !project.pinned });
       else openSheet({ kind: 'projectSettings', project: project.slug });
     },
-  }), [hide, unhide]);
+    onResolve: flow.onResolve,
+    onResolvedHold: flow.onResolvedHold,
+  }), [hide, unhide, flow.onResolve, flow.onResolvedHold]);
 
   const agents = useMemo(() => (orca.data?.up ? orca.data.agents : []), [orca.data]);
   // "Recent" counts back from Orca's last snapshot, so the list doesn't need a clock.
@@ -150,8 +158,23 @@ export default function WorkHome() {
           : inbox,
       });
     }
+
+    // Resolved: swiped away, chat saved. Tap reads it; hold carries it on.
+    const resolved = d.resolved ?? [];
+    if (resolved.length) {
+      const cut = !allResolved && resolved.length > RESOLVED_CUT + 1;
+      out.push({
+        key: 'resolved', title: 'Resolved', count: resolved.length,
+        data: [
+          ...(cut ? resolved.slice(0, RESOLVED_CUT) : resolved).map((r): Item => ({
+            kind: 'resolved', key: `x:${r.id}`, item: r, where: r.project ? names.get(r.project) ?? r.project : null,
+          })),
+          ...(cut ? [{ kind: 'more', key: 'resolved:more', label: `Show all ${resolved.length}`, onPress: () => setAllResolved(true) } as Item] : []),
+        ],
+      });
+    }
     return out;
-  }, [home, hidden, allInbox, allRecent, tab, agents, orcaAt]);
+  }, [home, hidden, allInbox, allRecent, allResolved, tab, agents, orcaAt]);
 
   if (home.load === 'signedOut') return <SignIn onDone={() => { work.loadHome(); work.loadOrca(); }} />;
 
@@ -190,7 +213,7 @@ export default function WorkHome() {
             setMenu(null);
           }}
           onSettings={() => { openSheet({ kind: 'projectSettings', project: menu.project.slug }); setMenu(null); }} />
-      ) : null}>
+      ) : flow.overlay}>
       <HubList sections={sections} header={header} refreshing={refreshing} onRefresh={refresh} handlers={handlers} skin={design} topBar={false} />
     </Shell>
   );

@@ -1,7 +1,7 @@
 import { API, ApiError, currentToken } from '@/lib/api';
 import type {
-  EngineHealth, FolderSuggestion, Idea, JobDiff, JobEvent, JobFull, NewJob, OrcaAgent, OrcaControl, OrcaLaunch, OrcaRead, OrcaState, ProjectCard,
-  ProjectHome, Task, WorkHome,
+  ContinueResolved, EngineHealth, FolderSuggestion, Idea, JobDiff, JobEvent, JobFull, NewJob, OrcaAgent, OrcaControl, OrcaLaunch, OrcaRead, OrcaState, ProjectCard,
+  ProjectHome, ResolvedItem, ResolvedRead, ResolveResult, Task, WorkHome,
 } from './types';
 
 // Thin client for the hub's routes (contract in ./types.ts). GETs remember their ETag so an unchanged answer is a
@@ -92,4 +92,12 @@ export const workApi = {
   orcaScreen: (id: string) => must(call<{ text: string; state: string }>(`/orca/agents/${encodeURIComponent(id)}/screen`)),
   orcaControl: (id: string, what: OrcaControl) =>
     must(call<{ ok: boolean }>(`/orca/agents/${encodeURIComponent(id)}/${what}`, { method: 'POST', body: {} })),
+
+  /** Saves its chat on the PC, then closes it (a job leaves the board, an Orca tab closes). 409 while it works, unless force. */
+  resolve: (b: { kind: 'job' | 'orca'; id: string; force?: boolean }, key: string) =>
+    must(call<ResolveResult>('/work/resolve', { method: 'POST', body: b, key })),
+  resolvedRead: (id: string) => must(call<ResolvedRead>(`/work/resolved/${encodeURIComponent(id)}`)),
+  /** A new job (in Orca or the app) whose first message hands the agent the saved chat through the continue-resolved skill. */
+  continueResolved: (id: string, b: ContinueResolved, key: string) =>
+    must(call<{ item: ResolvedItem; job: JobFull | null; agent: OrcaAgent | null; where: 'orca' | 'app' }>(`/work/resolved/${encodeURIComponent(id)}/continue`, { method: 'POST', body: b, key })),
 };

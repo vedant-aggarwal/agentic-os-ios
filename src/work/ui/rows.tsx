@@ -78,8 +78,9 @@ function jobTone(j: JobBrief): Tone {
   return 'quiet';
 }
 
-/** A job. Live ones show their current step; finished ones their outcome. `where` replaces the age (the hub shows the project). */
-export function JobRow({ job, where, onPress }: { job: JobBrief; where?: string | null; onPress: () => void }) {
+/** A job. Live ones show their current step; finished ones their outcome. `where` replaces the age (the hub shows the project).
+ *  onResolve: the swipe's twin for VoiceOver (an action on the row). */
+export function JobRow({ job, where, onPress, onResolve }: { job: JobBrief; where?: string | null; onPress: () => void; onResolve?: () => void }) {
   const tone = jobTone(job);
   const live = tone === 'live' || tone === 'needs';
   const sub = job.status === 'failed'
@@ -94,6 +95,8 @@ export function JobRow({ job, where, onPress }: { job: JobBrief; where?: string 
       right={where ?? ago(job.updatedAt)}
       rightSub={job.changes && (job.changes.add || job.changes.del) ? <Diff add={job.changes.add} del={job.changes.del} /> : null}
       onPress={onPress}
+      actions={onResolve ? [{ name: 'resolve', label: 'Resolve' }] : undefined}
+      onAction={onResolve ? (n) => { if (n === 'resolve') onResolve(); } : undefined}
     />
   );
 }

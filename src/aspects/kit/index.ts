@@ -10,3 +10,8 @@ export { Sheet } from './Sheet';
 export { undoable, UndoToast } from './undo';
 export { useOnReturn } from './useOnReturn';
 export { DayPicker, MonthDayPicker } from './DayPicker';
+// The life pages' layout (Nov 2026 redesign): tabs, blocks, groups, metrics, the keypad.
+export { Avatar, Block, Group, Head, Item, Lead, Metric, Metrics, QuickAction, SegTabs, TabbedPage, TabPanel, Tag, WeekStrip, type DayMark, type TabDef } from './layout';
+export { Keypad, type KeyField } from './Keypad';
+export { AspectLight } from './light';
+export { useKeepAwake } from './awake';

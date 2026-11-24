@@ -3,13 +3,13 @@ import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, useWindowDime
 import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
 import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { lightTap } from '@/components/Glass';
 import { useReveal } from '@/components/Reveal';
 import { ASPECT_COLOR, C, F, type AspectKey } from '@/theme';
 import { ASPECT_NAME, AspectContext, type AspectCtx, type AspectEntry } from './context';
 import { PAGES } from './registry';
 import { UndoToast } from './kit/undo';
+import { AspectLight } from './kit/light';
 
 /** Space an aspect page keeps clear at the bottom while the dock shows: the bar, the raised orb and its ring. */
 export const dockClearance = (bottom: number) => Math.max(bottom, 12) + 12 + 64 + 40;
@@ -78,7 +78,7 @@ export function AspectHost({ aspect, origin, dock, entry, onEntryDone, onClose, 
     <Animated.View style={[r.shell, !r.mounted && s.hidden]} pointerEvents={aspect ? 'auto' : 'none'}>
       <Animated.View style={r.stage}>
         <View style={[StyleSheet.absoluteFill, s.base]} />
-        <Light color={color} width={width} />
+        <AspectLight color={color} width={width} />
         <Animated.View style={[s.content, { width: r.width, height: r.height }, r.content]}>
           <AspectContext value={ctx}>
             <Boundary key={shown} name={ASPECT_NAME[shown]} top={insets.top} onClose={onClose}>
@@ -92,24 +92,6 @@ export function AspectHost({ aspect, origin, dock, entry, onEntryDone, onClose, 
         </Animated.View>
       </Animated.View>
     </Animated.View>
-  );
-}
-
-/** The aspect's own light, falling from the top of its page. It is the only colour the bare page carries. */
-function Light({ color, width }: { color: string; width: number }) {
-  const h = 360;
-  return (
-    <Svg pointerEvents="none" width={width} height={h} style={s.light}>
-      <Defs>
-        <RadialGradient id="aspectLight" cx="0.5" cy="0" r="1" gradientUnits="objectBoundingBox">
-          <Stop offset="0" stopColor={color} stopOpacity={0.2} />
-          <Stop offset="0.35" stopColor={color} stopOpacity={0.08} />
-          <Stop offset="0.7" stopColor={color} stopOpacity={0.02} />
-          <Stop offset="1" stopColor={color} stopOpacity={0} />
-        </RadialGradient>
-      </Defs>
-      <Rect width={width} height={h} fill="url(#aspectLight)" />
-    </Svg>
   );
 }
 
@@ -135,7 +117,6 @@ class Boundary extends Component<{ name: string; top: number; onClose: () => voi
 const s = StyleSheet.create({
   hidden: { display: 'none' },
   base: { backgroundColor: C.scene },
-  light: { position: 'absolute', left: 0, top: 0 },
   content: { position: 'absolute', left: 0, top: 0 },
   edge: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 16 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, gap: 12 },

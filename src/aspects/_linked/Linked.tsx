@@ -3,7 +3,7 @@
 // the other sections know that bears on this one. Each line opens its source.
 import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { ASPECT_NAME, Bar, Card, CheckRing, Divider, Press, Section, Skeleton, SP, t, useAspect } from '@/aspects/kit';
+import { ASPECT_NAME, Bar, Block, Card, CheckRing, Divider, Press, Skeleton, SP, t, useAspect } from '@/aspects/kit';
 import { openLink } from '@/lib/links';
 import { useGet } from '@/lib/mod';
 import { ASPECT_COLOR, type AspectKey } from '@/theme';
@@ -51,7 +51,7 @@ export function Linked({ goals: withGoals = true }: { goals?: boolean }) {
   return (
     <View style={s.wrap}>
       {life ? (
-        <Section title="Today's tasks" action={rows.length > MAX_TASKS ? `All ${rows.length}` : undefined} onAction={() => openLink('agenticos://today')}>
+        <Block title="Today's tasks" action={rows.length > MAX_TASKS ? `All ${rows.length}` : undefined} onAction={() => openLink('agenticos://today')}>
           <Card style={s.list}>
             {shown.length ? shown.map((r, i) => (
               <View key={r.id}>
@@ -59,21 +59,21 @@ export function Linked({ goals: withGoals = true }: { goals?: boolean }) {
                 <Press label={`${r.done ? 'Undo' : 'Done'}: ${r.title}`} role="checkbox" state={{ checked: r.done }} onPress={() => life.toggle(r.id)} feel="tick" style={s.task}>
                   <CheckRing done={r.done} color={a.color} />
                   <View style={s.flex}>
-                    <Text style={[t.body, r.done && s.done]} numberOfLines={2}>{r.title}</Text>
-                    {r.sub ? <Text style={t.small} numberOfLines={1}>{r.sub}</Text> : null}
+                    <Text style={[t.callout, r.done && s.done]} numberOfLines={2}>{r.title}</Text>
+                    {r.sub ? <Text style={t.footnote} numberOfLines={1}>{r.sub}</Text> : null}
                   </View>
-                  {r.right ? <Text style={[t.small, t.num]}>{r.right}</Text> : null}
+                  {r.right ? <Text style={[t.footnote, t.num]}>{r.right}</Text> : null}
                 </Press>
               </View>
             )) : (
-              <Text style={[t.small, s.pad]}>{`No ${name} tasks today. Tasks filed under an area that belongs to ${name} show up here.`}</Text>
+              <Text style={[t.footnote, s.pad]}>{`No ${name} tasks today. Tasks filed under an area that belongs to ${name} show up here.`}</Text>
             )}
           </Card>
-        </Section>
+        </Block>
       ) : null}
 
       {withGoals ? (
-      <Section title="Goals" action="Set one" onAction={() => openLink(`agenticos://mission/add?aspect=${key}`)}>
+      <Block title="Goals" action="Set one" onAction={() => openLink(`agenticos://mission/add?aspect=${key}`)}>
         {mine.length ? (
           <Card style={s.list}>
             {mine.slice(0, 4).map((g, i) => (
@@ -81,8 +81,8 @@ export function Linked({ goals: withGoals = true }: { goals?: boolean }) {
                 {i ? <Divider /> : null}
                 <Press label={`${g.title}, ${Math.round(g.progress)} percent. Open in Mission`} onPress={() => openLink(`agenticos://mission/goal/${encodeURIComponent(g.id)}`)} style={s.goal}>
                   <View style={s.between}>
-                    <Text style={[t.body, s.flex]} numberOfLines={2}>{g.title}</Text>
-                    <Text style={[t.small, t.num]}>{g.label ?? ''}</Text>
+                    <Text style={[t.callout, s.flex]} numberOfLines={2}>{g.title}</Text>
+                    <Text style={[t.footnote, t.num]}>{g.label ?? ''}</Text>
                   </View>
                   <Bar progress={g.progress / 100} color={a.color} height={6} />
                 </Press>
@@ -91,27 +91,27 @@ export function Linked({ goals: withGoals = true }: { goals?: boolean }) {
           </Card>
         ) : (
           goals.data || goals.error
-            ? <Card><Text style={t.small}>{goals.error ? "Goals didn't load." : `No goal serves ${name} yet. Set one in Mission and it shows here.`}</Text></Card>
+            ? <Card><Text style={t.footnote}>{goals.error ? "Goals didn't load." : `No goal serves ${name} yet. Set one in Mission and it shows here.`}</Text></Card>
             : <Skeleton height={64} radius={24} />
         )}
-      </Section>
+      </Block>
       ) : null}
 
       {signals.length ? (
-        <Section title="From your other sections">
+        <Block title="From your other sections">
           <Card style={s.list}>
             {signals.map((x, i) => (
               <View key={x.key}>
                 {i ? <Divider /> : null}
                 <Press label={`${x.text}. Open ${ASPECT_NAME[x.from]}`} role="link" onPress={() => openLink(x.link)} style={s.signal}>
                   <View style={[s.dot, { backgroundColor: ASPECT_COLOR[x.from] }]} />
-                  <Text style={[t.body, s.flex]} numberOfLines={2}>{x.text}</Text>
-                  <Text style={t.small}>{ASPECT_NAME[x.from]}</Text>
+                  <Text style={[t.callout, s.flex]} numberOfLines={2}>{x.text}</Text>
+                  <Text style={t.footnote}>{ASPECT_NAME[x.from]}</Text>
                 </Press>
               </View>
             ))}
           </Card>
-        </Section>
+        </Block>
       ) : null}
     </View>
   );

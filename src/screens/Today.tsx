@@ -157,6 +157,14 @@ function PhoneToday() {
     if (initialLink) openLink(initialLink);
     return () => { for (const off of offs) off(); };
   }, [closeAspect]);
+  // A link for Today (a section, Nora, tasks, a push or widget tap) first closes the pages drawn over it, so what it
+  // opens is in view; agenticos://voice opens Voices.
+  useEffect(() => {
+    const close = () => { setRemoteOpen(false); setFilesOpen(false); setVoicesOpen(false); setAccountOpen(false); setPcTab(null); setMoodFrom(null); };
+    const offs = [...SECTION_TARGETS, 'today', 'nora', 'tasks'].map((target) => onLink(target, close));
+    offs.push(onLink('voice', () => { close(); setVoicesOpen(true); }));
+    return () => { for (const off of offs) off(); };
+  }, []);
 
   if (t.state.status === 'loading') return <View style={s.screen} />;
   if (t.state.status === 'signedOut') return <SignIn onDone={t.reload} />;

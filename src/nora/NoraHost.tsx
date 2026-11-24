@@ -23,6 +23,8 @@ function useNoraLinks() {
     else if (part === 'home') { if (l.query.create === '1') noraUi.openCreate(); else noraUi.openHome(); }
     else noraUi.openChat({ mic: l.query.mic === '1' });
   }), []);
+  // agenticos://tasks (a dictated "add these tasks" that made more than one): his task list on Home
+  useEffect(() => onLink('tasks', () => noraUi.openHome()), []);
   // dev-only preview: ?demo&nora=chat|home|call|call-fail|ring opens that surface on load
   useEffect(() => {
     if (!DEMO) return;

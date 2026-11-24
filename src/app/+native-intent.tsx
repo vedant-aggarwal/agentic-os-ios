@@ -1,25 +1,23 @@
-import { SECTION_TARGETS } from '@/lib/aspectLinks';
 import { requestKeyboardTake } from '@/lib/kbmic';
-import { openLink, parseLink } from '@/lib/links';
+import { isPlainRoute, openLink, parseLink, routeFor } from '@/lib/links';
 
-// Targets that open on Today rather than as a route: the section pages, Today itself and Nora (src/lib/links.ts).
-const ON_TODAY = new Set([...SECTION_TARGETS, 'today', 'nora']);
-
-// Links into the app. agenticos://flow?id=<take id> is the keyboard asking for the mic (src/lib/kbmic.ts): start that
-// take and stay on the screen that is open. Navigating anywhere would remount Today and cut the recording off.
+// Links into the app (src/lib/links.ts has the list). agenticos://flow?id=<take id> is the keyboard asking for the mic
+// (src/lib/kbmic.ts): start that take and stay on the screen that is open. Navigating anywhere would remount Today and
+// cut the recording off.
 export function redirectSystemPath({ path, initial }: { path: string; initial: boolean }) {
   try {
     const m = /(?:^|[/:])flow\?(?:.*&)?id=([a-z0-9_]+)/i.exec(path);
     if (m) { requestKeyboardTake(m[1]); return initial ? '/' : null; }
-    // Job pushes ("Job needs you", "Job finished") carry agenticos://job/<id>: open its thread in the Projects hub.
-    const job = /(?:^|[/:])job\/(j?\d+)/i.exec(path);
-    if (job) return `/work/job/${job[1]}`;
-    // agenticos://<aspect>/<part>, agenticos://today and agenticos://nora/...: Today opens them (a link that arrives
-    // before Today is up waits for it), so the app lands on Today and stays put if it was already open.
     const link = parseLink(path);
-    if (link && ON_TODAY.has(link.target)) { openLink(path); return initial ? '/' : null; }
-    // agenticos://record, the Capture widget: a hands-free voice idea over whatever screen is open (src/work/voice.ts).
-    if (link?.target === 'record') { openLink(path); return initial ? '/' : null; }
+    if (!link || isPlainRoute(link)) return path;
+    // Job and Orca pushes ("needs you", "finished"), the Projects hub and its pages: a route.
+    const route = routeFor(link);
+    if (route) return route;
+    // Everything else opens on Today (a section, Nora, Today itself; an unknown link falls back to Today) or over the
+    // open screen (the Capture widget's voice idea, a task). openLink closes any Projects page above Today first, so
+    // the app lands on Today, or stays put when it was already there.
+    openLink(path);
+    return initial ? '/' : null;
   } catch {}
   return path;
 }

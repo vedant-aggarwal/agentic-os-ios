@@ -1,5 +1,4 @@
 import { requireOptionalNativeModule } from 'expo';
-import { router } from 'expo-router';
 import { Alert, AppState, Platform } from 'react-native';
 import { api, currentToken } from './api';
 import { authorizeAlarms } from './alarms';
@@ -55,14 +54,9 @@ export function linkFor(payload: Record<string, unknown> | null | undefined): st
   return 'agenticos://today';
 }
 
-/** Opens a tapped link. Job links also open their thread as a route, the way +native-intent does. */
+/** Opens a tapped link: a route (job, Orca agent, Projects hub), a screen on Today or a sheet (src/lib/links.ts). */
 export function openTapped(url: string) {
   openLink(url);
-  const job = /^agenticos:\/\/job\/(j?\d+)/i.exec(url);
-  if (job) {
-    const go = () => router.push(`/work/job/${job[1]}` as never);
-    try { go(); } catch { setTimeout(() => { try { go(); } catch {} }, 800); }
-  }
 }
 
 const seen = new Set<string>();

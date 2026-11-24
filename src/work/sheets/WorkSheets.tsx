@@ -1,5 +1,7 @@
+import { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { type SheetRequest, useSheetRequest } from '../bus';
+import { onLink } from '@/lib/links';
+import { openTask, type SheetRequest, useSheetRequest } from '../bus';
 import { useVoiceHost, VoiceContext } from '../voice';
 import { EditIdeaSheet } from './EditIdeaSheet';
 import { EditTaskSheet, TaskToast } from './EditTaskSheet';
@@ -20,6 +22,9 @@ import { TaskSheet } from './TaskSheet';
 export function WorkSheets() {
   const req = useSheetRequest();
   const rec = useVoiceHost();
+  // agenticos://task/<id> (a task Nora or a dictation just made): its view, over whatever screen is open. The view
+  // reads the task's details itself, so the id is enough.
+  useEffect(() => onLink('task', (l) => { if (l.parts[0]) openTask({ id: l.parts[0], title: '' }); }), []);
   return (
     <VoiceContext.Provider value={rec}>
       <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>

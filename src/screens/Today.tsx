@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useIsFocused } from 'expo-router';
 import { AppState, Platform, Pressable, RefreshControl, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 // gesture handler's ScrollView, so the hero's sideways drag can take over from the page's scroll
@@ -23,6 +23,8 @@ import { useToday } from '@/lib/useToday';
 import { useBody } from '@/lib/body';
 import { startContactSync } from '@/lib/contacts';
 import { TodayPlan, TodayToast, useTodayToast } from '@/today2/TodayPlan';
+import { addReach } from '@/today2/day';
+import type { AspectProgress } from '@/lib/today';
 import { type NoraKeys, useWispr } from '@/lib/wispr';
 import { noraUi } from '@/nora/state';
 import { MoodLogger } from '@/mood/MoodLogger';
@@ -98,6 +100,11 @@ function PhoneToday() {
   const [remoteOpen, setRemoteOpen] = useState(false); // the top bar's Remote PC button: the PC's screen, full screen
   const [pcTab, setPcTab] = useState<PcTab | null>(null); // hold Remote PC: media remote and power
   const [heroOn, setHeroOn] = useState(true); // the 3D hero renders only while some of it is on screen
+  // Today's routine ticks per aspect (shower, meals, habits...), reported by the plan. The crystals and the orb's
+  // arcs count them on top of the tasks, so every tick on Today fills its crystal.
+  const [routine, setRoutine] = useState<AspectProgress | null>(null);
+  const reach = useMemo(() => (t.view ? addReach(t.view.reach, routine) : {}), [t.view, routine]);
+  const planned = useMemo(() => (t.view ? addReach(t.view.aspects, routine) : {}), [t.view, routine]);
   // A page pushed over Today (Work, a job, a project) leaves Today mounted underneath: both WebGL scenes stop then,
   // else they keep drawing every frame behind the page and the whole app stutters.
   const focused = useIsFocused();
@@ -129,8 +136,11 @@ function PhoneToday() {
   const clear = useCallback(() => { setLocal(null); clearNotice(); }, [clearNotice]);
   const { reload: reloadBody } = b;
   // Ticking a task here moves the goal it serves: Mission and Growth read it again.
-  const { toggle: toggleTask } = t;
+  const { toggle: toggleTask, cancel: cancelTask, restore: restoreTask } = t;
   const toggle = useCallback(async (id: string) => { await toggleTask(id); invalidate('/mod/mission/'); invalidate('/mod/growth/'); }, [toggleTask]);
+  // cancelling one for today (a repeating one skips to its next) or bringing it back moves its goal the same way
+  const cancel = useCallback(async (id: string) => { await cancelTask(id); invalidate('/mod/mission/'); invalidate('/mod/growth/'); }, [cancelTask]);
+  const restore = useCallback(async (id: string) => { await restoreTask(id); invalidate('/mod/mission/'); invalidate('/mod/growth/'); }, [restoreTask]);
 
   // Links into a section (agenticos://<aspect>/<part>, from a push, a widget, a tap on Today or another page) open
   // that page and hand it the part; agenticos://today comes back here.
@@ -172,12 +182,13 @@ function PhoneToday() {
         scrollEventThrottle={100}
         onScroll={(e) => { const on = e.nativeEvent.contentOffset.y < insets.top + HERO_H; if (on !== heroOn) setHeroOn(on); }}
         refreshControl={<RefreshControl refreshing={t.refreshing} onRefresh={() => { t.refresh(); reloadBody(); }} tintColor={C.muted} />}>
-        <Hero view={v} top={insets.top} topBar={TOP_GAP + TOP_H} active={focused && heroOn && !aspect && !moodFrom} />
+        <Hero view={v} reach={reach} top={insets.top} topBar={TOP_GAP + TOP_H} active={focused && heroOn && !aspect && !moodFrom} />
 
         <View style={[s.sheet, { paddingBottom: insets.bottom + 140 }]}>
           {t.state.status === 'ready' ? (
             <TodayPlan today={t.state.today} life={t.state.life} areas={t.state.areas} body={b.body} say={tt.say} hide={tt.hide}
-              onOpen={openLink} onToggleTask={(id) => { void toggle(id); }} onHome={() => setAspect(null)} />
+              onOpen={openLink} onToggleTask={(id) => { void toggle(id); }} onCancelTask={(id) => { void cancel(id); }} onRestoreTask={(id) => { void restore(id); }}
+              onHome={() => setAspect(null)} onRoutine={setRoutine} />
           ) : null}
           <Pressable accessibilityRole="button" onPress={async () => { await signOut(); t.reload(); }} style={s.more}>
             <Text style={[s.moreText, { color: C.faint }]}>Sign out</Text>
@@ -203,7 +214,7 @@ function PhoneToday() {
       <EdgeGlow height={insets.bottom + 200} orb={orb} />
       <TodayToast toast={tt.toast} bottom={insets.bottom + 112} />
       <Notice text={kbMic.state === 'recording' ? 'Listening for the keyboard. Swipe back to your app and talk.' : kbMic.error ?? local ?? t.notice} bottom={insets.bottom + 112} onClear={clear} />
-      <Dock bottom={insets.bottom} width={width} aspects={v.aspects} onNotBuilt={notBuilt}
+      <Dock bottom={insets.bottom} width={width} aspects={planned} onNotBuilt={notBuilt}
         onAspect={openAspect} onHome={aspect ? closeAspect : undefined} hidden={immersive} />
       {/* opens by itself while a volume press has Wispr going, and closes once it has sent */}
       <PcMicSheet open={micOpen || (live && !closedLive)} onScreen={() => setRemoteOpen(true)} origin={micCenter(insets.top, width)} phase={mic.phase}

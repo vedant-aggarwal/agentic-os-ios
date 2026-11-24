@@ -5,9 +5,15 @@ export type Task = {
   id: string; title: string; status: 'inbox' | 'todo' | 'doing' | 'done' | 'dropped';
   area: string | null; due: string | null; scheduled: { start: string; end: string } | null;
   owner: string | null; completedAt: string | null; parent?: string | null; repeat?: string | null; position?: number;
+  /** a task cancelled on Today: the due date of the occurrence a repeating one filed in its place (null for a one-off) */
+  next?: string | null;
 };
 export type CalEvent = { id: string; title: string; start: string; end: string; allDay: boolean; area: string | null; location: string | null };
-export type TodayPayload = { date: string; now: string; events: CalEvent[]; tasks: Task[]; inboxCount: number };
+export type TodayPayload = {
+  date: string; now: string; events: CalEvent[]; tasks: Task[]; inboxCount: number;
+  /** what he cancelled on Today today (status dropped; `tasks` never holds dropped ones). useToday folds them into tasks. */
+  cancelled?: Task[];
+};
 export type LifePayload = {
   aspects: { key: AspectKey; family: FamilyKey; name: string }[];
   areaAspects: Record<string, AspectKey[]>;
@@ -72,8 +78,9 @@ export function deriveToday(t: TodayPayload, life: LifePayload, areas: Area[]): 
   const dueToday = mine.filter((x) => open(x) && x.due === t.date);
   const carried = mine.filter((x) => open(x) && x.due != null && x.due < t.date).sort((a, b) => (a.due! < b.due! ? -1 : 1));
 
-  // Crystals: today's plan per family (due today + done today, done carry-overs included).
-  const counted = [...dueToday, ...doneToday];
+  // Crystals: today's plan per family (due today + done today, done carry-overs included). A task with no date is
+  // nobody's plan for today, so ticking one moves no count, like the section rings.
+  const counted = [...dueToday, ...doneToday.filter((x) => x.due != null)];
   const families: Family[] = (['self', 'work', 'people'] as FamilyKey[]).map((key) => {
     const mineF = counted.filter((x) => { const a = aspectOf(x.area); return a && familyOf.get(a) === key; });
     return { key, total: mineF.length, done: mineF.filter((x) => x.status === 'done').length };

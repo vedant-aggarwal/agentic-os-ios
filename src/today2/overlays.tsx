@@ -6,13 +6,15 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Line, Path, Text as SvgText } from 'react-native-svg';
 import { haptic, t, tint } from '@/aspects/kit/tokens';
 import type { FrameState } from '@/capture/data';
+import type { FrameId } from '@/capture/moments';
 import { ASPECT_COLOR, C, F } from '@/theme';
 import type { MEALS } from './day';
 import { Camera, Chevron } from './parts';
 import RECIPES from './recipes.json';
 
 // Today's overlays: the wake dial (drag the hand to when he got up), the meal popup over a blurred Today with the
-// day's plan and high-protein options, and the one-line sheet for a journal line or a book page.
+// day's plan and high-protein options, the one-line sheet for a journal line or a book page, the same line for a meal
+// typed instead of photographed, and the sheet a held row opens (Cancel for today).
 
 const BODY = ASPECT_COLOR.body;
 const SURFACE = '#1B1D25';
@@ -133,7 +135,7 @@ function CloseBtn({ onPress }: { onPress: () => void }) {
 
 // ── meal popup ───────────────────────────────────────────────────────────────────────────────────────────────────
 type Meal = (typeof MEALS)[number];
-type MealProps = { st: FrameState | undefined; onClose: () => void; onPhoto: () => void };
+type MealProps = { st: FrameState | undefined; onClose: () => void; onPhoto: () => void; /** log it in words instead */ onType?: () => void };
 export function MealPopup({ meal, ...p }: MealProps & { meal: Meal | null }) {
   return (
     <Modal transparent visible={!!meal} animationType="none" onRequestClose={p.onClose} statusBarTranslucent>
@@ -142,7 +144,7 @@ export function MealPopup({ meal, ...p }: MealProps & { meal: Meal | null }) {
   );
 }
 
-function MealBody({ meal, st: fs, onClose, onPhoto }: MealProps & { meal: Meal }) {
+function MealBody({ meal, st: fs, onClose, onPhoto, onType }: MealProps & { meal: Meal }) {
   const insets = useSafeAreaInsets();
   const [openId, setOpenId] = useState<string | null>(null);
   const options = useMemo(() => ALL.filter((r) => r.slot === meal.slot).sort((a, b) => b.protein_g - a.protein_g), [meal]);
@@ -200,6 +202,12 @@ function MealBody({ meal, st: fs, onClose, onPhoto }: MealProps & { meal: Meal }
               <Pressable accessibilityRole="button" onPress={onPhoto} style={({ pressed }) => [st.quiet, pressed && { opacity: 0.8 }]}>
                 <Camera size={18} color={C.text} /><Text style={st.quietText}>Photo</Text>
               </Pressable>
+              {onType ? (
+                <Pressable accessibilityRole="button" accessibilityLabel={`Type what you had for ${meal.title.toLowerCase()}`} onPress={onType}
+                  style={({ pressed }) => [st.quiet, pressed && { opacity: 0.8 }]}>
+                  <Pencil /><Text style={st.quietText}>Type it</Text>
+                </Pressable>
+              ) : null}
             </View>
           </Animated.View>
         </>
@@ -241,6 +249,101 @@ function LineBody({ kind, book, onClose, onSubmit }: LineProps & { kind: 'journa
   );
 }
 
+// ── a meal in words: the line, with the meal it goes under ───────────────────────────────────────────────────────
+const MEAL_CHIPS: { id: FrameId; label: string }[] = [
+  { id: 'breakfast', label: 'Breakfast' }, { id: 'salad', label: 'Salad' }, { id: 'lunch', label: 'Lunch' }, { id: 'snack', label: 'Snack' }, { id: 'dinner', label: 'Dinner' },
+];
+/** The meal a meal eaten now goes under: the PC's own slots by the clock (body.ts slotAt). */
+export function mealNow(ms = Date.now()): FrameId {
+  const n = new Date(ms + IST), m = n.getUTCHours() * 60 + n.getUTCMinutes();
+  return m < 11 * 60 ? 'breakfast' : m < 16 * 60 ? 'lunch' : m < 19 * 60 ? 'snack' : 'dinner';
+}
+type TypeProps = { onClose: () => void; onSubmit: (meal: FrameId, text: string) => void };
+export function MealText({ meal, ...p }: TypeProps & { meal: FrameId | null }) {
+  return (
+    <Modal transparent visible={!!meal} animationType="none" onRequestClose={p.onClose} statusBarTranslucent>
+      {meal ? <MealTextBody key={meal} first={meal} {...p} /> : null}
+    </Modal>
+  );
+}
+
+function MealTextBody({ first, onClose, onSubmit }: TypeProps & { first: FrameId }) {
+  const [meal, setMeal] = useState(first);
+  const [text, setText] = useState('');
+  const insets = useSafeAreaInsets();
+  const label = MEAL_CHIPS.find((c) => c.id === meal)?.label ?? 'Meal';
+  const send = () => { const v = text.trim(); if (v) { haptic.medium(); onSubmit(meal, v); } };
+  return (
+    <>
+      <Pressable style={[StyleSheet.absoluteFill, st.scrim]} onPress={onClose} accessibilityLabel="Close" />
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={st.lineWrap} pointerEvents="box-none">
+        <Animated.View entering={SlideInDown.springify().duration(380).dampingRatio(1)} style={[st.typeWrap, { marginBottom: insets.bottom ? 8 : 16 }]}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="always" contentContainerStyle={st.typeChips}>
+            {MEAL_CHIPS.map((c) => <Chip key={c.id} text={c.label} on={meal === c.id} onPress={() => setMeal(c.id)} />)}
+          </ScrollView>
+          <View style={st.line}>
+            <TextInput autoFocus value={text} onChangeText={setText} placeholder="What did you eat? 2 roti, dal, curd" maxLength={200}
+              placeholderTextColor={C.faint} returnKeyType="send" style={st.input} onSubmitEditing={send} accessibilityLabel={`What you had for ${label.toLowerCase()}`} />
+            <Pressable accessibilityRole="button" accessibilityLabel={`Log ${label.toLowerCase()}`} disabled={!text.trim()} onPress={send}
+              style={[st.send, !text.trim() && { opacity: 0.35 }]}>
+              <Svg width={18} height={18} viewBox="0 0 24 24"><Path d="M12 19V5M5 12l7-7 7 7" stroke={C.scene} strokeWidth={2.4} fill="none" strokeLinecap="round" strokeLinejoin="round" /></Svg>
+            </Pressable>
+          </View>
+        </Animated.View>
+      </KeyboardAvoidingView>
+    </>
+  );
+}
+
+function Pencil() {
+  return (
+    <Svg width={18} height={18} viewBox="0 0 24 24">
+      <Path d="M4 20h4L18.5 9.5a2.12 2.12 0 0 0-3-3L5 17v3zM13.5 8.5l3 3" stroke={C.text} strokeWidth={1.7} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
+// ── hold a row: cancel it for today, or bring it back ────────────────────────────────────────────────────────────
+/** routine: a step of today's routine (back tomorrow by itself). repeat: a repeating task (its next one is filed).
+ *  once: a one-off task (cancelling drops it). */
+export type HoldTarget = { title: string; kind: 'routine' | 'repeat' | 'once'; cancelled: boolean; onCancel: () => void; onRestore: () => void };
+export function HoldMenu({ target, onClose }: { target: HoldTarget | null; onClose: () => void }) {
+  return (
+    <Modal transparent visible={!!target} animationType="none" onRequestClose={onClose} statusBarTranslucent>
+      {target ? <HoldBody x={target} onClose={onClose} /> : null}
+    </Modal>
+  );
+}
+
+function HoldBody({ x, onClose }: { x: HoldTarget; onClose: () => void }) {
+  const insets = useSafeAreaInsets();
+  const note = x.cancelled ? 'Cancelled for today. Bring it back to tick it.'
+    : x.kind === 'once' ? 'A one-off task: cancelling takes it off your list.'
+      : x.kind === 'repeat' ? 'Skips today only. The next one still comes.' : 'Skips today only. It is back tomorrow.';
+  const act = () => { haptic.medium(); onClose(); if (x.cancelled) x.onRestore(); else x.onCancel(); };
+  return (
+    <>
+      <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(160)} style={[StyleSheet.absoluteFill, st.scrim]}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close" />
+      </Animated.View>
+      <Animated.View entering={SlideInDown.springify().duration(380).dampingRatio(1)} exiting={SlideOutDown.duration(200)} style={[st.sheet, { paddingBottom: insets.bottom + 16 }]}>
+        <View style={st.grab} />
+        <View style={st.sheetHead}>
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text style={t.heading} numberOfLines={2}>{x.title}</Text>
+            <Text style={t.small}>{note}</Text>
+          </View>
+          <CloseBtn onPress={onClose} />
+        </View>
+        <Pressable accessibilityRole="button" onPress={act} style={({ pressed }) => [x.cancelled ? st.primary : st.cancelBtn, pressed && { opacity: 0.85 }]}>
+          {x.cancelled ? null : <Svg width={16} height={16} viewBox="0 0 24 24"><Path d="M6 6l12 12M18 6L6 18" stroke={C.text} strokeWidth={2.2} strokeLinecap="round" /></Svg>}
+          <Text style={x.cancelled ? st.primaryText : st.cancelText}>{x.cancelled ? 'Bring it back' : x.kind === 'once' ? 'Cancel task' : 'Cancel for today'}</Text>
+        </Pressable>
+      </Animated.View>
+    </>
+  );
+}
+
 const st = StyleSheet.create({
   scrim: { backgroundColor: 'rgba(6,7,10,0.6)' },
   sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: SURFACE, borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: 20, gap: 16 },
@@ -278,4 +381,8 @@ const st = StyleSheet.create({
   tag: { fontFamily: F.semibold, fontSize: 13, lineHeight: 16, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, backgroundColor: 'rgba(255,210,122,0.16)', overflow: 'hidden' },
   input: { flex: 1, fontFamily: F.regular, fontSize: 16, lineHeight: 22, color: C.text, paddingVertical: 10 },
   send: { width: 40, height: 40, borderRadius: 20, backgroundColor: C.text, alignItems: 'center', justifyContent: 'center' },
+  typeWrap: { gap: 10 },
+  typeChips: { gap: 8, paddingHorizontal: 4 },
+  cancelBtn: { height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.08)', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  cancelText: { fontFamily: F.semibold, fontSize: 16, lineHeight: 22, color: C.text },
 });

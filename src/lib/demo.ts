@@ -18,14 +18,22 @@ export function demoData(): { today: TodayPayload; life: LifePayload; areas: Are
   });
   const tasks: Task[] = [
     t('1', 'Gym, legs', 'health', { status: 'done', completedAt: at(7, 30) }),
-    t('2', 'Read 20 pages', 'learning'),
+    t('2', 'Read 20 pages', 'learning', { repeat: '1d' }), // a repeating one: cancelling it skips today
     t('3', 'Client call, follow-up', 'norrita', { scheduled: { start: at(16), end: at(16, 30) } }),
     t('4', 'Send invoice', 'finance', { status: 'done', completedAt: at(11) }),
     t('5', 'Family dinner', 'family', { scheduled: { start: at(21), end: at(22) } }),
     t('6', 'Call a friend back', 'friends'),
   ];
   return {
-    today: { date, now: now.toISOString(), events: [], tasks, inboxCount: 0 },
+    today: { date, now: now.toISOString(), events: [
+      // a real day's calendar: two sleep blocks, the gym block, then shop and work
+      { id: 'e1', title: 'Sleep (7.5 Hours)', start: at(0), end: at(5, 30), allDay: false, area: 'health', location: null },
+      { id: 'e2', title: 'Morning Gym (Lifting & Mobility - 1.5h)', start: at(6), end: at(7, 30), allDay: false, area: 'health', location: null },
+      { id: 'e3', title: 'Business work (BizBrain go-live at shop)', start: at(13, 30), end: at(14, 30), allDay: false, area: 'finance', location: null },
+      { id: 'e4', title: 'Shop: sit till Papa arrives', start: at(15), end: at(16, 30), allDay: false, area: 'family', location: 'Sagarpur' },
+      { id: 'e5', title: 'Home: work session', start: at(17), end: at(19), allDay: false, area: 'norrita', location: null },
+      { id: 'e6', title: 'Sleep (7.5 Hours)', start: at(22), end: new Date(Date.parse(at(0)) + 86400_000).toISOString(), allDay: false, area: 'health', location: null },
+    ], tasks, inboxCount: 0 },
     life: {
       aspects: [
         { key: 'body', family: 'self', name: 'Body' }, { key: 'mind', family: 'self', name: 'Mind' }, { key: 'soul', family: 'self', name: 'Soul' },

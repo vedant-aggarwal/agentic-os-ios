@@ -4,13 +4,15 @@ import type { FrameId } from '@/capture/moments';
 import { DEMO } from '@/lib/demo';
 import { useCollection, type Doc } from '@/lib/mod';
 import type { BodyToday } from '@/lib/body';
-import type { Area, LifePayload, Task, TodayPayload } from '@/lib/today';
+import type { Area, AspectProgress, LifePayload, Task, TodayPayload } from '@/lib/today';
 import { ASPECT_COLOR, type AspectKey } from '@/theme';
 
 // Today's routine as data: what each section holds, what is done, and the writes. The quick capture panel's items
 // read and write through capture/data.ts, so a tick in one place shows in the other. Routine rows the panel doesn't
 // have (cold shower, skincare, night routine, the parent rows) are body checks `<day>:<item>` in the same
-// collection the panel writes; the two practice rows in Mind are mind sessions, like the games.
+// collection the panel writes; the two practice rows in Mind are mind sessions, like the games. A row cancelled for
+// today (held, or its tick tapped twice) is its body check written not done and `skipped`: it shows struck through
+// and the day's counts pass over it; tomorrow's row is a new check, so it comes back by itself.
 
 export const IST = 5.5 * 3600_000;
 const istDay = (iso: string) => new Date(Date.parse(iso) + IST).toISOString().slice(0, 10);
@@ -63,10 +65,11 @@ export function useDay(o: { today: TodayPayload | null; life: LifePayload | null
     return m;
   }, [checks.items, day]);
   const isOn = (item: string) => !!checked.get(item)?.done;
+  const isSkipped = (item: string) => { const c = checked.get(item); return !!c?.skipped && !c.done; };
   const mode = (item: string) => (checked.get(item) as (BodyCheck & { mode?: string }) | undefined)?.mode ?? null;
 
   const nightAll = isOn('night-routine');
-  const on = (id: CheckId) => (id.startsWith('night-') && nightAll) || isOn(id);
+  const on = (id: CheckId) => !isSkipped(id) && ((id.startsWith('night-') && nightAll) || isOn(id));
 
   async function set(id: CheckId, v: boolean, extra: Record<string, unknown> = {}) {
     if (DEMO) return;
@@ -74,18 +77,25 @@ export function useDay(o: { today: TodayPayload | null; life: LifePayload | null
     // the panel's single Night tick stands for all three rows: the third row ticked writes it, an untick clears it
     if (id.startsWith('night-')) {
       const nightIds = routines.night.map((x) => x.id);
-      const rest = nightIds.filter((x) => x !== id).every((x) => isOn(x));
+      const rest = nightIds.filter((x) => x !== id).every((x) => isOn(x) || isSkipped(x));
       if (v && rest && !nightAll) await cap.toggle('night', true);
       if (!v && nightAll) {
         await cap.toggle('night', false);
         // keep the other two as they were before the untick
         for (const x of nightIds) {
-          if (x !== id && !isOn(x)) await checks.put({ id: `${day}:${x}`, date: day, item: x, done: true, at: new Date().toISOString(), by: 'me', source: 'today' } as never);
+          if (x !== id && !isOn(x) && !isSkipped(x)) await checks.put({ id: `${day}:${x}`, date: day, item: x, done: true, at: new Date().toISOString(), by: 'me', source: 'today' } as never);
         }
       }
     }
   }
   const toggle = (id: CheckId) => set(id, !on(id), id === 'cold-shower' ? { mode: mode('cold-shower') ?? 'cold' } : {});
+  /** Cancel a routine row for today, or bring it back (`v` false). Works in the sample preview too (its checks live
+   *  in memory). */
+  async function skip(id: SkipId, v: boolean) {
+    // bringing back a night row while the panel's Night tick stands for all three: that tick clears, the others stay done
+    if (!v && !DEMO && id.startsWith('night-') && nightAll) return set(id as CheckId, false, { skipped: false });
+    await checks.put({ id: `${day}:${id}`, date: day, item: id, done: false, skipped: v, at: new Date().toISOString(), by: 'me', source: 'today' } as never);
+  }
   const setShower = (m: 'cold' | 'hot') => set('cold-shower', on('cold-shower'), { mode: m });
 
   const practice = (k: 'speak' | 'course') => (sessions.items ?? []).some((x) => x.id === `${k}-${day}`);
@@ -95,6 +105,11 @@ export function useDay(o: { today: TodayPayload | null; life: LifePayload | null
     if (practice(k)) await sessions.remove(id);
     else await sessions.put({ id, kind: k, date: day, title: k === 'speak' ? 'Impromptu speaking' : 'Communication course', source: 'today' } as never);
   }
+  /** Cancel a practice row for today (a session already logged goes), or bring it back. */
+  async function skipPractice(k: 'speak' | 'course', v: boolean) {
+    if (v && practice(k) && !DEMO) await sessions.remove(`${k}-${day}`);
+    await skip(`practice-${k}`, v);
+  }
 
   // ── his tasks, by the aspect their area maps to ──
   const tasks = useMemo(() => {
@@ -102,7 +117,8 @@ export function useDay(o: { today: TodayPayload | null; life: LifePayload | null
     if (!t || !o.life) return { by: new Map<AspectKey | 'none', Task[]>(), dueToday: [] as Task[] };
     const aspectOf = (area: string | null): AspectKey | null => (area ? o.life!.areaAspects[area]?.[0] ?? null : null);
     const mine = t.tasks.filter((x) => !x.parent && (x.owner == null || x.owner === 'me'));
-    const live = mine.filter((x) => x.status === 'todo' || x.status === 'doing'
+    // what he cancelled on Today today (useToday folds GET /today's `cancelled` in) stays, struck through, until the day ends
+    const live = mine.filter((x) => x.status === 'todo' || x.status === 'doing' || x.status === 'dropped'
       || (x.status === 'done' && !!x.completedAt && istDay(x.completedAt) === t.date && x.due === t.date));
     const by = new Map<AspectKey | 'none', Task[]>();
     for (const x of live) {
@@ -110,10 +126,11 @@ export function useDay(o: { today: TodayPayload | null; life: LifePayload | null
       const k = aspectOf(x.area) ?? 'none';
       (by.get(k) ?? by.set(k, []).get(k)!).push(x);
     }
-    const order = (a: Task, b: Task) => Number(a.status === 'done') - Number(b.status === 'done')
+    const shut = (x: Task) => Number(x.status === 'done' || x.status === 'dropped');
+    const order = (a: Task, b: Task) => shut(a) - shut(b)
       || Number(!a.due) - Number(!b.due) || String(a.due ?? '').localeCompare(String(b.due ?? ''));
     for (const list of by.values()) list.sort(order);
-    return { by, dueToday: live.filter((x) => x.due === t.date) };
+    return { by, dueToday: live.filter((x) => x.due === t.date && x.status !== 'dropped') };
   }, [o.today, o.life]);
   const areaName = useMemo(() => new Map(o.areas.map((a) => [a.slug, a.name])), [o.areas]);
 
@@ -122,14 +139,60 @@ export function useDay(o: { today: TodayPayload | null; life: LifePayload | null
 
   return {
     cap, day, on, mode, toggle, setShower, routines, saveRoutines, practice, togglePractice, tasks, areaName, mealDone, gymDone,
+    skipped: isSkipped, skip, skipPractice,
     color: ASPECT_COLOR,
   };
 }
 
 export type Day = ReturnType<typeof useDay>;
+/** A body check Today can cancel for the day: a routine row's own, or the practice rows' and the book's stand-ins. */
+export type SkipId = CheckId | 'practice-speak' | 'practice-course' | 'book';
 
-/** done / total for a list of booleans plus the tasks due today in that place. */
+/** Every routine tick on Today, by the part of the plan it sits in. The section rings count these, and so do the
+ *  hero's crystals, so a tick anywhere on Today fills both. A row cancelled for today is left out. Tasks are counted
+ *  apart (Plan's dueOf, lib/today's reach). */
+export function routineFlags(d: Day, hasBody: boolean) {
+  const tk = d.cap.doneTicks, woke = !!d.cap.wakeAt, drink = tk.has('drink');
+  const keep = (item: string, v: boolean) => (d.skipped(item) ? [] : [v]);
+  const ons = (ids: CheckId[]) => ids.flatMap((id) => keep(id, d.on(id)));
+  return {
+    core: [tk.has('journal'), tk.has('clean'), tk.has('meditate')],
+    // the wake-up drink shows once he is up (or already ticked); the gym only when the body module answers
+    body: [woke, ...(woke || drink ? keep('wake-drink', drink) : []), ...(hasBody ? [d.gymDone] : []), ...ons(d.routines.morning.map((m) => m.id)),
+      ...ons(['voice']), ...ons(d.routines.night.map((n) => n.id))],
+    diet: [d.cap.water >= d.cap.waterTarget, ...keep('no-sugar', tk.has('nosugar')), ...MEALS.map((m) => d.mealDone(m.id))],
+    mind: [tk.has('chess'), tk.has('sudoku'), tk.has('matiks'), ...keep('practice-speak', d.practice('speak')),
+      ...keep('practice-course', d.practice('course')), ...keep('book', tk.has('book'))],
+    mission: ons(['mission-norrita']),
+    money: ons(['money-channels', 'money-social', 'money-brand']),
+    growth: ons(['growth-cc']),
+    leave: [d.on('leave-washroom'), d.on('leave-late')],
+  };
+}
+export type RoutineFlags = ReturnType<typeof routineFlags>;
+
+/** The routine part of each aspect's crystal: Core habits and Habits to leave are Soul's, Diet is Body's. */
+export function routineReach(f: RoutineFlags): AspectProgress {
+  const p = (...lists: boolean[][]) => { const all = lists.flat(); return { done: all.filter(Boolean).length, total: all.length }; };
+  return {
+    soul: p(f.core, f.leave), body: p(f.body, f.diet), mind: p(f.mind),
+    mission: p(f.mission), money: p(f.money), growth: p(f.growth),
+  };
+}
+
+/** Two progress maps added aspect by aspect (today's tasks plus today's routine). */
+export function addReach(a: AspectProgress, b: AspectProgress | null): AspectProgress {
+  if (!b) return a;
+  const out: AspectProgress = { ...a };
+  for (const k of Object.keys(b) as AspectKey[]) {
+    const x = a[k], y = b[k]!;
+    out[k] = { done: (x?.done ?? 0) + y.done, total: (x?.total ?? 0) + y.total };
+  }
+  return out;
+}
+
+/** done / total for a list of booleans plus the tasks due today in that place (one cancelled today counts for neither). */
 export function count(flags: boolean[], due: Task[] = []) {
-  const dueN = due.filter((x) => x.due);
+  const dueN = due.filter((x) => x.due && x.status !== 'dropped');
   return { done: flags.filter(Boolean).length + dueN.filter((x) => x.status === 'done').length, total: flags.length + dueN.length };
 }

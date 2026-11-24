@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { api } from '@/lib/api';
 import { DEMO, demoData } from '@/lib/demo';
-import { fileSource, invalidate, upload, useCollection, useGet, type Doc } from '@/lib/mod';
+import { fileSource, invalidate, newId, upload, useCollection, useGet, type Doc } from '@/lib/mod';
 import { nora } from '@/lib/nora';
 import type { Area, LifePayload } from '@/lib/today';
 import { kv } from '@/work/kv';
@@ -29,9 +29,12 @@ import { FRAMES, MEAL_SLOT, type Frame, type FrameId, type TickId } from './mome
 //                  with its photo in Diet, the photo vault, the wake-up drink, a reading sitting); the panel polls
 //                  GET /mod/capture/smart-photo/<id> and offers POST .../undo
 //   task           POST /tasks { title, area, due }; "Tag Nora" also sends her the task in chat
+//   meal by text   POST /mod/body/meals { name, slot }: the meal record a filed smart photo makes, numbers estimated on the PC
+//   cancelled      the item's body check, not done and `skipped` (Today's "Cancel for today"): out of the day's count
 // A Soul habit whose title matches (journal, meditat, clean, sugar) is ticked as well, so the core habits stay in step.
 
-export type BodyCheck = Doc & { date: string; item: string; done: boolean; at: string; time?: string; photo?: string; by?: string; source?: string };
+export type BodyCheck = Doc & { date: string; item: string; done: boolean; at: string; time?: string; photo?: string; by?: string; source?: string;
+  /** cancelled for the day: not done, and not counted as left to do either */ skipped?: boolean };
 type Session = Doc & { kind?: string; date: string; book?: string | null; title?: string | null };
 type Sit = Doc & { date: string; secs: number; source?: string };
 type Entry = Doc & { date: string; text: string };
@@ -296,6 +299,34 @@ export function useCapture() {
     }
   }
 
+  /** Cancel the wake-up drink or no sugar for today, or bring it back: its check is written not done and skipped. */
+  async function skip(id: 'drink' | 'nosugar', on: boolean) {
+    const item = id === 'drink' ? 'wake-drink' : 'no-sugar';
+    const was = checked(item);
+    await putCheck(item, false, { skipped: on });
+    if (id === 'nosugar' && on && was) tickHabit(/sugar/i, false);
+  }
+
+  /** A meal by text, for when there is no photo: the same meal record a filed smart photo makes (Body's meals, in the
+   *  frame's slot), its numbers estimated on the PC from the words. Resolves with what to say and the undo. */
+  async function mealText(f: FrameId, text: string) {
+    const name = text.trim().slice(0, 200);
+    const slot = MEAL_SLOT[f] ?? 'snack';
+    const word = SLOT_WORD[f] ?? 'Meal';
+    const id = newId('meal');
+    if (DEMO) {
+      await fakeWait(350);
+      setDemoDiet((d) => (d ? { ...d, meals: [...d.meals, { id, name, at: stamp(), slot, kcal: 380, protein: 18, carbs: null, fat: null, estimate: true, unknown: false, photo: null, source: 'today', items: null }] } : d));
+      return { said: `${word} logged, about 18 g protein`, undo: async () => { setDemoDiet((d) => (d ? { ...d, meals: d.meals.filter((m) => m.id !== id) } : d)); } };
+    }
+    const r = await api<{ item: { protein?: number; unknown?: boolean } }>('/mod/body/meals', { method: 'POST', body: { id, name, slot, at: stamp(), source: 'today' } });
+    invalidate('/mod/body/');
+    return {
+      said: r.item.unknown ? `${word} logged. Add its protein in Diet.` : `${word} logged, about ${Math.round(Number(r.item.protein) || 0)} g protein`,
+      undo: async () => { await api(`/mod/body/meals/${encodeURIComponent(id)}`, { method: 'DELETE' }); invalidate('/mod/body/'); },
+    };
+  }
+
   /** Woke at `hm` ("06:40") today. */
   async function wake(hm: string) {
     const at = new Date(`${day}T${hm}:00+05:30`).toISOString();
@@ -397,7 +428,7 @@ export function useCapture() {
     cleanReady: !cleanData || cleanData.setup,
     book: book ? { title: book.title, page: book.page, pages: book.pages } : null,
     areas: areaOptions,
-    photo, addWater, toggle, wake, journalLine, page, task, slip, unslip, smart, smartGet, smartFiled, smartUndo,
+    photo, addWater, toggle, skip, mealText, wake, journalLine, page, task, slip, unslip, smart, smartGet, smartFiled, smartUndo,
     retry: (f: FrameId) => putShot(f, null),
   };
 }

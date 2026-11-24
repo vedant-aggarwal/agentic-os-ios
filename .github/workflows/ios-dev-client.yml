@@ -49,8 +49,7 @@ jobs:
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-          BUILD_FLOOR: ${{ 100 + github.run_number }}
-        run: python3 scripts/ios_signing.py next_build
+        run: BUILD_FLOOR=$((100 + ${{ github.run_number }})) python3 scripts/ios_signing.py next_build
       - name: Xcode 26 or newer
         run: |
           major() { xcodebuild -version | head -1 | awk '{print $2}' | cut -d. -f1; }

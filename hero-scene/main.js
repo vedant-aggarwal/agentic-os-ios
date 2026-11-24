@@ -122,7 +122,9 @@ try {
   toApp({ t: 'error', msg: 'WebGL unavailable' });
   throw e;
 }
-const DPR = Math.min(window.devicePixelRatio || 1, 2);
+// lowered at run time (fitFrames below) when the phone can't draw this many pixels on time
+let DPR = Math.min(window.devicePixelRatio || 1, 2);
+const DPR_MIN = Math.min(DPR, 1.25);
 // point sizes are in device pixels; ?px=2 lets a 2x-sized dev frame show them as a phone would
 const PX = DPR * (Number(new URLSearchParams(location.search).get("px")) || 1);
 renderer.setPixelRatio(DPR);
@@ -1569,8 +1571,10 @@ function sendZones(t) {
 function applyData() {
   crystals.forEach((c, i) => c.setData(state.aspects[i]));
 }
+const INPUT = new Set(['data', 'down', 'move', 'up', 'pgrab', 'pmove', 'prel']);
 function recv(m) {
   if (!m || !m.t) return;
+  if (INPUT.has(m.t)) lastInput = performance.now();
   if (m.t === 'data') {
     if (typeof m.reduce === 'boolean') state.reduce = m.reduce;
     if (Array.isArray(m.aspects)) {
@@ -1593,7 +1597,7 @@ function recv(m) {
   else if (m.t === 'pmove') plants.move(m.x, m.y);
   else if (m.t === 'prel') plants.release(m.vx, m.vy);
   else if (m.t === 'pause') state.paused = true;
-  else if (m.t === 'resume') { if (state.paused) { state.paused = false; last = performance.now(); requestAnimationFrame(loop); } }
+  else if (m.t === 'resume') { if (state.paused) { state.paused = false; kick(); } }
 }
 window.hero = { recv };
 window.addEventListener('message', (e) => {
@@ -1646,7 +1650,7 @@ if (STANDALONE) {
 // ── loop ────────────────────────────────────────────────────────────────────────────────────────────────────
 window.addEventListener('resize', frame);
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && !state.paused) { last = performance.now(); requestAnimationFrame(loop); }
+  if (!document.hidden && !state.paused) kick();
 });
 frame();
 applyData();
@@ -1657,13 +1661,44 @@ Promise.all(scanLoads).then(() => { scansIn = true; });
 setTimeout(() => { scansIn = true; }, 6000);
 let last = performance.now(), t0 = last, reveal = 0, readySent = false, dustT = 0;
 const back = new THREE.Vector3(), wind = { side: 0, up: 0, e: 0, lift: 0 };
+// One loop only. A resume or a return to the app while a frame was still queued used to start a second loop, and
+// every pause/resume (scrolling the hero off and back) could add another, each drawing the whole scene again.
+let raf = 0, lastInput = -1e9, odd = false, calmWas = false, drawnAt = 0;
+const slow = [];
+function kick() { cancelAnimationFrame(raf); last = performance.now(); drawnAt = 0; raf = requestAnimationFrame(loop); }
+// Calm (no touch for 2.5 s, the stone at rest, the fog settled, the reveal done): every other frame, 30 fps. The calm
+// motion (camera drift, dust, haze, the sun's flicker) is slow enough not to show it.
+function isCalm(now) {
+  return reveal >= 1 && now - lastInput > 2500 && Math.abs(turn.speed) < 0.5 && vortex.e < 0.02 && vortex.lift < 0.02;
+}
+// Frames that come late for their pace, two seconds running: draw fewer pixels (down to DPR_MIN).
+function fitFrames(now, calm) {
+  if (calm !== calmWas) { calmWas = calm; slow.length = 0; drawnAt = 0; }
+  if (drawnAt) slow.push((now - drawnAt) / (calm ? 33.4 : 16.7));
+  drawnAt = now;
+  if (slow.length < (calm ? 60 : 120)) return;
+  const avg = slow.reduce((a, b) => a + b, 0) / slow.length;
+  slow.length = 0;
+  if (avg > 1.3 && DPR > DPR_MIN) {
+    DPR = Math.max(DPR_MIN, DPR * 0.85);
+    renderer.setPixelRatio(DPR);
+    composer.setPixelRatio(DPR);
+    frame();
+    drawnAt = 0;
+  }
+}
 function loop(now) {
+  raf = 0;
   if (state.paused || document.hidden) return;
+  raf = requestAnimationFrame(loop);
+  const calm = isCalm(now);
+  odd = !odd;
+  if (calm && odd) return;
+  fitFrames(now, calm);
   tick(now);
-  requestAnimationFrame(loop);
 }
 function tick(now) {
-  const dt = Math.min(0.05, (now - last) / 1000);
+  const dt = Math.max(0, Math.min(0.05, (now - last) / 1000));
   last = now;
   const t = (now - t0) / 1000;
   if (scansIn) reveal = Math.min(1, reveal + dt / (state.reduce ? 0.3 : 1.4));
@@ -1714,4 +1749,4 @@ function tick(now) {
   composer.render(dt);
   if (!readySent && scansIn) { readySent = true; toApp({ t: 'ready' }); }
 }
-requestAnimationFrame(loop);
+kick();

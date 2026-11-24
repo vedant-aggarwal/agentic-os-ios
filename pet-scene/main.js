@@ -127,12 +127,15 @@ function render() {
 }
 
 // ── the loop: 60 fps while anything moves fast, 30 when it only breathes and blinks ─────────────────────
-let paused = false, last = performance.now(), odd = false, readySent = false, manual = false;
+let paused = false, last = performance.now(), odd = false, readySent = false, manual = false, raf = 0;
+// one loop only: a resume or a return to the app while a frame is still queued used to start a second loop
+function kick() { cancelAnimationFrame(raf); last = performance.now(); raf = requestAnimationFrame(loop); }
 const times = [];
 function loop(now) {
-  if (paused || manual) return;
-  requestAnimationFrame(loop);
-  const dt = Math.min(0.1, (now - last) / 1000);
+  raf = 0;
+  if (paused || manual || document.hidden) return;
+  raf = requestAnimationFrame(loop);
+  const dt = Math.max(0, Math.min(0.1, (now - last) / 1000));
   last = now;
   sim.advance(dt);
   odd = !odd;
@@ -163,7 +166,7 @@ function recv(m) {
   else if (m.t === 'tint' && Array.isArray(m.c)) tint = m.c;
   else if (m.t === 'box') { CFG.box = m.box; frame(); }
   else if (m.t === 'pause') paused = true;
-  else if (m.t === 'resume') { if (paused) { paused = false; last = performance.now(); dirty = true; requestAnimationFrame(loop); } }
+  else if (m.t === 'resume') { if (paused) { paused = false; dirty = true; kick(); } }
 }
 window.pet = { recv };
 window.addEventListener('message', (e) => {
@@ -173,11 +176,11 @@ window.addEventListener('message', (e) => {
 });
 document.addEventListener('message', (e) => { try { recv(JSON.parse(e.data)); } catch { /* not ours */ } });
 canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); paused = true; });
-canvas.addEventListener('webglcontextrestored', () => { build(); paused = false; last = performance.now(); requestAnimationFrame(loop); });
-document.addEventListener('visibilitychange', () => { if (!document.hidden && !paused && !manual) { last = performance.now(); requestAnimationFrame(loop); } });
+canvas.addEventListener('webglcontextrestored', () => { build(); paused = false; kick(); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden && !paused && !manual) kick(); });
 
 frame();
-requestAnimationFrame(loop);
+kick();
 
 // ── on its own (dev): sliders, and the mouse as the finger ──────────────────────────────────────────────
 if (STANDALONE) {
@@ -200,7 +203,7 @@ if (STANDALONE) {
     gaze: (x, y, on = true) => sim.setGaze(x, y, on),
     tint: (c) => { tint = c; },
     manual: () => { manual = true; },
-    auto: () => { manual = false; last = performance.now(); requestAnimationFrame(loop); },
+    auto: () => { manual = false; kick(); },
     tick: (ms) => { sim.advance(ms / 1000); render(); },
     // step in small pieces so the fixed-step sim sees every frame
     run: (ms, step = 1000 / 60) => { for (let a = 0; a < ms; a += step) sim.advance(step / 1000); render(); },

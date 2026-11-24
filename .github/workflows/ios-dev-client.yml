@@ -35,8 +35,22 @@ jobs:
     timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
+      - name: App Store Connect key
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+        run: |
+          mkdir -p ~/.appstoreconnect/private_keys
+          printf '%s\n' "$ASC_KEY_P8" > ~/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8
+          echo "ASC_KEY_PATH=$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8" >> $GITHUB_ENV
+          python3 -m pip install --quiet --break-system-packages pyjwt cryptography
       - name: Build number
-        run: echo "BUILD_NUMBER=$((100 + ${{ github.run_number }}))" >> $GITHUB_ENV
+        # One above the highest build on App Store Connect: ios-release.yml uploads to the same app.
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          BUILD_FLOOR: ${{ 100 + github.run_number }}
+        run: python3 scripts/ios_signing.py next_build
       - name: Xcode 26 or newer
         run: |
           major() { xcodebuild -version | head -1 | awk '{print $2}' | cut -d. -f1; }
@@ -62,21 +76,11 @@ jobs:
       - name: CocoaPods
         working-directory: ios
         run: pod install
-      - name: App Store Connect key
-        env:
-          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-        run: |
-          mkdir -p ~/.appstoreconnect/private_keys
-          printf '%s\n' "$ASC_KEY_P8" > ~/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8
-          echo "ASC_KEY_PATH=$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8" >> $GITHUB_ENV
       - name: Signing certificate and profile
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-        run: |
-          python3 -m pip install --quiet --break-system-packages pyjwt cryptography
-          python3 scripts/ios_signing.py setup
+        run: python3 scripts/ios_signing.py setup
       - name: Manual signing on the app target
         env:
           TEAM: ${{ secrets.APPLE_TEAM_ID }}

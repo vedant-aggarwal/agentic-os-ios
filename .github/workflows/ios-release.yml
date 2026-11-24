@@ -1,0 +1,153 @@
+# Builds the Agentic OS release app (version from app.json) on a macOS runner and uploads it to TestFlight.
+# Unlike ios-dev-client.yml, this archives the Release configuration: the JS bundle is built into the app, so it runs
+# on its own with no Metro server or tunnel on the PC. The dev launcher is linked only in Debug, so it isn't in here.
+#
+# Same app (bundle ID) as the dev client: installing this build from TestFlight replaces the dev client on the phone,
+# and the dev client comes back from TestFlight > Previous Builds. Build numbers come from App Store Connect
+# (scripts/ios_signing.py next_build) so the two workflows never upload the same or a lower number.
+#
+# Signing doesn't use Apple's cloud signing (App Manager key): scripts/ios_signing.py makes a short-lived
+# distribution certificate and App Store profile for this run and removes them afterwards.
+# Repo secrets: APPLE_TEAM_ID, ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8. They reach scripts through env only:
+# this repo is public, so its logs are public.
+name: iOS release
+on:
+  workflow_dispatch:
+concurrency:
+  group: ios-release
+  cancel-in-progress: false
+env:
+  BUNDLE_ID: com.norrita.agenticos
+jobs:
+  ios:
+    runs-on: macos-26
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - name: App Store Connect key
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+        run: |
+          mkdir -p ~/.appstoreconnect/private_keys
+          printf '%s\n' "$ASC_KEY_P8" > ~/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8
+          echo "ASC_KEY_PATH=$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8" >> $GITHUB_ENV
+          python3 -m pip install --quiet --break-system-packages pyjwt cryptography
+      - name: Build number
+        # One above the highest build on App Store Connect: ios-dev-client.yml uploads to the same app.
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          BUILD_FLOOR: '100'
+        run: python3 scripts/ios_signing.py next_build
+      - name: Xcode 26 or newer
+        run: |
+          major() { xcodebuild -version | head -1 | awk '{print $2}' | cut -d. -f1; }
+          if [ "$(major)" -lt 26 ]; then
+            pick=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+            [ -n "$pick" ] || { echo "No Xcode 26 on this runner"; exit 1; }
+            sudo xcode-select -s "$pick/Contents/Developer"
+          fi
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+      - uses: actions/setup-node@v4
+        with: {node-version: 24, cache: npm}
+      - run: npm ci --no-audit --no-fund
+      - name: Expo prebuild (iOS)
+        run: |
+          IOS_BUILD_NUMBER=$BUILD_NUMBER npx expo prebuild --platform ios --no-install
+          PROJ=$(ls -d ios/*.xcodeproj | grep -v Pods | head -1)
+          NAME=$(basename "$PROJ" .xcodeproj)
+          echo "APP_NAME=$NAME" >> $GITHUB_ENV
+          echo "Project $NAME"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "ios/$NAME/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "ios/$NAME/Info.plist"
+      - name: CocoaPods
+        working-directory: ios
+        run: pod install
+      - name: Signing certificate and profile
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: python3 scripts/ios_signing.py setup
+      - name: Manual signing on the app target
+        env:
+          TEAM: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          ruby scripts/ios_manual_signing.rb
+          python3 scripts/ios_signing.py entitlements
+      - name: Archive (Release, JS bundled in)
+        run: |
+          set -o pipefail
+          xcodebuild -workspace "ios/$APP_NAME.xcworkspace" -scheme "$APP_NAME" -configuration Release             -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/AgenticOS.xcarchive"             CURRENT_PROJECT_VERSION=$BUILD_NUMBER COMPILER_INDEX_STORE_ENABLE=NO             archive > "$RUNNER_TEMP/archive.log" 2>&1 && ok=0 || ok=$?
+          grep -E "error:|\*\* ARCHIVE (SUCCEEDED|FAILED)" "$RUNNER_TEMP/archive.log" | sort -u | head -100 || true
+          [ $ok -eq 0 ] || { tail -80 "$RUNNER_TEMP/archive.log"; exit $ok; }
+      - name: Check the archive holds the JS bundle and no dev launcher
+        run: |
+          APP=$(ls -d "$RUNNER_TEMP"/AgenticOS.xcarchive/Products/Applications/*.app | head -1)
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP/Info.plist"
+          ls -la "$APP/main.jsbundle" || { echo "main.jsbundle missing: the app would need Metro"; exit 1; }
+          BIN="$APP/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP/Info.plist")"
+          if strings "$BIN" | grep -q 'EXDevLauncherController'; then echo "::warning::Dev launcher classes found in a Release build"; fi
+          echo "Release build: JS bundled, no dev launcher"
+      - name: Check the app icons in the archive
+        run: |
+          # AppIcon (light, with a dark appearance) and the alternates AppIconLight / AppIconDark (modules/app-icon).
+          # Reports only: the upload goes ahead either way.
+          APP=$(ls -d "$RUNNER_TEMP"/AgenticOS.xcarchive/Products/Applications/*.app | head -1)
+          plutil -extract CFBundleIcons json -o - "$APP/Info.plist" || echo "No CFBundleIcons in Info.plist"
+          echo; ls "$APP" | grep -i appicon || true
+          xcrun --sdk iphoneos assetutil --info "$APP/Assets.car" > "$RUNNER_TEMP/assets.json" || true
+          python3 - "$RUNNER_TEMP/assets.json" <<'PY' || true
+          import json, sys
+          rows = [r for r in json.load(open(sys.argv[1])) if 'AppIcon' in str(r.get('Name', ''))]
+          for r in rows:
+              print(r.get('Name'), '|', r.get('AssetType'), '|', r.get('Appearance', 'any'), '|', r.get('PixelWidth', ''), '|', r.get('RenditionName', ''))
+          names = {r.get('Name') for r in rows}
+          dark = any(r.get('Name') == 'AppIcon' and 'dark' in str(r.get('Appearance', '')).lower() for r in rows)
+          missing = [n for n in ('AppIcon', 'AppIconLight', 'AppIconDark') if n not in names] + ([] if dark else ['the dark appearance of AppIcon'])
+          print('App icons missing from Assets.car:', ', '.join(missing) or 'none')
+          PY
+      - name: Export and upload to App Store Connect
+        env:
+          TEAM: ${{ secrets.APPLE_TEAM_ID }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          cat > "$RUNNER_TEMP/export.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>$TEAM</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>signingCertificate</key><string>Apple Distribution</string>
+            <key>provisioningProfiles</key><dict>
+              <key>$BUNDLE_ID</key><string>$PROFILE_APP</string>
+              <key>$BUNDLE_ID.controls</key><string>$PROFILE_EXT</string>
+              <key>$BUNDLE_ID.keyboard</key><string>$PROFILE_KBD</string>
+              <key>$BUNDLE_ID.share</key><string>$PROFILE_SHR</string>
+            </dict>
+            <key>uploadSymbols</key><false/>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict></plist>
+          PLIST
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/AgenticOS.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/export.plist" -exportPath "$RUNNER_TEMP/out" \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+      - name: Wait for App Store Connect to list the build
+        continue-on-error: true
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: python3 scripts/ios_signing.py wait_build
+      - name: Remove the run's certificate and profile
+        if: ${{ always() }}
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: python3 scripts/ios_signing.py cleanup || true

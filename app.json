@@ -2,7 +2,7 @@
   "expo": {
     "name": "Agentic OS",
     "slug": "agentic-os",
-    "version": "4.1.0",
+    "version": "5.0.0",
     "orientation": "default",
     "icon": "./assets/images/app-icon-light.png",
     "scheme": "agenticos",

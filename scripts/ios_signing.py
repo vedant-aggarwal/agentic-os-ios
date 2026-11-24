@@ -196,6 +196,21 @@ def wait_build():
     print(f"Stopped waiting; last state {last}. The build may still be processing.")
 
 
+def next_build():
+    """Write BUILD_NUMBER = one above the highest build App Store Connect holds for BUNDLE_ID (floor: BUILD_FLOOR).
+    The dev client and the release workflow upload to the same app, and a build number can't repeat or go down."""
+    bundle, floor = os.environ["BUNDLE_ID"], int(os.environ.get("BUILD_FLOOR", "100"))
+    apps = call("GET", f"/apps?filter[bundleId]={bundle}")["data"]
+    top = 0
+    if apps:
+        builds = call("GET", f"/builds?filter[app]={apps[0]['id']}&sort=-uploadedDate&limit=200")["data"]
+        top = max([int(b["attributes"]["version"]) for b in builds if b["attributes"]["version"].isdigit()] or [0])
+    number = max(top + 1, floor)
+    print(f"highest uploaded build {top}; this run builds {number}")
+    with open(os.environ["GITHUB_ENV"], "a") as f:
+        f.write(f"BUILD_NUMBER={number}\n")
+
+
 def cleanup():
     if not os.path.exists(STATE):
         return
@@ -212,4 +227,5 @@ def cleanup():
 
 
 if __name__ == "__main__":
-    {"setup": setup, "entitlements": entitlements, "wait_build": wait_build, "cleanup": cleanup}[sys.argv[1]]()
+    {"setup": setup, "entitlements": entitlements, "wait_build": wait_build, "next_build": next_build,
+     "cleanup": cleanup}[sys.argv[1]]()

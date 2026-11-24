@@ -5,7 +5,7 @@ import { GestureDetector, GestureStateManager, useCompetingGestures, usePanGestu
 import Animated, { ReduceMotion, useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient, Polygon, Stop } from 'react-native-svg';
 import { Crystals } from '@/components/Crystals';
-import type { TodayView } from '@/lib/today';
+import type { AspectProgress, TodayView } from '@/lib/today';
 import { ASPECT_COLOR, type AspectKey, C, F, FAMILY_ASPECTS, type FamilyKey } from '@/theme';
 import { Surface, SURFACE_OK } from './Surface';
 import type { SceneMsg, SurfaceHandle } from './types';
@@ -55,8 +55,10 @@ function mixHex(a: string, b: string, k: number) {
 /** The app background (Backdrop) at a height on screen: bgTop to bgMid over the top 48%. */
 const backdropAt = (y: number, screenH: number) => mixHex(C.bgTop, C.bgMid, Math.min(1, y / (0.48 * screenH)));
 
-export function Hero({ view, top, topBar, active, width: fixedW }: {
+export function Hero({ view, reach: reachIn, top, topBar, active, width: fixedW }: {
   view: TodayView; top: number; topBar: number; active: boolean;
+  /** Per aspect, what fills the crystals. Today passes its tasks plus its routine ticks; without it, tasks only. */
+  reach?: AspectProgress;
   /** The desktop web layout draws the hero as a card narrower than the window. */
   width?: number;
 }) {
@@ -73,16 +75,21 @@ export function Hero({ view, top, topBar, active, width: fixedW }: {
   const holding = useRef(false);
   const shown = useSharedValue(0);
   const fade = useAnimatedStyle(() => ({ opacity: shown.value }));
+  const reach = reachIn ?? view.reach;
+  // the line under the scene: today's tasks plus whatever routine ticks the crystals count beyond them
+  const sum = (r: AspectProgress) => Object.values(r).reduce((a, p) => ({ done: a.done + (p?.done ?? 0), total: a.total + (p?.total ?? 0) }), { done: 0, total: 0 });
+  const all = sum(reach), tasksOnly = sum(view.reach);
+  const dayDone = view.done + all.done - tasksOnly.done, dayTotal = view.total + all.total - tasksOnly.total;
 
   const data = useMemo<SceneMsg>(() => ({
     t: 'data',
-    aspects: ORDER.map((a) => ({ key: a, color: ASPECT_COLOR[a], done: view.reach[a]?.done ?? 0, total: view.reach[a]?.total ?? 0 })),
+    aspects: ORDER.map((a) => ({ key: a, color: ASPECT_COLOR[a], done: reach[a]?.done ?? 0, total: reach[a]?.total ?? 0 })),
     bg: backdropAt(h, screenH),
     bgTop: C.bgTop,
     bgStop: (0.48 * screenH) / h,
     topFrac: (top + topBar) / h,
     reduce,
-  }), [view.reach, h, screenH, top, topBar, reduce]);
+  }), [reach, h, screenH, top, topBar, reduce]);
 
   useEffect(() => { if (ready) surface.current?.send(data); }, [ready, data]);
   useEffect(() => { if (ready) surface.current?.send({ t: active ? 'resume' : 'pause' }); }, [ready, active]);
@@ -144,12 +151,12 @@ export function Hero({ view, top, topBar, active, width: fixedW }: {
   });
   const gesture = useCompetingGestures(plant, turn);
 
-  const p = facing ? view.reach[facing] : undefined;
+  const p = facing ? reach[facing] : undefined;
   const label = facing
     ? { text: `${aspectName(facing)} ${p?.total ? `${p.done} of ${p.total}` : 'nothing open'}`, color: p?.total ? ASPECT_COLOR[facing] : C.muted }
     : null;
-  const a11y = ORDER.filter((a) => view.reach[a]?.total)
-    .map((a) => `${aspectName(a)} ${view.reach[a]!.done} of ${view.reach[a]!.total}`).join(', ');
+  const a11y = ORDER.filter((a) => reach[a]?.total)
+    .map((a) => `${aspectName(a)} ${reach[a]!.done} of ${reach[a]!.total}`).join(', ');
   const scene = SURFACE_OK && !failed;
 
   return (
@@ -175,10 +182,10 @@ export function Hero({ view, top, topBar, active, width: fixedW }: {
         </View>
       ) : null}
       <View pointerEvents="none" style={s.total}>
-        {view.total > 0 ? (
+        {dayTotal > 0 ? (
           <>
-            <Text style={s.totalNum}>{view.done}</Text>
-            <Text style={s.totalOf}>of {view.total} done today</Text>
+            <Text style={s.totalNum}>{dayDone}</Text>
+            <Text style={s.totalOf}>of {dayTotal} done today</Text>
           </>
         ) : (
           <Text style={s.totalOf}>Nothing due today</Text>

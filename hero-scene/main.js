@@ -48,6 +48,8 @@ const perm = (() => {
 const fade = (t) => t * t * t * (t * (t * 6 - 15) + 10);
 const lerp = (a, b, t) => a + (b - a) * t;
 const clamp01 = (x) => Math.min(1, Math.max(0, x));
+/** The share of a crystal that stays hidden at its foot: the liquid level a first tick starts from. */
+const FILL_FLOOR = 0.16;
 const sstep = (a, b, x) => { const t = clamp01((x - a) / (b - a)); return t * t * (3 - 2 * t); };
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 function grad(h, x, y, z) {
@@ -998,7 +1000,9 @@ class Crystal {
     this.qm.uniforms.uCol.value.copy(col);
     this.qm.uniforms.uHas.value = a.total > 0 ? 1 : 0;
     this.done = a.done; this.total = a.total;
-    this.target = a.total > 0 ? clamp01(a.done / a.total) : 0;
+    // The bottom sixth of a crystal hides in the moss and the small crystals round its foot, so the first tick
+    // starts the liquid above that: one done of nineteen still shows, and each tick after adds its share.
+    this.target = a.total > 0 && a.done > 0 ? FILL_FLOOR + (1 - FILL_FLOOR) * clamp01(a.done / a.total) : 0;
     if (state.reduce || !this.started) { this.fill = this.target; this.fillVel = 0; }
     this.started = true;
     if (this.leak) this.tintLeak();

@@ -71,15 +71,20 @@ function Hero({ v }: { v: Voice }) {
   const nav = useNav();
   const l = v.latest!;
   const days = v.due ? 7 - v.due.days : null;
-  const n = l.dims.filter((d) => d.v != null).length;
+  const n = l.measured ?? l.dims.filter((d) => d.v != null).length;
+  const of = l.of ?? l.dims.length;
+  const compared = l.delta != null && l.compared != null && l.compared < of ? ` The change compares only the ${l.compared} measures both samples have.` : '';
   return (
     <Card style={u.gap12}>
       <Text style={t.label}>Overall</Text>
       <View style={u.between}>
-        <Score v={l.overall} />
+        <View style={u.row}>
+          <Score v={l.overall} />
+          {n < of ? <Tag>{`${n} of ${of} measured`}</Tag> : null}
+        </View>
         <Delta d={l.delta} />
       </View>
-      <Text style={t.small}>{`${shortDay(l.date)}, ${agoDays(days)}. The average of ${n === 6 ? 'the six measures' : `the ${n} measures taken`} below.`}</Text>
+      <Text style={t.small}>{`${shortDay(l.date)}, ${agoDays(days)}. The average of ${n === of ? `the ${of} measures` : `the ${n} measures taken`} below.${compared}`}</Text>
       {l.explain?.text ? <Text style={t.body}>{l.explain.text}</Text> : null}
       <Listen v={v} />
       {v.due ? (

@@ -4,7 +4,7 @@ import { Image } from 'expo-image';
 import { C } from '@/theme';
 import { fileSource } from '@/lib/mod';
 import {
-  Bar, Bars, Button, Card, clock, dayLabel, Empty, Failed, haptic, Icon, IconButton, Press, Ring, Row, Screen, Section, Skeleton, SP, t, today, useAspect, weekLetter,
+  Bar, Bars, Button, Card, clock, dayLabel, Empty, Failed, haptic, Icon, IconButton, myDay, Press, Ring, Row, Screen, Section, Skeleton, SP, t, useAspect, weekLetter,
 } from '@/aspects/kit';
 import { addMeal, dismissPhoto, filePath, logWater, useDiet, usePoll, type Diet, type MealPhoto, type MealRow } from '../api';
 import { useNav } from '../nav';
@@ -20,10 +20,10 @@ export function DietScreen({ open, onClose, title }: { open: boolean; onClose: (
   const [editing, setEditing] = useState<MealRow | null>(null);
   const { data, error, refresh } = read;
   usePoll(refresh, open && !!data?.photos.some((p) => p.status === 'reading'), 3000);
-  const isToday = !day || day === today();
+  const isToday = !day || day === (data?.today ?? myDay());
   return (
     <>
-      <Screen open={open} onClose={onClose} title={isToday ? title : dayLabel(day!)}
+      <Screen open={open} onClose={onClose} title={isToday ? title : dayLabel(day!, myDay())}
         right={<IconButton label="Log a meal" size={36} onPress={() => nav.openSheet({ kind: 'meal' })}><Icon name="plus" size={18} /></IconButton>}>
         {!data && error ? <Failed message={error} onRetry={() => { void refresh(); }} /> : null}
         {!data && !error ? <View style={u.gap16}><Skeleton height={220} radius={24} /><Skeleton height={120} radius={24} /><Skeleton height={160} radius={24} /></View> : null}
@@ -196,7 +196,7 @@ function Week({ d, day, onDay }: { d: Diet; day: string; onDay: (d: string) => v
         <Bars values={d.week.map((x) => x.protein)} labels={d.week.map((x) => weekLetter(x.date))} on={sel >= 0 ? sel : undefined} max={Math.max(target, ...d.week.map((x) => x.protein))} height={88} />
         <View style={u.between}>
           {d.week.map((x) => (
-            <Press key={x.date} label={`${dayLabel(x.date)}, ${x.protein} grams`} onPress={() => onDay(x.date)} feel="tick" hitSlop={{ top: 6, bottom: 6 }} wrap={{ flex: 1 }} style={{ height: 32, alignItems: 'center', justifyContent: 'center' }}>
+            <Press key={x.date} label={`${dayLabel(x.date, myDay())}, ${x.protein} grams`} onPress={() => onDay(x.date)} feel="tick" hitSlop={{ top: 6, bottom: 6 }} wrap={{ flex: 1 }} style={{ height: 32, alignItems: 'center', justifyContent: 'center' }}>
               <Text style={[t.caption, t.num, x.date === day && { color: a.color }]}>{x.protein}</Text>
             </Press>
           ))}

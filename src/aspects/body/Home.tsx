@@ -165,10 +165,11 @@ function Proof({ h }: { h: HomeData }) {
             spark={trail.length > 1 ? trail : null} goal={goal ?? undefined}
             stale={(weight.days ?? 0) > 7} action={{ label: 'Weigh in', run: () => nav.openSheet({ kind: 'weigh' }) }} />,
           <ProofLine key="f" title="Face score" value={face ? `${face.v}${face.margin ? ` ± ${face.margin}` : ''}` : null} date={face?.date ?? null} days={face?.days ?? null}
+            scope={face ? (face.partial && face.shots?.length === 1 && face.shots[0] === 'front' ? 'front only' : measuredWord(face)) : null}
             delta={face?.delta} spark={face && face.trend.length > 1 ? face.trend : null}
             note={face && h.face.due ? `Next scan ${inDays(h.face.due.days)}` : null}
             stale={!!h.face.due && h.face.due.days <= 0} action={{ label: face ? 'Rescan' : 'Scan', run: () => nav.openFlow({ kind: 'scan' }) }} />,
-          <ProofLine key="v" title="Voice score" value={voice ? String(voice.v) : null} date={voice?.date ?? null} days={voice?.days ?? null}
+          <ProofLine key="v" title="Voice score" value={voice ? String(voice.v) : null} date={voice?.date ?? null} days={voice?.days ?? null} scope={voice ? measuredWord(voice) : null}
             delta={voice?.delta} spark={voice && voice.trend.length > 1 ? voice.trend : null}
             stale={(voice?.days ?? 0) >= 7} action={{ label: voice ? 'New sample' : 'Record', run: () => nav.openFlow({ kind: 'sample' }) }} />,
         ]}
@@ -176,10 +177,12 @@ function Proof({ h }: { h: HomeData }) {
     </Section>
   );
 }
+/** "4 of 6 measured" when the overall rests on only some of the features or measures. */
+const measuredWord = (x: { measured?: number; of?: number }) => (x.measured != null && x.of != null && x.measured < x.of ? `${x.measured} of ${x.of} measured` : null);
 const shiftDay = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 864e5).toISOString().slice(0, 10);
 
-function ProofLine({ title, value, date, days, note, delta, spark, goal, stale, action }: {
-  title: string; value: string | null; date: string | null; days: number | null; note?: string | null; delta?: number | null;
+function ProofLine({ title, value, date, days, scope, note, delta, spark, goal, stale, action }: {
+  title: string; value: string | null; date: string | null; days: number | null; scope?: string | null; note?: string | null; delta?: number | null;
   spark: number[] | null; goal?: number; stale: boolean; action: { label: string; run: () => void };
 }) {
   return (
@@ -189,7 +192,7 @@ function ProofLine({ title, value, date, days, note, delta, spark, goal, stale, 
         {value ? (
           <>
             <Text style={[t.heading, t.num]}>{value}</Text>
-            <Text style={t.small}>{date ? `${shortDay(date)}, ${agoDays(days)}` : ''}</Text>
+            <Text style={t.small}>{date ? `${shortDay(date)}, ${agoDays(days)}${scope ? `, ${scope}` : ''}` : ''}</Text>
             {delta != null ? <Delta d={delta} /> : note ? <Text style={t.caption}>{note}</Text> : null}
           </>
         ) : <Text style={t.body}>Not measured yet</Text>}

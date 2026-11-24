@@ -1,5 +1,5 @@
 import { newId, type Doc } from '@/lib/mod';
-import { today } from '@/aspects/kit';
+import { myDay } from '@/aspects/kit';
 import type { FullSession, Prev, SessionItem, SetRow, Target } from '../api';
 
 // The live workout record the phone writes into the body module's `workouts` collection. The PC reads the same
@@ -29,7 +29,7 @@ export function startSet(kind: SessionItem['kind'], i: number, cur: Partial<SetR
 export function liveFrom(session: FullSession, existing: WorkoutDoc | null): WorkoutDoc {
   return {
     ...(existing ?? {}),
-    id: existing?.id ?? newId('w'), date: today(), status: 'live', name: session.name, split: session.split, why: session.why, reasons: session.reasons, plan_by: session.plan_by,
+    id: existing?.id ?? newId('w'), date: myDay(), status: 'live', name: session.name, split: session.split, why: session.why, reasons: session.reasons, plan_by: session.plan_by,
     started_at: new Date().toISOString(), ended_at: null, source: 'app',
     items: session.items.map((it) => {
       const n = Math.max(1, it.sets.length || 3);
@@ -46,7 +46,7 @@ export function itemFrom(p: Prev, count = 3): WItem {
 }
 
 /** An empty session to start from nothing (no plan today). */
-export const emptyLive = (): WorkoutDoc => ({ id: newId('w'), date: today(), status: 'live', name: 'Workout', items: [], started_at: new Date().toISOString(), source: 'app' });
+export const emptyLive = (): WorkoutDoc => ({ id: newId('w'), date: myDay(), status: 'live', name: 'Workout', items: [], started_at: new Date().toISOString(), source: 'app' });
 
 /** The value line of a set: "40 kg × 8", "60 s", "25 min". */
 export function setText(kind: SessionItem['kind'], x: Partial<SetRow>) {

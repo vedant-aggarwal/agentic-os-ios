@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { fileSource, invalidate, upload } from '@/lib/mod';
-import { Button, Card, Chip, dayOf, Field, Section, Sheet, Skeleton, Stepper, t, useAspect } from '@/aspects/kit';
+import { Button, Card, Chip, Field, myDay, Section, Sheet, Skeleton, Stepper, t, undoable, useAspect } from '@/aspects/kit';
 import { addMeal, B, estimate, filePath, putDoc, removeDoc, setTargets, useDiet, useGym, type Estimate, type MealRow, type Recent } from '../api';
 import { canPick, pickPhoto } from '../pick';
 import { s as u, useSeen } from '../ui';
@@ -25,7 +25,12 @@ function LogBody({ recent, error, onClose }: { recent: Recent[] | null; error: s
   const done = (msg: string) => { a.notice(msg); onClose(); };
   const again = async (r: Recent) => {
     setBusy(r.name);
-    try { await addMeal({ name: r.name, kcal: r.kcal, protein: r.protein, carbs: r.carbs, fat: r.fat, items: r.items }); done(`${r.name} logged`); }
+    // one tap logs a recent meal; Undo takes it back out for a few seconds
+    try {
+      const m = await addMeal({ name: r.name, kcal: r.kcal, protein: r.protein, carbs: r.carbs, fat: r.fat, items: r.items });
+      onClose();
+      undoable(`${r.name} logged`, async () => { await removeDoc('meals', m.item.id); });
+    }
     catch (e) { a.notice((e as Error).message); setBusy(null); }
   };
   const check = async () => {
@@ -94,7 +99,7 @@ function EditBody({ meal, onClose }: { meal: MealRow; onClose: () => void }) {
   const save = async () => {
     setBusy(true);
     try {
-      await putDoc('meals', meal.id, { ...meal, date: dayOf(meal.at), name: name.trim() || meal.name, protein, kcal, estimate: false, unknown: false });
+      await putDoc('meals', meal.id, { ...meal, date: myDay(meal.at), name: name.trim() || meal.name, protein, kcal, estimate: false, unknown: false });
       a.notice('Saved'); onClose();
     } catch (e) { a.notice((e as Error).message); setBusy(false); }
   };

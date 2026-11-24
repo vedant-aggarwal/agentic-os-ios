@@ -4,9 +4,9 @@ import { C } from '@/theme';
 import { api } from '@/lib/api';
 import { call } from '@/lib/mod';
 import {
-  Bar, Button, Card, Empty, Failed, num, Press, Row, Screen, Section, shortDay, Skeleton, Spark, SP, SURF, t, tint, today, useAspect, weekLetter,
+  Bar, Button, Card, Empty, Failed, num, Press, Row, Screen, Section, shortDay, Skeleton, Spark, SP, SURF, t, tint, today, undoable, useAspect, weekLetter,
 } from '@/aspects/kit';
-import { agoDays, B, goalOf, planAgain, quickLog, useGym, useSession, type Gym, type HistoryRow } from '../api';
+import { agoDays, B, goalOf, planAgain, putDoc, quickLog, removeDoc, useGym, useSession, type Gym, type HistoryRow } from '../api';
 import { useNav } from '../nav';
 import { List, s as u, useInnerWidth, useSeen } from '../ui';
 import { setText } from './workout';
@@ -127,7 +127,8 @@ function QuickRow({ g }: { g: Gym }) {
   const [busy, setBusy] = useState<string | null>(null);
   const log = async (kind: string, min: number, name: string) => {
     setBusy(kind);
-    try { await quickLog(kind, min); a.notice(`${name}, ${min} min logged`); }
+    // one tap logs it; Undo takes the session back out for a few seconds
+    try { const r = await quickLog(kind, min); undoable(`${name}, ${min} min logged`, async () => { await removeDoc('workouts', r.item.id); }); }
     catch (e) { a.notice((e as Error).message); }
     setBusy(null);
   };
@@ -277,6 +278,18 @@ function SessionDetail({ id, onClose }: { id: string | null; onClose: () => void
   const a = useAspect();
   const read = useSession(id);
   const d = read.data;
+  const [busy, setBusy] = useState(false);
+  // a mis-tapped quick log or a session he didn't do leaves his history, week and recovery; Undo puts it back
+  const remove = async () => {
+    if (!d) return;
+    setBusy(true);
+    try {
+      const r = (await removeDoc('workouts', d.id)) as { item?: Record<string, unknown> };
+      onClose();
+      undoable(`${d.name} deleted`, async () => { if (r?.item) await putDoc('workouts', d.id, { ...r.item, deleted_at: null }); });
+    } catch (e) { a.notice((e as Error).message); }
+    setBusy(false);
+  };
   return (
     <Screen open={!!id} onClose={onClose} title={d?.name ?? 'Session'}>
       {!d && read.error ? <Failed message={read.error} onRetry={() => { void read.refresh(); }} /> : null}
@@ -305,6 +318,7 @@ function SessionDetail({ id, onClose }: { id: string | null; onClose: () => void
               </List>
             </Section>
           ))}
+          <Button label="Delete session" kind="danger" busy={busy} onPress={() => { void remove(); }} />
         </>
       ) : null}
     </Screen>

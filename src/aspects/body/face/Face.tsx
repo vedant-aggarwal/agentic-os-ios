@@ -3,9 +3,9 @@ import { Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { C } from '@/theme';
 import { fileSource } from '@/lib/mod';
-import { Button, Card, Failed, Icon, Loading, Press, Row, Screen, Section, Sheet, shortDay, Skeleton, Spark, SP, t, today, useAspect } from '@/aspects/kit';
+import { Button, Card, Failed, Icon, Loading, myDay, Press, Row, Screen, Section, Sheet, shortDay, Skeleton, Spark, SP, t, useAspect } from '@/aspects/kit';
 import {
-  agoDays, dropScan, filePath, readScan, tick, useFace, usePoll, useProtocols, useRubric, type Face, type FaceFeature, type Pick, type Protocol, type RoutineRow,
+  agoDays, dropScan, filePath, readScan, startScan, tick, useFace, usePoll, useProtocols, useRubric, type Face, type FaceFeature, type Pick, type Protocol, type RoutineRow,
 } from '../api';
 import { useNav } from '../nav';
 import { CHANGE, Delta, EvidenceTag, EVIDENCE, List, Score, ScoreRow, Tag, s as u, useInnerWidth, useSeen } from '../ui';
@@ -81,19 +81,45 @@ function OpenScan({ f }: { f: Face }) {
   );
 }
 
+/** "Front only" when only the front photo could be read, else "8 of 12 measured" when some features weren't seen. */
+export const scopeWord = (sc: { measured: number; of: number; shots: string[]; partial: boolean } | undefined) =>
+  !sc ? null : sc.partial && sc.shots.length === 1 && sc.shots[0] === 'front' ? 'Front only' : sc.measured < sc.of ? `${sc.measured} of ${sc.of} measured` : null;
+const listOf = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')} and ${xs.at(-1)}` : xs[0] ?? '');
+
 function Hero({ f }: { f: Face }) {
   const nav = useNav();
+  const a = useAspect();
   const l = f.latest!;
-  const days = Math.max(0, Math.round((Date.parse(`${today()}T00:00:00Z`) - Date.parse(`${l.date}T00:00:00Z`)) / 864e5));
+  const days = Math.max(0, Math.round((Date.parse(`${myDay()}T00:00:00Z`) - Date.parse(`${l.date}T00:00:00Z`)) / 864e5));
   const due = f.due;
+  const sc = l.scope;
+  const word = scopeWord(sc);
+  const retake = sc?.retake ?? [];
+  const [busy, setBusy] = useState(false);
+  // a retake starts a scan with this one's good photos already in, so only the refused angles are left
+  const again = async () => {
+    setBusy(true);
+    try { await startScan(l.id); nav.openFlow({ kind: 'scan' }); } catch (e) { a.notice((e as Error).message); }
+    setBusy(false);
+  };
+  const compared = l.delta != null && sc && l.compared != null && l.compared < sc.of ? ` The change compares only the ${l.compared} features measured in both scans.` : '';
   return (
     <Card style={u.gap12}>
       <Text style={t.label}>Overall</Text>
       <View style={u.between}>
-        <Score v={l.overall} margin={l.margin} />
+        <View style={u.row}>
+          <Score v={l.overall} margin={l.margin} />
+          {word ? <Tag>{word}</Tag> : null}
+        </View>
         <Delta d={l.delta} />
       </View>
-      <Text style={t.small}>{`${shortDay(l.date)}, ${agoDays(days)}. Nora's reading of your photos against a fixed rubric. A change inside the margin is not counted.`}</Text>
+      <Text style={t.small}>{`${shortDay(l.date)}, ${agoDays(days)}. Nora's reading of your photos against a fixed rubric${sc && sc.measured < sc.of ? `, the average of the ${sc.measured} features it could see` : ''}. A change inside the margin is not counted.${compared}`}</Text>
+      {retake.length && !f.open ? (
+        <View style={u.between}>
+          <Text style={[t.small, u.flex]}>{`The ${listOf(retake.map((x) => SHOT_WORD[x] ?? x))} ${retake.length === 1 ? 'photo' : 'photos'} couldn't be read, so those features are left out.`}</Text>
+          <Button label={`Retake ${retake.length} ${retake.length === 1 ? 'photo' : 'photos'}`} kind="soft" small busy={busy} onPress={() => { void again(); }} />
+        </View>
+      ) : null}
       {due ? (
         <View style={u.between}>
           <Text style={[t.small, u.flex]}>{due.days <= 0 ? 'Rescan due. Skin turns over in about four weeks; two weeks shows the start.' : due.days === 1 ? 'Next scan tomorrow.' : `Next scan on ${shortDay(due.date)}.`}</Text>
@@ -160,12 +186,8 @@ function Features({ f, onOpen }: { f: Face; onOpen: (id: string) => void }) {
   );
 }
 const SHOT_WORD: Record<string, string> = { front: 'front', smile: 'smile', left: 'left profile', right: 'right profile', three: 'three quarter', skin: 'skin' };
-const unseenWhy = (f: Face) => {
-  const bad = (f.latest?.checks ?? []).filter((c) => !c.ok);
-  const names = bad.map((c) => SHOT_WORD[c.shot] ?? c.shot);
-  const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0];
-  return bad.length ? `The ${list} ${bad.length === 1 ? 'photo was' : 'photos were'} not usable.` : 'Retake those angles next scan.';
-};
+// the refused photos get a Retake button beside the overall; here it only says what the overall leaves out
+const unseenWhy = (f: Face) => ((f.latest?.checks ?? []).some((c) => !c.ok) ? 'The overall leaves them out.' : 'Retake those angles next scan.');
 
 function FeatureDetail({ id, f, onClose, onProto }: { id: string | null; f: Face | null; onClose: () => void; onProto: (p: Protocol) => void }) {
   const rubric = useRubric();

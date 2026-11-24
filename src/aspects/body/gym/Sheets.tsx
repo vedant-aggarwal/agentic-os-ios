@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Text, View } from 'react-native';
-import { Button, Chip, num, Segmented, Sheet, shortDay, Stepper, t, today, useAspect } from '@/aspects/kit';
+import { Button, Chip, num, Segmented, Sheet, shortDay, Stepper, t, useAspect } from '@/aspects/kit';
 import { agoDays, logWeight, quickLog, useHome, yesterday } from '../api';
 import { s as u } from '../ui';
 
@@ -25,7 +25,7 @@ function QuickBody({ quick, last, onClose }: { quick: string; last: { kind: stri
   const save = async () => {
     setBusy(true);
     try {
-      await quickLog(kind, min, day === 'today' ? today() : yesterday());
+      await quickLog(kind, min, day === 'today' ? undefined : yesterday());
       a.notice(`${KINDS.find((k) => k.key === kind)?.label}, ${min} min logged`);
       onClose();
     } catch (e) { a.notice((e as Error).message); }

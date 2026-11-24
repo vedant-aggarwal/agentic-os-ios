@@ -10,7 +10,8 @@ import { B, useLibrary, usePrev, useSession, type LibItem, type Prev, type SetRo
 import { List, s as u, useNow } from '../ui';
 import { allSets, doneSets, itemFrom, restFor, setText, startSet, type WItem, type WorkoutDoc } from './workout';
 
-type Edit = { i: number; j: number } | null;
+// tick: the set was tapped done with no weight; saving the weight marks it done in the same step
+type Edit = { i: number; j: number; tick?: boolean } | null;
 /** The clock time `s` seconds from now. */
 const later = (s: number) => Date.now() + s * 1000;
 
@@ -25,8 +26,11 @@ export function LiveWorkout({ open, onClose }: { open: boolean; onClose: () => v
   const [picking, setPicking] = useState(false);
   const [ending, setEnding] = useState(false);
   const [rest, setRest] = useState<{ until: number; total: number } | null>(null);
-  const now = useNow(rest ? 250 : 1000, open);
+  // a hold set (dead hang, plank) counts down its seconds once its ring is tapped, then marks itself done
+  const [hold, setHold] = useState<{ i: number; j: number; until: number } | null>(null);
+  const now = useNow(rest || hold ? 250 : 1000, open);
   const left = rest ? Math.ceil((rest.until - now) / 1000) : 0;
+  const holdLeft = hold ? Math.ceil((hold.until - now) / 1000) : 0;
   const rang = useRef(false);
 
   useEffect(() => {
@@ -34,7 +38,7 @@ export function LiveWorkout({ open, onClose }: { open: boolean; onClose: () => v
     if (left <= 0 && !rang.current) { rang.current = true; haptic.success(); setRest(null); }
   }, [rest, left]);
   const [wasOpen, setWasOpen] = useState(open);
-  if (wasOpen !== open) { setWasOpen(open); if (open) { setRest(null); setFinished(null); } }
+  if (wasOpen !== open) { setWasOpen(open); if (open) { setRest(null); setHold(null); setFinished(null); } }
 
   const save = async (next: WorkoutDoc) => {
     try { await col.put(next); } catch (e) { a.notice(`Not saved: ${(e as Error).message}`); }
@@ -44,22 +48,45 @@ export function LiveWorkout({ open, onClose }: { open: boolean; onClose: () => v
     if (!live) return;
     setItems(live.items.map((it, x) => (x !== i ? it : { ...it, sets: it.sets.map((s, y) => (y === j ? { ...s, ...change } : s)) })));
   };
+  /** The rest after a set, unless it was the workout's last. */
+  const restAfter = (i: number, j: number) => {
+    if (!live) return;
+    const it = live.items[i];
+    const last = i === live.items.length - 1 && j === it.sets.length - 1;
+    const r = restFor(it);
+    if (!last && r > 0) setRest({ until: later(r), total: r });
+  };
   const toggle = (i: number, j: number) => {
     if (!live) return;
     const it = live.items[i]; const s = it.sets[j];
+    const holding = !!hold && hold.i === i && hold.j === j;
+    if (!s.done && !holding && it.kind === 'weight' && s.w == null) { setEdit({ i, j, tick: true }); return; }   // a set without a weight is no data
+    if (!s.done && !holding && it.kind === 'time') { setRest(null); setHold({ i, j, until: later(s.t ?? 60) }); return; }
+    if (holding) setHold(null);   // a second tap during the hold: done now
     const on = !s.done;
     changeSet(i, j, { done: on, at: on ? new Date().toISOString() : null });
-    const last = i === live.items.length - 1 && j === it.sets.length - 1;
-    const r = restFor(it);
-    if (on && !last && r > 0) setRest({ until: later(r), total: r });
-    if (!on) setRest(null);
+    if (on) restAfter(i, j); else setRest(null);
   };
+  useEffect(() => {
+    if (!hold || holdLeft > 0) return;
+    const { i, j } = hold;
+    // on the next tick, not inside the effect: the hold ends, the set is done and the rest starts in one go
+    const t = setTimeout(() => {
+      setHold(null);
+      haptic.success();
+      changeSet(i, j, { done: true, at: new Date().toISOString() });
+      restAfter(i, j);
+    }, 0);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hold, holdLeft]);
   const finish = async () => {
     if (!live) return;
     setEnding(false);
     const id = live.id;
     await save({ ...live, status: 'done', ended_at: new Date().toISOString() });
     setRest(null);
+    setHold(null);
     setFinished(id);
     haptic.success();
   };
@@ -93,7 +120,7 @@ export function LiveWorkout({ open, onClose }: { open: boolean; onClose: () => v
             </View>
             {rest ? <RestBar left={left} total={rest.total} onAdd={(d) => setRest({ ...rest, until: rest.until + d * 1000, total: Math.max(rest.total, rest.total + d) })} onSkip={() => setRest(null)} /> : null}
             {live.items.map((it, i) => (
-              <ExerciseCard key={`${it.ex}-${i}`} it={it} onToggle={(j) => toggle(i, j)} onEdit={(j) => setEdit({ i, j })} onMenu={() => setMenu(i)}
+              <ExerciseCard key={`${it.ex}-${i}`} it={it} holding={hold && hold.i === i ? { j: hold.j, left: Math.max(0, holdLeft) } : null} onToggle={(j) => toggle(i, j)} onEdit={(j) => setEdit({ i, j })} onMenu={() => setMenu(i)}
                 onAddSet={() => setItems(live.items.map((x, k) => (k !== i ? x : { ...x, sets: [...x.sets, { ...startSet(x.kind, x.sets.length, x.sets.at(-1), undefined, x.target ?? null), done: false }] })))} />
             ))}
             <Button label="Add exercise" kind="quiet" icon={<Icon name="plus" size={16} />} onPress={() => setPicking(true)} />
@@ -108,10 +135,13 @@ export function LiveWorkout({ open, onClose }: { open: boolean; onClose: () => v
       }} />
       <EditSheet live={live} edit={edit} onClose={() => setEdit(null)} onSave={(i, j, change, follow) => {
         if (!live) return;
+        const tickIt = !!edit?.tick;
         const it = live.items[i]; const old = it.sets[j];
         const same = (s: SetRow) => !s.done && s.w === old.w && s.r === old.r && s.t === old.t && s.min === old.min;
-        setItems(live.items.map((x, k) => (k !== i ? x : { ...x, sets: x.sets.map((s, y) => (y === j || (follow && y > j && same(s)) ? { ...s, ...change } : s)) })));
+        const doneNow = tickIt ? { done: true, at: new Date().toISOString() } : {};
+        setItems(live.items.map((x, k) => (k !== i ? x : { ...x, sets: x.sets.map((s, y) => (y === j ? { ...s, ...change, ...doneNow } : follow && y > j && same(s) ? { ...s, ...change } : s)) })));
         setEdit(null);
+        if (tickIt) restAfter(i, j);
       }} />
       <MenuSheet live={live} index={menu} onClose={() => setMenu(null)} onSwap={(p) => {
         if (!live || menu == null) return;
@@ -155,7 +185,9 @@ function RestBar({ left, total, onAdd, onSkip }: { left: number; total: number; 
   );
 }
 
-function ExerciseCard({ it, onToggle, onEdit, onMenu, onAddSet }: { it: WItem; onToggle: (j: number) => void; onEdit: (j: number) => void; onMenu: () => void; onAddSet: () => void }) {
+function ExerciseCard({ it, holding, onToggle, onEdit, onMenu, onAddSet }: {
+  it: WItem; holding: { j: number; left: number } | null; onToggle: (j: number) => void; onEdit: (j: number) => void; onMenu: () => void; onAddSet: () => void;
+}) {
   const a = useAspect();
   const prev = usePrev(it.ex, it.target?.r ?? 10).data?.prev;
   const all = it.sets.length > 0 && it.sets.every((s) => s.done);
@@ -177,10 +209,20 @@ function ExerciseCard({ it, onToggle, onEdit, onMenu, onAddSet }: { it: WItem; o
               style={{ height: 44, borderRadius: 12, justifyContent: 'center', paddingHorizontal: SP[12], backgroundColor: s.done ? 'transparent' : SURF.row }}>
               <Text style={[t.strong, t.num, s.done && { color: C.muted }, it.kind === 'weight' && s.w == null && { color: C.faint }]}>{setText(it.kind, s)}</Text>
             </Press>
-            <Press label={`Set ${j + 1} done`} role="checkbox" state={{ checked: s.done }} onPress={() => onToggle(j)} feel={s.done ? 'light' : 'medium'} hitSlop={6}
-              style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
-              <CheckRing done={s.done} size={30} />
-            </Press>
+            {holding?.j === j ? (
+              <Press label={`Set ${j + 1}, ${holding.left} seconds left. Done now`} onPress={() => onToggle(j)} feel="medium" hitSlop={6}
+                style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
+                <View style={{ width: 30, height: 30, borderRadius: 15, borderWidth: 2, borderColor: a.color, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={[t.caption, t.num, { color: C.text }]} accessibilityLiveRegion="polite">{holding.left}</Text>
+                </View>
+              </Press>
+            ) : (
+              <Press label={`Set ${j + 1} done${!s.done && it.kind === 'time' ? `, starts a ${s.t ?? 60} second hold` : !s.done && it.kind === 'weight' && s.w == null ? ', pick a weight first' : ''}`}
+                role="checkbox" state={{ checked: s.done }} onPress={() => onToggle(j)} feel={s.done ? 'light' : 'medium'} hitSlop={6}
+                style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
+                <CheckRing done={s.done} size={30} />
+              </Press>
+            )}
           </View>
         ))}
       </View>
@@ -196,11 +238,11 @@ function EditSheet({ live, edit, onClose, onSave }: { live: WorkoutDoc | null; e
   const s = it && edit ? it.sets[edit.j] : null;
   return (
     <Sheet open={!!edit && !!s} onClose={onClose} title={it ? `${it.name}, set ${edit!.j + 1}` : ''}>
-      {it && s && edit ? <EditBody key={`${edit.i}-${edit.j}`} it={it} s={s} onSave={(c, f) => onSave(edit.i, edit.j, c, f)} /> : null}
+      {it && s && edit ? <EditBody key={`${edit.i}-${edit.j}`} it={it} s={s} tick={!!edit.tick} onSave={(c, f) => onSave(edit.i, edit.j, c, f)} /> : null}
     </Sheet>
   );
 }
-function EditBody({ it, s, onSave }: { it: WItem; s: SetRow; onSave: (c: Partial<SetRow>, follow: boolean) => void }) {
+function EditBody({ it, s, tick, onSave }: { it: WItem; s: SetRow; tick: boolean; onSave: (c: Partial<SetRow>, follow: boolean) => void }) {
   const [w, setW] = useState(s.w ?? (it.kind === 'weight' ? 20 : 0));
   const [r, setR] = useState(s.r ?? 10);
   const [sec, setSec] = useState(s.t ?? 30);
@@ -213,8 +255,9 @@ function EditBody({ it, s, onSave }: { it: WItem; s: SetRow; onSave: (c: Partial
       {it.kind === 'weight' || it.kind === 'bw' ? <Stepper label="Reps" value={r} onChange={setR} step={1} min={1} max={100} format={(v) => `${v} reps`} /> : null}
       {it.kind === 'time' ? <Stepper label="Seconds" value={sec} onChange={setSec} step={5} min={5} max={600} format={(v) => `${v} s`} /> : null}
       {it.kind === 'cardio' ? <Stepper label="Minutes" value={min} onChange={setMin} step={1} min={1} max={300} format={(v) => `${v} min`} /> : null}
-      <Button label="Save, and the sets after it" kind="accent" onPress={() => onSave(change, true)} />
-      <Button label="Only this set" kind="quiet" onPress={() => onSave(change, false)} />
+      {tick ? <Text style={t.small}>Pick the weight you lifted. Saving ticks the set.</Text> : null}
+      <Button label={tick ? 'Tick it, and use this for the sets after' : 'Save, and the sets after it'} kind="accent" onPress={() => onSave(change, true)} />
+      <Button label={tick ? 'Tick only this set' : 'Only this set'} kind="quiet" onPress={() => onSave(change, false)} />
     </>
   );
 }

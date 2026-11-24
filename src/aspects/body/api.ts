@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { call, invalidate, newId, useGet } from '@/lib/mod';
-import { addDays, dayOf, today, useAspect } from '@/aspects/kit';
+import { addDays, dayOf, myDay, useAspect } from '@/aspects/kit';
 
 // What the PC's body module answers (server/modules/body.ts, body-face.ts, body-voice.ts) and the writes this page
 // makes. One GET per screen; after any write the cached reads under /mod/body/ are refetched.
@@ -27,8 +27,9 @@ export type Home = {
   face: { am: { done: number; total: number }; pm: { done: number; total: number }; half: 'am' | 'pm'; total: number; done: number; scanned: string | null;
     open: { id: string; status: string } | null; due: Due };
   voice: { minutes: number; done: number; total: number; focus: string | null; sampled: string | null; open: { id: string; status: string } | null };
-  proof: { weight: Weight; face: { v: number; margin: number | null; date: string; days: number; delta: number | null; trend: number[] } | null;
-    voice: { v: number; date: string; days: number; delta: number | null; trend: number[] } | null };
+  // measured / of: how many features (face) or measures (voice) the overall rests on; partial: a face angle couldn't be read
+  proof: { weight: Weight; face: { v: number; margin: number | null; date: string; days: number; delta: number | null; trend: number[]; measured?: number; of?: number; partial?: boolean; shots?: string[] } | null;
+    voice: { v: number; date: string; days: number; delta: number | null; trend: number[]; measured?: number; of?: number } | null };
 };
 
 // ── gym ──
@@ -77,9 +78,12 @@ export type RoutineRow = { id: string; text: string; half: string; when: 'am' | 
 export type Routine = { am: RoutineRow[]; pm: RoutineRow[]; day: RoutineRow[]; total: number; done: number };
 export type ScanSummary = { id: string; date: string; status: string; overall: number | null; margin: number | null; rubric: string | null; photos: Record<string, string> };
 export type FaceFeature = { id: string; name: string; change: Change; v: number | null; margin: number | null; unsure: boolean; evidence: string; delta: number | null; trend: { date: string; v: number | null }[] };
+/** How much a scan measured: features scored of all, the angles that read fine, the ones to retake. Partial when an angle is missing. */
+export type Scope = { measured: number; of: number; shots: string[]; retake: string[]; partial: boolean };
 export type Face = {
   rubric: string;
-  latest: (ScanSummary & { delta: number | null; read_at: string | null; prompt: string | null; checks: { shot: string; ok: boolean; issue: string }[] }) | null;
+  // delta compares only the features measured in both scans (`compared` of them)
+  latest: (ScanSummary & { delta: number | null; compared?: number; scope?: Scope; read_at: string | null; prompt: string | null; checks: { shot: string; ok: boolean; issue: string }[] }) | null;
   first: ScanSummary | null; features: FaceFeature[];
   plan: { summary: string; by: string; at: string; prompt: string; picks: Pick[]; presentation: Pick[] } | null;
   scans: ScanSummary[];
@@ -102,7 +106,7 @@ export type Sample = { id: string; date: string; status: string; overall: number
   parts: { read: { file: string; seconds: number | null; transcript: string | null; textError: string | null } | null; free: { file: string; seconds: number | null; transcript: string | null; textError: string | null } | null } };
 export type Voice = {
   passage: string; prompt: string; dims: Dim[]; realChange: number; measure: string;
-  latest: (Sample & { delta: number | null; dims: (Dim & { v: number | null; value: string | null; why: string | null; delta: number | null })[] }) | null;
+  latest: (Sample & { delta: number | null; compared?: number; measured?: number; of?: number; dims: (Dim & { v: number | null; value: string | null; why: string | null; delta: number | null })[] }) | null;
   open: Sample | null; trend: { id: DimId | 'overall'; points: { date: string; v: number | null }[] }[];
   samples: { id: string; date: string; overall: number | null }[];
   today: { focus: DimId | null; minutes: number; drills: (Drill & { done: boolean; take: Take | null })[]; done: number };
@@ -132,6 +136,7 @@ export function usePoll(refresh: () => Promise<void>, active: boolean, ms = 4000
 }
 
 // ── writes ──
+// A tick, a log or a meal counts for his day (`myDay`: before 04:00 IST it is still yesterday), as the PC counts it.
 const stamp = () => new Date().toISOString();
 const done = <T,>(p: Promise<T>) => p.then((r) => { invalidate(`${B}/`); return r; });
 
@@ -141,23 +146,25 @@ export const putDoc = <T,>(coll: string, id: string, doc: Record<string, unknown
 export const removeDoc = (coll: string, id: string) => done(call(`${B}/${coll}/${encodeURIComponent(id)}`, {}, 'DELETE'));
 
 /** Tick a routine step or a voice drill for a day. */
-export const tick = (item: string, on: boolean, day = today()) => putDoc('checks', `${day}:${item}`, { date: day, item, done: on, at: stamp() });
-export const logWeight = (value: number, day = today()) => putDoc('readings', `weight:${day}`, { kind: 'weight', date: day, value, at: stamp() });
-export const logWater = (value: number, day = today()) => putDoc('readings', `water:${day}`, { kind: 'water', date: day, value, at: stamp() });
-export const quickLog = (kind: string, min: number, date?: string) => done(call(`${B}/quick`, { kind, min, date }));
+export const tick = (item: string, on: boolean, day = myDay()) => putDoc('checks', `${day}:${item}`, { date: day, item, done: on, at: stamp() });
+export const logWeight = (value: number, day = myDay()) => putDoc('readings', `weight:${day}`, { kind: 'weight', date: day, value, at: stamp() });
+export const logWater = (value: number, day = myDay()) => putDoc('readings', `water:${day}`, { kind: 'water', date: day, value, at: stamp() });
+export const quickLog = (kind: string, min: number, date?: string) => done(call<{ item: { id: string } }>(`${B}/quick`, { kind, min, date: date ?? myDay() }));
 export const planAgain = (o: { ai?: boolean; minutes?: number; focus?: string } = {}) => done(call<{ by: string; plan: ShortPlan; note?: string }>(`${B}/plan`, o));
 export const setTargets = (t: Partial<Record<'protein' | 'kcal' | 'water' | 'days', number>> & { weight?: { goal: number; by: string | null } }) => done(call(`${B}/targets`, t));
 export const estimate = (text: string) => call<Estimate>(`${B}/estimate`, { text });
 
 /** Log a meal. A meal with only a name gets its numbers estimated on the PC. */
 export function addMeal(m: { name: string; kcal?: number; protein?: number; carbs?: number | null; fat?: number | null; items?: unknown; photo?: string; at?: string; day?: string }) {
-  const at = m.at ?? (m.day && m.day !== today() ? `${m.day}T07:30:00.000Z` : stamp());
+  const day = m.day ?? myDay(m.at);
+  const at = m.at ?? (day !== myDay() ? `${day}T07:30:00.000Z` : stamp());
   const { day: _d, ...rest } = m;
-  return done(call<{ item: MealRow }>(`${B}/meals`, { id: newId('meal'), ...rest, at, source: 'app' }));
+  return done(call<{ item: MealRow }>(`${B}/meals`, { id: newId('meal'), ...rest, at, date: day, source: 'app' }));
 }
 export const dismissPhoto = (id: string) => done(call(`${B}/meal-photo/${id}/dismiss`));
 
-export const startScan = () => done(call<{ scan: ScanSummary }>(`${B}/face/scans`));
+/** Find the scan in progress, or start one. `keep`: a retake that starts with that scan's photos that read fine. */
+export const startScan = (keep?: string) => done(call<{ scan: ScanSummary }>(`${B}/face/scans`, keep ? { keep } : {}));
 export const readScan = (id: string) => done(call<{ scan: ScanSummary; started: boolean }>(`${B}/face/scans/${id}/read`));
 export const dropScan = (id: string) => done(call(`${B}/face/scans/${id}`, {}, 'DELETE'));
 export const startSample = () => done(call<{ sample: Sample }>(`${B}/voice/samples`));
@@ -180,5 +187,5 @@ export function agoDays(days: number | null | undefined) {
 }
 export const inDays = (days: number) => (days <= 0 ? 'today' : days === 1 ? 'tomorrow' : `in ${days} days`);
 /** Yesterday's date for logging something late. */
-export const yesterday = () => addDays(today(), -1);
+export const yesterday = () => addDays(myDay(), -1);
 export const nowDay = () => dayOf();

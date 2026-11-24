@@ -46,9 +46,12 @@ export function lastDays(n: number, end: string = today()) {
   return Array.from({ length: n }, (_, i) => addDays(end, i - n + 1));
 }
 
-/** "Today", "Yesterday", "Tomorrow", else "Mon 17 Nov" (with the year when it isn't this one). */
-export function dayLabel(day: string) {
-  const diff = daysBetween(today(), day);
+/**
+ * "Today", "Yesterday", "Tomorrow", else "Mon 17 Nov" (with the year when it isn't this one). Relative to the
+ * calendar day; pass `myDay()` as `from` to label a day that a tick or log counts toward (at 1 AM: still "Today").
+ */
+export function dayLabel(day: string, from: string = today()) {
+  const diff = daysBetween(from, day);
   if (diff === 0) return 'Today';
   if (diff === -1) return 'Yesterday';
   if (diff === 1) return 'Tomorrow';

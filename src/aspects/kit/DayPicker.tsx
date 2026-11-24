@@ -79,7 +79,7 @@ function Cells({ cells, isOn, text, onPick, tone }: {
     <View style={s.cells}>
       {cells.map((c, i) => c === null ? <View key={`x${i}`} style={s.cell} /> : (
         <Press key={c} label={text(c)} onPress={() => onPick(c)} feel="tick" role="radio" state={{ selected: isOn(c) }}
-          style={[s.cell, s.on0, isOn(c) && { backgroundColor: tint(tone, 0.2), borderColor: tint(tone, 0.6) }]}>
+          wrap={s.cell} style={[s.fill, s.on0, isOn(c) && { backgroundColor: tint(tone, 0.2), borderColor: tint(tone, 0.6) }]}>
           <Text style={[s.cellText, isOn(c) && { color: tone }]}>{text(c)}</Text>
         </Press>
       ))}
@@ -96,6 +96,7 @@ const s = StyleSheet.create({
   month: { fontFamily: F.semibold, fontSize: 16, lineHeight: 24, color: C.text },
   cells: { flexDirection: 'row', flexWrap: 'wrap' },
   cell: { width: `${100 / 7}%`, aspectRatio: 1, alignItems: 'center', justifyContent: 'center' },
+  fill: { flex: 1, alignSelf: 'stretch', margin: 2, alignItems: 'center', justifyContent: 'center' },
   on0: { borderRadius: R.chip, borderWidth: 1, borderColor: 'transparent' },
   cellText: { fontFamily: F.medium, fontSize: 15, lineHeight: 20, color: C.textSoft, fontVariant: ['tabular-nums'] },
 });

@@ -26,9 +26,10 @@ import { engineName, orcaStateWord, orcaTone, orcaWorking } from '../ui/orca';
 import { NEEDS } from '../ui/tokens';
 
 // One Orca agent on the phone: what it said (Orca's own record of the chat, newest last) and, for a terminal agent,
-// a reply box, Stop while it works, and Allow / Deny (with what its screen asks) on a permission prompt. A reply to a
-// cold cache stops at "Send anyway?" first. The menu shows it on the PC, starts a new job in its project, or ends it.
-// Chat tabs take replies only in Orca itself.
+// a reply box, Stop while it works, and Allow / Deny (with what its screen asks) on a permission prompt. A reply sent
+// while it works waits in its input and shows as queued until the turn ends; on a permission prompt the reply box
+// denies it and sends the text instead. A reply to a cold cache stops at "Send anyway?" first. The menu shows it on
+// the PC, starts a new job in its project, or ends it. Chat tabs take replies only in Orca itself.
 
 const BAR = 56;
 
@@ -60,6 +61,15 @@ const DONE: Record<OrcaControl, string> = {
 };
 
 const shortPath = (p: string | null) => (p ? p.replace(/^[A-Za-z]:\\Users\\[^\\]+/, '~') : null);
+const saidThis = (e: OrcaEntry, text: string) => e.kind === 'message' && e.role === 'user' && (e.text ?? '').trim() === text;
+/** A reply sent while it works: shown until the chat holds one more message like it than when it was sent. */
+type Queued = { text: string; base: number };
+/** After a read: a queued reply leaves once the chat shows it, or once the agent stops working (it went, or is gone). */
+function leftQueued(q: Queued[], entries: OrcaEntry[], working: boolean) {
+  if (!q.length) return q;
+  const left = working ? q.filter((x) => entries.filter((e) => saidThis(e, x.text)).length <= x.base) : [];
+  return left.length === q.length ? q : left;
+}
 
 export function OrcaThread({ id }: { id: string }) {
   const insets = useSafeAreaInsets();
@@ -77,6 +87,7 @@ export function OrcaThread({ id }: { id: string }) {
   const [ending, setEnding] = useState(false);
   const [acting, setActing] = useState<OrcaControl | null>(null);
   const [screen, setScreen] = useState<{ stamp: string; text: string | null; error: string | null } | null>(null);
+  const [queued, setQueued] = useState<Queued[]>([]);
   const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
   const screenScroll = useRef<ComponentRef<typeof ScrollView>>(null);
   const kb = useAnimatedKeyboard();
@@ -89,7 +100,7 @@ export function OrcaThread({ id }: { id: string }) {
     if (DEMO) return;
     let alive = true;
     workApi.orcaRead(id, 40)
-      .then((r) => { if (alive) { setRead(r.agent); setEntries(r.entries); setError(null); } })
+      .then((r) => { if (alive) { setRead(r.agent); setEntries(r.entries); setError(null); setQueued((q) => leftQueued(q, r.entries, r.agent.state === 'working')); } })
       .catch((e) => { if (alive) setError((e as Error).message); });
     return () => { alive = false; };
   }, [id, stamp, nonce]);
@@ -99,9 +110,8 @@ export function OrcaThread({ id }: { id: string }) {
   const a = listed ?? read;
   const working = !!a && orcaWorking(a);
   const chat = a?.kind === 'chat';
-  // On a permission prompt typed text could answer it, so the reply box gives way to Allow / Deny.
+  // On a permission prompt typed text could answer it: Allow / Deny come first, and the reply box denies before it sends.
   const blocked = a?.state === 'blocked';
-  const locked = working || blocked;
 
   // On a permission prompt, read what the terminal shows, so he sees what it asks before he answers. A reading
   // belongs to the moment it was taken (the stamp): a newer prompt shows the spinner until its own reading lands.
@@ -133,31 +143,32 @@ export function OrcaThread({ id }: { id: string }) {
   const newJob = () => { setMenu(false); openSheet({ kind: 'job', project: a?.project ?? null }); };
   useEffect(() => { if (entries?.length) setTimeout(() => scroll.current?.scrollToEnd({ animated: false }), 0); }, [entries]);
 
-  const send = useCallback(async (text: string, force = false) => {
+  const send = useCallback(async (text: string, opts: { force?: boolean; deny?: boolean } = {}) => {
     if (DEMO) {
       // The preview has no PC: show the cold-cache question, then say where a real reply would go.
-      if (!force && listed?.cache.state === 'cold') setCold({ text, message: 'The prompt cache went cold 2 hours ago. This message makes Claude re-read the whole chat at full price.' });
+      if (!opts.force && !opts.deny && listed?.cache.state === 'cold') setCold({ text, message: 'The prompt cache went cold 2 hours ago. This message makes Claude re-read the whole chat at full price.' });
       else { setCold(null); work.notify('Demo: replies go to Orca on the real PC.'); }
       return;
     }
     setSending(true);
     try {
-      await workApi.orcaPrompt(id, text, newKey(), force);
+      const r = await workApi.orcaPrompt(id, text, newKey(), opts);
       setDraft('');
       setCold(null);
-      work.notify('Sent to Orca.');
+      if (r.queued) setQueued((q) => [...q, { text, base: (entries ?? []).filter((e) => saidThis(e, text)).length }]);
+      work.notify(r.denied ? 'Denied. Your message went instead.' : r.queued ? 'Queued. It sends when it stops.' : 'Sent to Orca.');
       work.loadOrca();
       setTimeout(load, 2500);
     } catch (e) {
-      if (e instanceof ApiError && e.status === 428 && !force) setCold({ text, message: e.message });
+      if (e instanceof ApiError && e.status === 428 && !opts.force) setCold({ text, message: e.message });
       else work.notify((e as Error).message);
     } finally { setSending(false); }
-  }, [id, load, listed?.cache.state]);
+  }, [id, load, listed?.cache.state, entries]);
 
   const where = !a ? null
     : a.project ? projects?.find((p) => p.slug === a.project)?.name ?? a.project
     : a.workspace && a.workspace !== '~' ? a.workspace : null;
-  const canSend = !!draft.trim() && !sending && !locked;
+  const canSend = !!draft.trim() && !sending;
 
   return (
     <View style={s.screen}>
@@ -167,7 +178,13 @@ export function OrcaThread({ id }: { id: string }) {
         {error ? <Text style={s.error}>{error}</Text> : null}
         {!entries && !error ? <ActivityIndicator color={C.muted} style={{ marginTop: 40 }} /> : null}
         {entries?.map((e, i) => <Entry key={i} e={e} />)}
-        {entries && !entries.length ? <Text style={s.lastLine}>Nothing said yet.</Text> : null}
+        {entries && !entries.length && !queued.length ? <Text style={s.lastLine}>Nothing said yet.</Text> : null}
+        {queued.map((q, i) => (
+          <View key={`q${i}`} style={s.userWrap}>
+            <View style={[s.user, s.userQueued]}><Text style={s.userText}>{q.text}</Text></View>
+            <Text style={s.queuedNote}>Queued, sends when it stops</Text>
+          </View>
+        ))}
       </ScrollView>
 
       <Animated.View style={[s.bottom, lift]}>
@@ -182,44 +199,54 @@ export function OrcaThread({ id }: { id: string }) {
               <Text style={s.noteBtnText}>New job here</Text>
             </Press>
           </View>
-        ) : blocked ? (
-          <View style={s.ask}>
-            <Glass radius={24} />
-            <View style={s.askBody}>
-              <View style={s.askHead}>
-                <View style={s.askDot} />
-                <Text style={s.askTitle} numberOfLines={1}>{a ? engineName(a) : 'It'} is asking for permission</Text>
-              </View>
-              <ScrollView ref={screenScroll} style={s.screenBox} contentContainerStyle={s.screenPad}
-                onContentSizeChange={() => screenScroll.current?.scrollToEnd({ animated: false })}>
-                {shown?.text ? <Text style={s.mono} selectable>{shown.text}</Text>
-                  : shown?.error ? <Text style={s.screenError}>{shown.error}</Text>
-                  : shown ? <Text style={s.screenError}>The terminal shows nothing yet.</Text>
-                  : <ActivityIndicator color={C.muted} />}
-              </ScrollView>
-              <Text style={s.askNote}>Allow takes the highlighted choice, usually Yes. Deny says no, and it waits for your next message.</Text>
-              <View style={s.askRow}>
-                <Press accessibilityLabel="Deny" disabled={!!acting} onPress={() => act('deny')} outer={s.flex} style={[s.btn, s.btnSoft]}>
-                  {acting === 'deny' ? <ActivityIndicator color={C.text} size="small" /> : <Text style={s.btnText}>Deny</Text>}
-                </Press>
-                <Press accessibilityLabel="Allow" disabled={!!acting} onPress={() => act('allow')} outer={s.flex} style={[s.btn, s.btnMain]}>
-                  {acting === 'allow' ? <ActivityIndicator color={C.scene} size="small" /> : <Text style={[s.btnText, s.btnMainText]}>Allow</Text>}
-                </Press>
-              </View>
-            </View>
-          </View>
         ) : (
-          <View style={s.composer}>
-            <Glass radius={24} />
-            <View style={s.flex}>
-              <TextInput value={draft} onChangeText={setDraft} multiline keyboardAppearance="dark" style={s.input} placeholderTextColor={C.faint}
-                placeholder={working ? 'It’s working. Send when it stops.' : `Reply to ${a ? engineName(a) : 'the agent'} in Orca`}
-                editable={!sending} accessibilityLabel="Reply" />
+          <>
+            {blocked ? (
+              <View style={s.ask}>
+                <Glass radius={24} />
+                <View style={s.askBody}>
+                  <View style={s.askHead}>
+                    <View style={s.askDot} />
+                    <Text style={s.askTitle} numberOfLines={1}>{a ? engineName(a) : 'It'} is asking for permission</Text>
+                  </View>
+                  <ScrollView ref={screenScroll} style={s.screenBox} contentContainerStyle={s.screenPad}
+                    onContentSizeChange={() => screenScroll.current?.scrollToEnd({ animated: false })}>
+                    {shown?.text ? <Text style={s.mono} selectable>{shown.text}</Text>
+                      : shown?.error ? <Text style={s.screenError}>{shown.error}</Text>
+                      : shown ? <Text style={s.screenError}>The terminal shows nothing yet.</Text>
+                      : <ActivityIndicator color={C.muted} />}
+                  </ScrollView>
+                  <Text style={s.askNote}>Allow takes the highlighted choice, usually Yes. Deny says no. To say no and what to do instead, type it below.</Text>
+                  <View style={s.askRow}>
+                    <Press accessibilityLabel="Deny" disabled={!!acting || sending} onPress={() => act('deny')} outer={s.flex} style={[s.btn, s.btnSoft]}>
+                      {acting === 'deny' ? <ActivityIndicator color={C.text} size="small" /> : <Text style={s.btnText}>Deny</Text>}
+                    </Press>
+                    <Press accessibilityLabel="Allow" disabled={!!acting || sending} onPress={() => act('allow')} outer={s.flex} style={[s.btn, s.btnMain]}>
+                      {acting === 'allow' ? <ActivityIndicator color={C.scene} size="small" /> : <Text style={[s.btnText, s.btnMainText]}>Allow</Text>}
+                    </Press>
+                  </View>
+                </View>
+              </View>
+            ) : null}
+            <View style={s.composer}>
+              <Glass radius={24} />
+              <View style={s.flex}>
+                <TextInput value={draft} onChangeText={setDraft} multiline keyboardAppearance="dark" style={s.input} placeholderTextColor={C.faint}
+                  placeholder={blocked ? 'Or tell it what to do instead' : working ? 'It’s working. A reply waits its turn.' : `Reply to ${a ? engineName(a) : 'the agent'} in Orca`}
+                  editable={!sending} accessibilityLabel="Reply" />
+              </View>
+              {blocked && draft.trim() ? (
+                <Press accessibilityLabel="Deny and send this instead" disabled={!canSend || !!acting} onPress={() => send(draft.trim(), { deny: true })}
+                  style={[s.denySend, (!canSend || !!acting) && s.sendOff]}>
+                  {sending ? <ActivityIndicator color={C.scene} size="small" /> : <Text style={s.denySendText}>Deny and send</Text>}
+                </Press>
+              ) : (
+                <Press accessibilityLabel="Send" disabled={!canSend || blocked} onPress={() => send(draft.trim())} style={[s.send, (!canSend || blocked) && s.sendOff]}>
+                  {sending ? <ActivityIndicator color={C.scene} size="small" /> : <IcUp size={18} color={C.scene} />}
+                </Press>
+              )}
             </View>
-            <Press accessibilityLabel="Send" disabled={!canSend} onPress={() => send(draft.trim())} style={[s.send, !canSend && s.sendOff]}>
-              {sending ? <ActivityIndicator color={C.scene} size="small" /> : <IcUp size={18} color={C.scene} />}
-            </Press>
-          </View>
+          </>
         )}
       </Animated.View>
 
@@ -268,7 +295,7 @@ export function OrcaThread({ id }: { id: string }) {
 
       {cold ? (
         <Confirm title="Send anyway?" body={cold.message} action="Send anyway"
-          onCancel={() => setCold(null)} onConfirm={() => send(cold.text, true)} />
+          onCancel={() => setCold(null)} onConfirm={() => send(cold.text, { force: true })} />
       ) : null}
     </View>
   );
@@ -305,6 +332,8 @@ const s = StyleSheet.create({
   userWrap: { alignItems: 'flex-end' },
   user: { maxWidth: '86%', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 18, borderBottomRightRadius: 6, backgroundColor: 'rgba(255,255,255,0.1)' },
   userText: { fontFamily: F.regular, fontSize: 15, lineHeight: 22, color: C.text },
+  userQueued: { opacity: 0.6 },
+  queuedNote: { marginTop: 4, fontFamily: F.medium, fontSize: 12, lineHeight: 16, color: C.faint },
   assistant: { paddingRight: 8 },
   bottom: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingTop: 8 },
   noticeAnchor: { position: 'absolute', left: 0, right: 0, bottom: '100%', height: 0, alignItems: 'center' },
@@ -334,4 +363,6 @@ const s = StyleSheet.create({
   input: { maxHeight: 140, paddingVertical: 8, fontFamily: F.regular, fontSize: 16, lineHeight: 22, color: C.text },
   send: { width: 36, height: 36, borderRadius: 18, backgroundColor: C.text, alignItems: 'center', justifyContent: 'center' },
   sendOff: { opacity: 0.35 },
+  denySend: { height: 36, paddingHorizontal: 14, borderRadius: 18, backgroundColor: C.text, alignItems: 'center', justifyContent: 'center' },
+  denySendText: { fontFamily: F.semibold, fontSize: 14, lineHeight: 20, color: C.scene },
 });

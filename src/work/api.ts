@@ -84,9 +84,13 @@ export const workApi = {
   /** null = unchanged since the last call (304). */
   orca: () => call<OrcaState>('/work/orca', { etag: true }),
   orcaRead: (id: string, limit = 40) => must(call<OrcaRead>(`/orca/agents/${encodeURIComponent(id)}?limit=${limit}`)),
-  /** force: send even though the prompt cache went cold (the PC answers 428 without it). */
-  orcaPrompt: (id: string, text: string, key: string, force = false) =>
-    must(call<{ ok: boolean }>(`/orca/agents/${encodeURIComponent(id)}/prompt`, { method: 'POST', body: force ? { text, force: true } : { text }, key })),
+  /** force: send even though the prompt cache went cold (the PC answers 428 without it). deny: it is on a permission
+   *  prompt; the PC denies that first, then sends this as the next message. queued: it was working, so the message
+   *  waits in its input until the turn ends. */
+  orcaPrompt: (id: string, text: string, key: string, opts: { force?: boolean; deny?: boolean } = {}) =>
+    must(call<{ ok: boolean; queued?: boolean; denied?: boolean }>(`/orca/agents/${encodeURIComponent(id)}/prompt`, {
+      method: 'POST', key, body: { text, ...(opts.force ? { force: true } : {}), ...(opts.deny ? { deny: true } : {}) },
+    })),
   orcaLaunch: (b: OrcaLaunch, key: string) => must(call<{ agent: OrcaAgent | null }>('/orca/launch', { method: 'POST', body: b, key })),
   /** What a terminal agent's screen shows now, as plain text: what a permission prompt asks, before he answers it. */
   orcaScreen: (id: string) => must(call<{ text: string; state: string }>(`/orca/agents/${encodeURIComponent(id)}/screen`)),

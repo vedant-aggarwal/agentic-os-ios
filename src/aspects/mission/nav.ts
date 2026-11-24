@@ -19,6 +19,8 @@ export type Nav = {
   record: () => void;
   first: (project?: string) => void;
   measure: (goal: string) => void;
+  /** Tie one of his tasks to a goal (or write its next step). */
+  tie: (goal: string) => void;
 };
 
 export const NavContext = createContext<Nav | null>(null);

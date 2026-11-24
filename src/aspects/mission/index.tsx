@@ -1,10 +1,10 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Icon, IconButton, Page, useEntry } from '@/aspects/kit';
+import { Icon, IconButton, Page, useEntry, useOnReturn } from '@/aspects/kit';
 import { ASPECT_KEYS } from '@/lib/aspectLinks';
-import { useGet } from '@/lib/mod';
+import { invalidate, useGet } from '@/lib/mod';
 import { AddGoal } from './AddGoal';
 import { CloseFlow } from './CloseFlow';
-import { HOME } from './data';
+import { HANDOFF, HOME, refresh } from './data';
 import { GoalScreen, MeasureSheet } from './GoalScreen';
 import { Home } from './Home';
 import { Ladder } from './Ladder';
@@ -12,6 +12,7 @@ import { NavContext, type AddInit, type Nav } from './nav';
 import { FirstSheet, Projects } from './Projects';
 import { Purpose } from './Purpose';
 import { RecordScreen } from './Record';
+import { TieSheet } from './Tie';
 import type { Home as HomeData } from './types';
 import { Linked } from '@/aspects/_linked/Linked';
 
@@ -27,6 +28,18 @@ export default function Mission() {
   const [add, setAdd] = useState<AddInit | null>(null);
   const [first, setFirst] = useState<{ project?: string } | null>(null);
   const [measure, setMeasure] = useState<string | null>(null);
+  const [tie, setTie] = useState<string | null>(null);
+
+  // the page stays mounted while closed: coming back to it (or to the app) reads everything again, so the week, the
+  // days left and the clean-up list are never as he left them yesterday
+  useOnReturn(() => {
+    refresh();
+    invalidate(HANDOFF);
+    invalidate('/mod/money/summary');
+    invalidate('/mod/money/jars');
+    invalidate('/mod/body/today');
+    invalidate('/tasks');
+  });
 
   const show = useCallback((k: Open, on: boolean) => setOpen((o) => ({ ...o, [k]: on })), []);
   const popGoal = useCallback((n: number) => {
@@ -43,6 +56,7 @@ export default function Mission() {
     record: () => show('record', true),
     first: (project) => setFirst({ project }),
     measure: (g) => setMeasure(g),
+    tie: (g) => setTie(g),
   }), [show]);
 
   // mission/<part>: goal/<id>, ladder, projects, purpose, record, close (closing the week), add[?aspect=<key>] (with
@@ -74,6 +88,7 @@ export default function Mission() {
             <AddGoal init={add} onClose={() => setAdd(null)} today={home.data?.today ?? null} />
             <FirstSheet open={!!first} project={first?.project} week={plan?.key ?? null} onClose={() => setFirst(null)} />
             <MeasureSheet goal={measure} onClose={() => setMeasure(null)} />
+            <TieSheet goal={tie} onClose={() => setTie(null)} />
           </>
         }>
         <Home read={home} />

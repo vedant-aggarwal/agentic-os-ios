@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { Button, Card, Chip, Empty, Failed, Field, haptic, Row, Screen, Section, Sheet, shortDay, Skeleton, t, useAspect } from '@/aspects/kit';
+import { Button, Card, Chip, dayOf, Empty, Failed, Field, haptic, myDay, Row, Screen, Section, Sheet, shortDay, Skeleton, t, useAspect } from '@/aspects/kit';
 import { useGet } from '@/lib/mod';
 import { act, cap, count, M, message, WHY_SWITCH } from './data';
 import { useNav } from './nav';
@@ -9,7 +9,7 @@ import type { Project, Projects as ProjectsData } from './types';
 
 const PROJECTS = `${M}/projects`;
 const serves = (p: Project) => (p.goal ? `Serves ${p.goal.title}` : 'Serves no goal yet');
-const pace = (p: Project) => (p.done14 ? `${cap(count(p.done14, 'task'))} done in two weeks` : p.lastDone ? `Last task done ${shortDay(p.lastDone.slice(0, 10))}` : 'Nothing done yet');
+const pace = (p: Project) => (p.done14 ? `${cap(count(p.done14, 'task'))} done in two weeks` : p.lastDone ? `Last task done ${shortDay(myDay(p.lastDone))}` : 'Nothing done yet');
 
 /**
  * Projects, each with the goal it serves. One holds the first block; the rest run or are parked. A project that has
@@ -50,7 +50,7 @@ export function Projects({ open, onClose }: { open: boolean; onClose: () => void
           {d.switches.length ? (
             <Section title="Switches">
               {d.switches.slice(-3).reverse().map((s) => (
-                <Text key={s.at} style={t.small}>{`${shortDay(s.at.slice(0, 10))}: from ${s.fromName ?? s.from}${s.why ? `, because ${s.why.toLowerCase()}` : ''}.`}</Text>
+                <Text key={s.at} style={t.small}>{`${shortDay(dayOf(s.at))}: from ${s.fromName ?? s.from}${s.why ? `, because ${s.why.toLowerCase()}` : ''}.`}</Text>
               ))}
             </Section>
           ) : null}

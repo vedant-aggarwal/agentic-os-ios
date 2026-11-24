@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import {
-  Button, Card, CheckRing, Divider, Empty, Failed, haptic, Icon, Press, Row, Skeleton, SURF, shortDay, t, tint, useAspect,
+  Button, Card, CheckRing, dayOf, Divider, Empty, Failed, haptic, Icon, Press, Row, Skeleton, SURF, shortDay, t, tint, useAspect,
 } from '@/aspects/kit';
 import { openLink } from '@/lib/links';
 import { ApiError, call, invalidate, useGet, type Read } from '@/lib/mod';
@@ -152,26 +152,29 @@ export function CommitCard({ c, s }: { c: Commitment; s: Sources }) {
         feel="none" hitSlop={10}>
         <CheckRing done={done} color={tone} size={28} />
       </Press>
-      <Press label={`${c.title}, ${state}`} onPress={() => nav.goal(c.id)} scale={0.98} wrap={ps.flex} style={st.commit}>
-        <View style={st.commitText}>
-          <Text numberOfLines={3} style={[t.lead, done && { color: C.muted }]}>{c.title}</Text>
-          <Tag aspect={c.parent?.aspect ?? c.aspect} text={c.parent ? `Serves ${c.parent.title}` : 'Serves no bigger goal yet'} />
-        </View>
-        {!done && c.source.kind !== 'none' && c.source.kind !== 'tasks' ? <GoalBar progress={p} time={c.time} color={tone} height={4} /> : null}
-        {done ? null : (
-          <View style={st.next}>
-            <Text style={[t.label, c.state === 'moving' && { color: tone }]}>{state}</Text>
-            {c.next ? (
-              <View style={st.nextRow}>
-                <Icon name="right" size={14} color={C.faint} />
-                <Text numberOfLines={2} style={[t.body, ps.flex]}>
-                  {c.state === 'not_started' ? `Smallest next step: ${c.next.title}` : c.next.title}
-                </Text>
-              </View>
-            ) : <Text style={t.small}>Open it to add a milestone or a task.</Text>}
+      <View style={[ps.flex, st.commitCol]}>
+        <Press label={`${c.title}, ${state}`} onPress={() => nav.goal(c.id)} scale={0.98} style={st.commit}>
+          <View style={st.commitText}>
+            <Text numberOfLines={3} style={[t.lead, done && { color: C.muted }]}>{c.title}</Text>
+            <Tag aspect={c.parent?.aspect ?? c.aspect} text={c.parent ? `Serves ${c.parent.title}` : 'Serves no bigger goal yet'} />
           </View>
-        )}
-      </Press>
+          {!done && c.source.kind !== 'none' && c.source.kind !== 'tasks' ? <GoalBar progress={p} time={c.time} color={tone} height={4} /> : null}
+          {done ? null : (
+            <View style={st.next}>
+              <Text style={[t.label, c.state === 'moving' && { color: tone }]}>{state}</Text>
+              {c.next ? (
+                <View style={st.nextRow}>
+                  <Icon name="right" size={14} color={C.faint} />
+                  <Text numberOfLines={2} style={[t.body, ps.flex]}>
+                    {c.state === 'not_started' ? `Smallest next step: ${c.next.title}` : c.next.title}
+                  </Text>
+                </View>
+              ) : <Text style={t.small}>Open it to add a milestone, or tie a task.</Text>}
+            </View>
+          )}
+        </Press>
+        {!done && !c.next ? <Link label="Tie a task to it" onPress={() => nav.tie(c.id)} /> : null}
+      </View>
     </View>
   );
 }
@@ -266,7 +269,7 @@ function FirstCard({ f }: { f: FirstBlock | null }) {
         <Button label="Switch" kind="quiet" small onPress={() => nav.first()} />
       </View>
       <Text style={t.caption}>
-        {f.status === 'paused' ? 'Parked, so the block is free for now' : f.inherited ? 'Carried on from an earlier week' : f.since ? `Since ${shortDay(f.since.slice(0, 10))}` : 'This week'}
+        {f.status === 'paused' ? 'Parked, so the block is free for now' : f.inherited ? 'Carried on from an earlier week' : f.since ? `Since ${shortDay(dayOf(f.since))}` : 'This week'}
         {f.why ? `. ${cap(f.why)}` : ''}
       </Text>
     </Card>
@@ -338,6 +341,7 @@ const st = StyleSheet.create({
   goalHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   card: { borderRadius: 24, borderCurve: 'continuous', padding: 16, backgroundColor: SURF.card, borderWidth: StyleSheet.hairlineWidth, borderColor: SURF.line },
   commit: { gap: 12 },
+  commitCol: { gap: 8 },
   commitHead: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
   commitText: { flex: 1, minWidth: 0, gap: 4 },
   next: { gap: 4, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: SURF.line },

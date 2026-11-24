@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { Button, Card, Chip, Empty, Failed, Field, haptic, Icon, IconButton, Row, Screen, Section, shortDay, Skeleton, t, useAspect } from '@/aspects/kit';
+import { Button, Card, Chip, dayOf, Empty, Failed, Field, haptic, Icon, IconButton, Row, Screen, Section, shortDay, Skeleton, t, useAspect } from '@/aspects/kit';
 import { call, useCollection } from '@/lib/mod';
 import { C } from '@/theme';
 import { M, message, refresh } from './data';
@@ -57,7 +57,7 @@ export function Purpose({ open, onClose }: { open: boolean; onClose: () => void 
           {cur ? (
             <Card style={st.card}>
               <Text style={t.heading}>{cur.text}</Text>
-              <Text style={t.caption}>{cur.created_at ? `Written ${shortDay(cur.created_at.slice(0, 10))}` : 'Written by you'}{cur.by === 'agent' ? ', from a draft' : ''}</Text>
+              <Text style={t.caption}>{cur.created_at ? `Written ${shortDay(dayOf(cur.created_at))}` : 'Written by you'}{cur.by === 'agent' ? ', from a draft' : ''}</Text>
               <View style={st.buttons}>
                 <Button label="Rewrite" kind="quiet" small onPress={() => setEdit(cur.text)} />
                 <Button label="Draft one with Nora" kind="soft" small onPress={() => void ask()} busy={busy === 'draft'} />
@@ -84,7 +84,7 @@ export function Purpose({ open, onClose }: { open: boolean; onClose: () => void 
           ) : null}
           {versions.length > 1 ? (
             <Section title="Earlier versions">
-              {versions.slice(1, 6).map((v) => <Row key={v.id} title={v.text} sub={v.created_at ? shortDay(v.created_at.slice(0, 10)) : null} />)}
+              {versions.slice(1, 6).map((v) => <Row key={v.id} title={v.text} sub={v.created_at ? shortDay(dayOf(v.created_at)) : null} />)}
             </Section>
           ) : null}
         </>

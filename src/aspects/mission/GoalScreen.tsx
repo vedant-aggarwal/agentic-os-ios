@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import {
-  Button, Card, CheckRing, Chip, Failed, Field, haptic, Icon, IconButton, Row, Screen, Section, Sheet, Skeleton, shortDay, Stepper, t, today, useAspect, weekday,
+  Button, Card, CheckRing, Chip, Failed, Field, haptic, Icon, IconButton, Row, Screen, Section, Sheet, Skeleton, myDay, shortDay, Stepper, t, today, useAspect, weekday,
 } from '@/aspects/kit';
 import { call, useCollection, useGet } from '@/lib/mod';
 import { C, type AspectKey } from '@/theme';
@@ -114,11 +114,13 @@ export function GoalScreen({ id, open, onClose }: { id: string; open: boolean; o
 }
 
 function WeekState({ c }: { c: Commitment }) {
+  const nav = useNav();
   if (c.status !== 'active') return null;
   const head = c.state === 'moving' ? (c.tasks.doneWeek ? `Moving, ${count(c.tasks.doneWeek, 'task')} done this week` : 'Moving') : c.state === 'not_started' ? 'Not started yet' : 'Next step';
   return (
     <Section title={head}>
-      <Text style={t.body}>{c.next ? (c.state === 'not_started' ? `Smallest next step: ${c.next.title}` : c.next.title) : 'No next step yet. Add a milestone or a task below.'}</Text>
+      <Text style={t.body}>{c.next ? (c.state === 'not_started' ? `Smallest next step: ${c.next.title}` : c.next.title) : 'No next step yet. Tie one of your tasks, or add a milestone below.'}</Text>
+      {c.next ? null : <Link label="Tie a task to it" onPress={() => nav.tie(c.id)} />}
     </Section>
   );
 }
@@ -142,16 +144,17 @@ function Milestones({ goal, initial }: { goal: string; initial: Milestone[] }) {
   };
   return (
     <Section title={list.length ? `Milestones, ${done} of ${list.length}` : 'Milestones'}>
-      {list.map((m) => <Row key={m.id} title={m.title} done={m.done} onToggle={() => toggle(m)} sub={m.done && m.done_at ? `Done ${shortDay(m.done_at.slice(0, 10))}` : null} />)}
+      {list.map((m) => <Row key={m.id} title={m.title} done={m.done} onToggle={() => toggle(m)} sub={m.done && m.done_at ? `Done ${shortDay(myDay(m.done_at))}` : null} />)}
       <Field value={text} onChangeText={setText} placeholder={list.length ? 'Add a milestone' : 'Add the first milestone'} onSubmit={add} maxLength={200} />
       {text.trim() ? <Button label="Add milestone" kind="soft" small onPress={add} wrap={st.left} /> : null}
     </Section>
   );
 }
 
-/** Tasks tied to the goal. They are done on Today; here he can see them and add one. */
+/** Tasks tied to the goal. They are done on Today; here he can see them, tie one he already has, or add one. */
 function Tasks({ goal, d }: { goal: string; d: GoalDetail }) {
   const a = useAspect();
+  const nav = useNav();
   const [text, setText] = useState('');
   const add = () => {
     const title = text.trim();
@@ -162,12 +165,12 @@ function Tasks({ goal, d }: { goal: string; d: GoalDetail }) {
   const open = d.tasks.filter((x) => x.status !== 'done');
   const done = d.tasks.filter((x) => x.status === 'done');
   return (
-    <Section title={d.tasks.length ? `Tasks, ${done.length} of ${d.tasks.length} done` : 'Tasks'}>
+    <Section title={d.tasks.length ? `Tasks, ${done.length} of ${d.tasks.length} done` : 'Tasks'} action="Tie a task" onAction={() => nav.tie(goal)}>
       {[...open, ...done.slice(0, 5)].map((x) => (
         <Row key={x.id} title={x.title} done={x.status === 'done'} left={<CheckRing done={x.status === 'done'} size={20} />}
-          sub={x.status === 'done' ? (x.doneAt ? `Done ${shortDay(x.doneAt.slice(0, 10))}` : 'Done') : x.due ? `Due ${shortDay(x.due)}` : null} />
+          sub={x.status === 'done' ? (x.doneAt ? `Done ${shortDay(myDay(x.doneAt))}` : 'Done') : x.due ? `Due ${shortDay(x.due)}` : null} />
       ))}
-      {!d.tasks.length ? <Text style={t.small}>No tasks carry it yet. Tasks you add here show on Today.</Text> : null}
+      {!d.tasks.length ? <Text style={t.small}>No tasks carry it yet. Tie one you already have, or add one here; it shows on Today.</Text> : null}
       <Field value={text} onChangeText={setText} placeholder="Add a task for it" onSubmit={add} maxLength={300} />
       {text.trim() ? <Button label="Add task" kind="soft" small onPress={add} wrap={st.left} /> : null}
     </Section>

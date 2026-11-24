@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native';
-import { Card, Empty, Failed, Row, Screen, Section, shortDay, Skeleton, Stat, SURF, t, tint, useAspect } from '@/aspects/kit';
+import { Card, dayOf, Empty, Failed, Row, Screen, Section, shortDay, Skeleton, Stat, SURF, t, tint, useAspect } from '@/aspects/kit';
 import { useGet } from '@/lib/mod';
 import { C } from '@/theme';
 import { cap, count, M, OUTCOME_WORD } from './data';
@@ -60,7 +60,7 @@ export function RecordScreen({ open, onClose }: { open: boolean; onClose: () => 
             <Section title={`Closed, ${count(closed.length, 'goal')}`}>
               {closed.map((c) => (
                 <Row key={c.id} title={c.title} left={<Dot aspect={c.aspect} />} onPress={() => nav.goal(c.goal)} chevron
-                  sub={[`${OUTCOME_WORD[c.outcome]}, ${c.horizon === 'week' ? `week of ${c.label}` : c.label}`, c.why, c.by === 'growth' ? 'From your weekly review' : null, shortDay(c.at.slice(0, 10))].filter(Boolean).join('. ')} />
+                  sub={[`${OUTCOME_WORD[c.outcome]}, ${c.horizon === 'week' ? `week of ${c.label}` : c.label}`, c.why, c.by === 'growth' ? 'From your weekly review' : null, shortDay(dayOf(c.at))].filter(Boolean).join('. ')} />
               ))}
             </Section>
           ) : null}

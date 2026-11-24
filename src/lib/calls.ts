@@ -29,6 +29,31 @@ const native = Platform.OS === 'ios' ? requireOptionalNativeModule<Calls>('AosCa
 
 export const callsAvailable = () => !!native;
 
+// A call owns the mic. Dictation (GPT takes in lib/gpt.ts, the volume buttons' Wispr in lib/wispr.ts, the keyboard's
+// mic, the PC mic sheet) never starts while one is up, and a take in progress stops when one starts. A call is up while
+// Nora's call screen is (src/nora/state.ts says so) or the system call screen has its audio on (answered on the lock
+// screen, before the app knows). The relay switching the audio session at either end moves the output volume, which
+// the volume buttons read as presses: a short grace after the call keeps those from starting dictation.
+const GRACE_MS = 2500;
+let callScreen = false, callAudio = false, callOffAt = 0;
+const callSubs = new Set<(on: boolean) => void>();
+const callOn = () => callScreen || callAudio;
+function callChanged(was: boolean) {
+  const on = callOn();
+  if (on === was) return;
+  if (!on) callOffAt = Date.now();
+  for (const fn of callSubs) { try { fn(on); } catch {} }
+}
+/** Nora's call screen opened or closed (src/nora/state.ts). */
+export function setCallScreen(on: boolean) { const was = callOn(); callScreen = on; callChanged(was); }
+/** True while a call holds the mic, and for a moment after it ends. */
+export function callHoldsMic() { return callOn() || Date.now() - callOffAt < GRACE_MS; }
+/** Runs `fn(true)` when a call starts and `fn(false)` when it ends. Returns the unsubscribe. */
+export function onCallChange(fn: (on: boolean) => void): () => void {
+  callSubs.add(fn);
+  return () => { callSubs.delete(fn); };
+}
+
 const listeners = new Set<(e: SystemCallEvent) => void>();
 /** Hang ups, mutes and audio changes from the system call screen. Returns the unsubscribe. */
 export function onSystemCall(fn: (e: SystemCallEvent) => void): () => void {
@@ -73,9 +98,9 @@ export function startCalls(): () => void {
   const subs: Sub[] = [
     native.addListener('onToken', (e) => { sentFor = ''; registerVoip(typeof e.token === 'string' ? e.token : null); }),
     native.addListener('onAnswer', () => { openAnswered(); }),
-    native.addListener('onEnd', (e) => tell({ type: 'end', id: String(e.id ?? '') })),
+    native.addListener('onEnd', (e) => { const was = callOn(); callAudio = false; callChanged(was); tell({ type: 'end', id: String(e.id ?? '') }); }),
     native.addListener('onMute', (e) => tell({ type: 'mute', muted: !!e.muted })),
-    native.addListener('onAudio', (e) => tell({ type: 'audio', active: !!e.active })),
+    native.addListener('onAudio', (e) => { const was = callOn(); callAudio = !!e.active; callChanged(was); tell({ type: 'audio', active: !!e.active }); }),
   ];
   // A call answered on the lock screen launched the app (or JS was reloading): open it now.
   openAnswered();

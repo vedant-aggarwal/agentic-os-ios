@@ -3,6 +3,7 @@ import * as Haptics from 'expo-haptics';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, Platform } from 'react-native';
 import { api, ApiError } from './api';
+import { callHoldsMic, onCallChange } from './calls';
 import { type DictateTo, gptAvailable, micMoving, useGptRecorder } from './gpt';
 
 // The phone's volume buttons drive Wispr Flow on the PC (server: POST /pc/keys).
@@ -16,6 +17,8 @@ import { type DictateTo, gptAvailable, micMoving, useGptRecorder } from './gpt';
 // with the Codex app's dictation (gpt.ts), types it, and presses Enter if it ended with "press enter".
 // iOS reports a held button as a step now and then auto-repeat steps, never a release, so a release is the
 // steps stopping: QUIET_FIRST after a lone step, QUIET_REPEAT once repeats have started.
+// A call owns the mic and the volume buttons (lib/calls.ts): while one is up nothing here listens or starts, so the
+// buttons set the call's volume, and a call starting stops whatever was going.
 const QUIET_FIRST = 650;
 const QUIET_REPEAT = 320;
 const BEAT = 2000; // keep-alive while holding; the PC lets go by itself after 6 s without one
@@ -104,7 +107,7 @@ export function useWispr(enabled: boolean, nora?: NoraKeys) {
   // ---- the actions, shared by the volume buttons and the on-screen controls ----
   const startTalk = useCallback(() => {
     const st = g.current;
-    if (st.mode !== 'idle') return;
+    if (st.mode !== 'idle' || callHoldsMic()) return;
     st.mode = 'ptt';
     if (gpt.current) { gptStart(); show('listening'); haptic(Haptics.ImpactFeedbackStyle.Medium); return; }
     send('ptt-down');
@@ -123,6 +126,7 @@ export function useWispr(enabled: boolean, nora?: NoraKeys) {
 
   const handsFree = useCallback((held: boolean) => {
     const st = g.current;
+    if (callHoldsMic()) return;
     clearTimers();
     if (gpt.current) { if (!recording.current) gptStart(); }
     else send('handsfree');
@@ -142,7 +146,7 @@ export function useWispr(enabled: boolean, nora?: NoraKeys) {
   // ---- command mode ----
   const startCommand = useCallback((follow: boolean) => {
     const st = g.current;
-    if (st.mode !== 'idle' && st.mode !== 'ptt') return;
+    if ((st.mode !== 'idle' && st.mode !== 'ptt') || callHoldsMic()) return;
     st.mode = 'cmd';
     if (gpt.current) { if (!recording.current) gptStart(); }
     else {
@@ -170,6 +174,7 @@ export function useWispr(enabled: boolean, nora?: NoraKeys) {
     // capture panel): those are not presses, and never ring Nora or start the PC's dictation. Our own take is exempt,
     // since a held talk lives on its repeat steps.
     if (!recording.current && st.mode === 'idle' && micMoving()) return;
+    if (callHoldsMic()) return; // the call's own volume, or its audio session switching at either end
     const now = Date.now();
     if (st.mode === 'idle') { st.t0 = now; st.ticks = []; }
     if (st.ticks.length < 60) st.ticks.push(now - st.t0);
@@ -224,9 +229,21 @@ export function useWispr(enabled: boolean, nora?: NoraKeys) {
     }
   }, [startTalk, endTalk, handsFree, stopHandsFree, endCommand]);
 
-  // Listen only while asked to and the app is in front.
+  // A call started: let go of whatever was going (a GPT take is still saved), and stop listening until it ends.
+  const [callUp, setCallUp] = useState(false);
+  const { cancel: recCancel } = rec;
+  useEffect(() => onCallChange((on) => {
+    setCallUp(on);
+    if (!on) return;
+    const st = g.current;
+    if (recording.current) { recording.current = false; recCancel(); }
+    else if (st.mode === 'ptt' || st.mode === 'hfHeld' || st.mode === 'handsfree' || st.mode === 'cmd' || st.mode === 'cmdHf') send('stop');
+    if (st.mode !== 'idle') toIdle(false);
+  }), [recCancel, send, toIdle]);
+
+  // Listen only while asked to, the app is in front and no call is up.
   useEffect(() => {
-    if (!native || !enabled) return;
+    if (!native || !enabled || callUp) return;
     let on = false;
     const sub = native.addListener('onPress', (p) => onStep(p.button));
     const sync = (state: string | null | undefined) => {
@@ -237,7 +254,7 @@ export function useWispr(enabled: boolean, nora?: NoraKeys) {
     sync(AppState.currentState);
     const app = AppState.addEventListener('change', sync);
     return () => { app.remove(); sub.remove(); if (on) native.stop(); };
-  }, [enabled, onStep]);
+  }, [enabled, onStep, callUp]);
 
   // Leaving with a hold still on lets it go.
   useEffect(() => () => {
@@ -272,7 +289,7 @@ export function useWispr(enabled: boolean, nora?: NoraKeys) {
       if (gpt.current) { gptFinish('agent'); return; }
       send('cmd-toggle');
       toIdle(false);
-    } else if (st.mode === 'idle') {
+    } else if (st.mode === 'idle' && !callHoldsMic()) {
       st.mode = 'cmdHf';
       if (gpt.current) gptStart(); else send('cmd-toggle');
       setLocked(true); setCommand(true); show('command');

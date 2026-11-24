@@ -1,6 +1,7 @@
 import { requireOptionalNativeModule } from 'expo';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { API, ApiError, currentToken } from './api';
+import { callHoldsMic, onCallChange } from './calls';
 import { plog } from './log';
 
 // GPT dictation, streamed. The phone's mic writes a WAV file on the phone (Documents/takes, valid at every moment, so
@@ -133,10 +134,18 @@ let openMic: MicOwner | null = null;
 // Opening or closing the mic switches iOS's audio session, and that moves the output volume, which the volume-button
 // watcher (lib/wispr.ts) reads as a button press: a phantom press rang Nora and started the PC's dictation when a
 // take started. Every switch is stamped here so the watcher can drop presses that are really the mic switching.
+// Stopping is stamped from its first moment (before the file closes), since the take is no longer busy by then: a
+// phantom up while the capture panel's Save stopped its take started the PC's Wispr dictation.
 let micSwitchAt = 0;
 const micSwitched = () => { micSwitchAt = Date.now(); };
 /** True while some recorder holds the mic, or within `ms` of the audio session switching for the mic. */
-export function micMoving(ms = 1500) { return Date.now() - micSwitchAt < ms || !!openMic?.busy(); }
+export function micMoving(ms = 2500) { return Date.now() - micSwitchAt < ms || !!openMic?.busy(); }
+/** The audio session back to playing only. Not while a call is starting or on: the call sets the session up itself,
+ *  and switching it here would fight the call for the mic. */
+function unsetMode() {
+  if (callHoldsMic()) return;
+  audio?.setAudioModeAsync({ allowsRecording: false }).catch(() => {}).finally(micSwitched);
+}
 async function recover(skip?: string) {
   if (!gptAvailable || recovering) return;
   recovering = true;
@@ -188,6 +197,7 @@ export function useGptRecorder() {
    *  keyboard presses stop. */
   const start = useCallback(async (opts: { id?: string; onRemoteStop?: () => void } = {}) => {
     if (!audio || !fs || !stream) throw new Error('GPT mic arrives with the next app build.');
+    if (callHoldsMic()) throw new Error('The call has the mic. Dictate after it ends.');
     if (cur.current) throw new Error('Already recording.');
     const d = takesDir();
     if (!d.exists) d.create({ intermediates: true, idempotent: true });
@@ -232,22 +242,25 @@ export function useGptRecorder() {
     if (openMic?.me === me) openMic = null;
     try { stream?.stop(); } catch {}
     micSwitched();
-    audio?.setAudioModeAsync({ allowsRecording: false }).catch(() => {}).finally(micSwitched);
+    unsetMode();
     onCold.current?.();
   }, [stream, me]);
   useEffect(() => { closeRef.current = close; }, [close]);
 
-  /** Stop recording this take; the mic closes, or stays open for `warmFor` so the next take starts at once. */
+  /** Stop recording this take; the mic closes, or stays open for `warmFor` so the next take starts at once (never
+   *  during a call: the call needs the mic). */
   const stop = useCallback(async () => {
     if (timer.current) { clearInterval(timer.current); timer.current = null; }
+    micSwitched(); // closing the file can move the session too: stamp before the first await, not only after
     try { await stream?.stopFileRecordingAsync(); } catch {}
-    const keep = warmFor.current;
+    micSwitched();
+    const keep = callHoldsMic() ? 0 : warmFor.current;
     if (keep > 0) { if (cool.current) clearTimeout(cool.current); cool.current = setTimeout(close, keep); return; }
     streaming.current = false;
     if (openMic?.me === me) openMic = null;
     try { stream?.stop(); } catch {}
     micSwitched();
-    audio?.setAudioModeAsync({ allowsRecording: false }).catch(() => {}).finally(micSwitched);
+    unsetMode();
   }, [stream, close, me]);
 
   /** Stop and deliver: resolves with what the PC heard. */
@@ -288,6 +301,9 @@ export function useGptRecorder() {
       } catch {} finally { closeFile(s); }
     });
   }, [stop]);
+
+  // A call started: stop the take (it is still saved, on both sides) and close a warm mic, so the call gets the mic.
+  useEffect(() => onCallChange((on) => { if (!on) return; if (cur.current) cancel(); else close(); }), [cancel, close]);
 
   /** Keep the mic open `ms` after each take (0: close at once); `cold` runs when it finally closes. */
   const setWarm = useCallback((ms: number, cold?: () => void) => { warmFor.current = ms; onCold.current = cold ?? null; }, []);

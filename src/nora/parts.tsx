@@ -94,8 +94,11 @@ export function Composer({ draft, setDraft, onSend, dict, placeholder, sending =
   const micTap = async () => {
     if (dict.state === 'idle') { void dict.start(); return; }
     if (dict.state !== 'recording') return;
-    const words = await dict.stop();
-    if (words) setDraft(join(draft, words));
+    const { text: words, enter } = await dict.stopEnter();
+    const text = words ? join(draft, words) : draft.trim();
+    // ended with "press enter": send it, as the PC would have pressed Enter
+    if (enter && text && !sending && (attach?.ready ?? true)) { setDraft(''); onSend(text); return; }
+    if (words) setDraft(text);
   };
   const send = async () => {
     if (!canSend) return;
@@ -111,12 +114,13 @@ export function Composer({ draft, setDraft, onSend, dict, placeholder, sending =
     setDraft('');
     onSend(text);
   };
-  // a desktop keyboard: Enter sends, Shift+Enter starts a new line
+  // a desktop keyboard: Enter sends, Shift+Enter starts a new line. The phone's Return sends too (it only ever added a
+  // new line, so dictated words, from the mic here or a keyboard's, couldn't be sent with Enter); the field still wraps.
   const keys = Platform.OS === 'web' ? {
     onKeyPress: (e: { nativeEvent: { key: string; shiftKey?: boolean }; preventDefault?: () => void }) => {
       if (e.nativeEvent.key === 'Enter' && !e.nativeEvent.shiftKey) { e.preventDefault?.(); void send(); }
     },
-  } : null;
+  } : { submitBehavior: 'submit' as const, returnKeyType: 'send' as const, onSubmitEditing: () => { void send(); } };
   return (
     <View style={s.composer}>
       {pics.length ? (

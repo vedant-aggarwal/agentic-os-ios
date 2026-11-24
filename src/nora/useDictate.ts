@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
+import { onCallChange } from '@/lib/calls';
 import { DEMO } from '@/lib/demo';
 import { gptAvailable, useGptRecorder } from '@/lib/gpt';
 import { haptic } from '@/aspects/kit';
 
 // Talking to Nora instead of typing: the app's one dictation path (GPT takes, lib/gpt.ts). The phone streams the take
 // to the PC, which transcribes while he talks (`live`), and stop() returns the words without typing them anywhere.
-// The take is still kept in Voices. The web preview has no mic: with ?demo it plays sample words.
+// stopEnter() also says whether the take ended with "press enter" (the PC strips it), so a composer can send.
+// The take is still kept in Voices. The web preview has no mic: with ?demo it plays sample words. A call starting
+// drops the take (lib/calls.ts: the call owns the mic).
 
 const SIM = DEMO || Platform.OS === 'web';
 const SAMPLE = 'Move the gym to seven tonight and remind me to call home after.';
@@ -41,27 +44,29 @@ export function useDictate() {
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
   }, [go, recStart]);
 
-  /** Stops and resolves with what the PC heard ('' when nothing was caught). */
-  const stop = useCallback(async (): Promise<string> => {
-    if (st.current !== 'recording') return '';
+  /** Stops and resolves with what the PC heard ('' when nothing was caught), and whether it ended with "press enter". */
+  const stopEnter = useCallback(async (): Promise<{ text: string; enter: boolean }> => {
+    if (st.current !== 'recording') return { text: '', enter: false };
     go('finishing');
     haptic.light();
     if (SIM) {
       if (timer.current) clearInterval(timer.current);
       await new Promise((r) => setTimeout(r, 450));
       setSimLive(''); go('idle');
-      return SAMPLE;
+      return { text: SAMPLE, enter: false };
     }
     try {
       const r = await recFinish('none');
       const text = r.text.trim();
-      if (!text) setError("Didn't catch that. Try again a little closer.");
-      return text;
+      if (!text && !r.enter) setError("Didn't catch that. Try again a little closer.");
+      return { text, enter: r.enter };
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
-      return '';
+      return { text: '', enter: false };
     } finally { go('idle'); }
   }, [go, recFinish]);
+  /** Stops and resolves with what the PC heard ('' when nothing was caught). */
+  const stop = useCallback(async () => (await stopEnter()).text, [stopEnter]);
 
   const cancel = useCallback(() => {
     if (timer.current) clearInterval(timer.current);
@@ -69,11 +74,14 @@ export function useDictate() {
     setSimLive(''); go('idle');
   }, [go, recCancel]);
 
+  // a call started: the take is dropped (it stays in Voices) and the call gets the mic
+  useEffect(() => onCallChange((on) => { if (on && st.current === 'recording') cancel(); }), [cancel]);
+
   // closing the surface mid take drops it (it stays in Voices)
   useEffect(() => () => {
     if (timer.current) clearInterval(timer.current);
     if (st.current === 'recording' && !SIM) recCancel();
   }, [recCancel]);
 
-  return { state, error, clearError: () => setError(null), live: SIM ? simLive : state === 'idle' ? '' : recLive, offline: !SIM && recOffline, start, stop, cancel };
+  return { state, error, clearError: () => setError(null), live: SIM ? simLive : state === 'idle' ? '' : recLive, offline: !SIM && recOffline, start, stop, stopEnter, cancel };
 }

@@ -1,6 +1,7 @@
 import { requireOptionalNativeModule } from 'expo';
 import { useSyncExternalStore } from 'react';
 import { Linking, Platform } from 'react-native';
+import { setCallScreen } from '@/lib/calls';
 import { DEMO } from '@/lib/demo';
 import { NORA_LINE } from './line';
 
@@ -13,7 +14,12 @@ type S = { home: boolean; chat: boolean; mic: number; micSend: number; call: Cal
 let s: S = { home: false, chat: false, mic: 0, micSend: 0, call: null, replyTo: null };
 let seq = 0;
 const subs = new Set<() => void>();
-const set = (p: Partial<S>) => { s = { ...s, ...p }; for (const f of subs) f(); };
+const set = (p: Partial<S>) => {
+  const wasCall = !!s.call;
+  s = { ...s, ...p };
+  if (!!s.call !== wasCall) setCallScreen(!!s.call); // a call owns the mic: dictation stops and stays off (lib/calls.ts)
+  for (const f of subs) f();
+};
 
 export const useNora = () => useSyncExternalStore((f) => { subs.add(f); return () => { subs.delete(f); }; }, () => s, () => s);
 

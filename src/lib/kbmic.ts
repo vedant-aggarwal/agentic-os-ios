@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { api } from './api';
+import { onCallChange } from './calls';
 import { useGptRecorder } from './gpt';
 import { plog } from './log';
 
@@ -78,6 +79,8 @@ export function useKeyboardMic() {
     const t = first ? setTimeout(() => void ctl.begin(first), 0) : null;
     return () => { listener = null; ctl.stop(); if (t) clearTimeout(t); };
   }, [setWarm, ctl]);
+  // a call took the mic (the recorder stopped the take and closed): the keyboard's warm mic is over
+  useEffect(() => onCallChange((on) => { if (on) ctl.cold(); }), [ctl]);
 
   return { state, error, live: rec.live, close: rec.close };
 }

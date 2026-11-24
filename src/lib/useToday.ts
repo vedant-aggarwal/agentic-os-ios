@@ -9,15 +9,27 @@ type State =
   | { status: 'loading' }
   | { status: 'signedOut' }
   | { status: 'error'; message: string }
-  | { status: 'ready'; today: TodayPayload; life: LifePayload; areas: Area[] };
+  /** `from`: the day (YYYY-MM-DD) of the phone's saved copy on screen, when it is an earlier day's and the PC hasn't
+   *  answered yet. */
+  | { status: 'ready'; today: TodayPayload; life: LifePayload; areas: Area[]; from?: string };
+
+/** The last read of the day failed: since when, and whether the PC was out of reach (off, asleep, the tunnel down)
+ *  rather than answering with an error. Cleared by the next read that works. */
+export type Offline = { since: number; unreachable: boolean };
 
 type Saved = { day: string; today: TodayPayload; life: LifePayload; areas: Area[] };
 const localDay = () => new Date().toDateString();
-const fetchAll = () => Promise.all([
+const usable = (s: Saved | null): s is Saved =>
+  !!s && Array.isArray(s.areas) && Array.isArray(s.today?.tasks) && Array.isArray(s.life?.aspects);
+// The three reads go out together and each may fail alone: /life and /areas only colour and name the tasks, so
+// without them Today still draws (with the last copy of that part, else none).
+const fetchAll = () => Promise.allSettled([
   api<TodayPayload>('/today'),
   api<LifePayload>('/life'),
   api<{ areas: Area[] }>('/areas'),
 ]);
+const NO_LIFE: LifePayload = { aspects: [], areaAspects: {} };
+const OUT_OF_REACH = [0, 502, 503, 521, 522, 523, 530]; // no answer, or the tunnel's "the PC isn't there" (api.ts refusal)
 
 // Another surface (Home's task list) changed tasks: every mounted Today reads again.
 const changed = new Set<() => void>();
@@ -36,38 +48,66 @@ function fold(t: TodayPayload, pending: Map<string, Partial<Task>>): TodayPayloa
 const HOLD = 350;
 
 /** Today from the phone server. The UI only ever renders what this returns. The last day loaded is kept on the
- * device, so a launch draws it at once and the PC's answer replaces it a moment later. */
+ * device, so a launch draws it at once, whatever day it is from, and the PC's answer replaces it a moment later. With
+ * the PC off it stays up, marked as a saved copy (`offline`), and the failure is said once, not every minute. */
 export function useToday() {
   const [state, setState] = useState<State>({ status: 'loading' });
   const [refreshing, setRefreshing] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [offline, setOffline] = useState<Offline | null>(null);
   const live = useRef(state);
   useEffect(() => { live.current = state; }, [state]);
+  const shown = useRef<Saved | null>(null); // the day on screen: the saved copy, then each answer from the PC
+  const down = useRef<Offline | null>(null);
   // Per task: what the screen shows ahead of the PC, the tick waiting out the double-tap window, the PATCH queue.
   const pending = useRef(new Map<string, Partial<Task>>());
   const held = useRef(new Map<string, { timer: ReturnType<typeof setTimeout>; drop: () => void; base: Partial<Task> }>());
   const tails = useRef(new Map<string, Promise<unknown>>());
 
-  const load = useCallback(async () => {
+  /** `loud`: he asked for it (Try again, pull to refresh), so a failure is said even when it was said before. */
+  const load = useCallback(async (loud: boolean = false) => {
     if (DEMO) return setState((s) => (s.status === 'ready' ? s : { status: 'ready', ...demoData() }));
-    if (live.current.status === 'loading') {
+    // signed out: the next account starts from nothing
+    const out = () => { shown.current = null; down.current = null; setOffline(null); setState({ status: 'signedOut' }); };
+    if (live.current.status === 'loading' && !shown.current) {
+      // Each morning the copy is yesterday's: drawn anyway (Today says so), rather than a blank screen until the PC
+      // answers, or "Today didn't load" with the PC off.
       const s = await kept<Saved>('today');
-      if (s?.day === localDay() && Array.isArray(s.areas) && Array.isArray(s.today?.tasks) && Array.isArray(s.life?.aspects) && live.current.status === 'loading') setState({ status: 'ready', today: s.today, life: s.life, areas: s.areas });
+      if (usable(s) && live.current.status === 'loading' && !shown.current) {
+        shown.current = s;
+        setState({ status: 'ready', today: s.today, life: s.life, areas: s.areas, ...(s.day === localDay() ? {} : { from: s.today.date }) });
+      }
     }
     // Web signs in with the cookie, so the reads needn't wait for the sign-in check: both go out together.
     const early = WEB ? fetchAll() : null;
-    early?.catch(() => {});
-    if (!(await loadToken())) return setState({ status: 'signedOut' });
-    try {
-      const [read, life, areas] = await (early ?? fetchAll());
-      const today = fold(read, pending.current);
-      setState({ status: 'ready', today, life, areas: areas.areas });
-      keep('today', { day: localDay(), today, life, areas: areas.areas } satisfies Saved);
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 401) { await setToken(null); return setState({ status: 'signedOut' }); }
-      if (live.current.status !== 'ready') setState({ status: 'error', message: (e as Error).message });
-      else setNotice((e as Error).message);
+    if (!(await loadToken())) return out();
+    const [read, life, areas] = await (early ?? fetchAll());
+    const errors = [read, life, areas].flatMap((r) => (r.status === 'rejected' ? [r.reason as Error] : []));
+    if (errors.some((e) => e instanceof ApiError && e.status === 401)) { await setToken(null); return out(); }
+    if (read.status === 'rejected') {
+      const e = read.reason as Error;
+      const first = !down.current;
+      if (first) {
+        down.current = { since: Date.now(), unreachable: e instanceof ApiError && OUT_OF_REACH.includes(e.status) };
+        setOffline(down.current);
+      }
+      if (!shown.current) setState({ status: 'error', message: e.message });
+      else if (first || loud === true) setNotice(e.message);
+      return;
     }
+    const before = shown.current;
+    const day: Saved = {
+      day: localDay(),
+      today: fold(read.value, pending.current),
+      life: life.status === 'fulfilled' ? life.value : before?.life ?? NO_LIFE,
+      areas: areas.status === 'fulfilled' ? areas.value.areas : before?.areas ?? [],
+    };
+    shown.current = day;
+    if (down.current) { down.current = null; setOffline(null); }
+    setState({ status: 'ready', today: day.today, life: day.life, areas: day.areas });
+    keep('today', day);
+    if (errors.length && !before) setNotice(errors[0].message); // the tasks drew without their colours: say why
   }, []);
 
   useEffect(() => {
@@ -75,13 +115,15 @@ export function useToday() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
     const sub = AppState.addEventListener('change', (s) => { if (s === 'active') load(); });
-    const tick = setInterval(load, 60_000); // keeps Now / Next current
+    const tick = setInterval(() => { void load(); }, 60_000); // keeps Now / Next current
     const again = () => { void load(); };
     changed.add(again);
     return () => { sub.remove(); clearInterval(tick); changed.delete(again); };
   }, [load]);
 
-  const refresh = useCallback(async () => { setRefreshing(true); await load(); setRefreshing(false); }, [load]);
+  const refresh = useCallback(async () => { setRefreshing(true); await load(true); setRefreshing(false); }, [load]);
+  /** Try again (the offline pill, "Today didn't load"): `retrying` while it reads. */
+  const retry = useCallback(async () => { setRetrying(true); await load(true); setRetrying(false); }, [load]);
 
   const patchTask = useCallback((id: string, patch: Partial<Task>) => {
     setState((s) => s.status !== 'ready' ? s : {
@@ -167,5 +209,6 @@ export function useToday() {
     [state],
   );
 
-  return { state, view, refresh, refreshing, toggle, cancel, restore, reload: load, notice, clearNotice: () => setNotice(null) };
+  const reload = useCallback(() => load(), [load]);
+  return { state, view, refresh, refreshing, retry, retrying, offline, toggle, cancel, restore, reload, notice, clearNotice: () => setNotice(null) };
 }

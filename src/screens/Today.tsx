@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useIsFocused } from 'expo-router';
-import { AppState, Platform, Pressable, RefreshControl, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, AppState, Platform, Pressable, RefreshControl, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
+import Svg, { Path } from 'react-native-svg';
 // gesture handler's ScrollView, so the hero's sideways drag can take over from the page's scroll
 import { ScrollView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -19,7 +21,8 @@ import { useAgent } from '@/lib/agent';
 import { micCenter, pillCenter, TOP_GAP, TOP_H, TopBar } from '@/components/TopBar';
 import { api, signOut } from '@/lib/api';
 import { gazeTouch } from '@/lib/gaze';
-import { useToday } from '@/lib/useToday';
+import { type Offline, useToday } from '@/lib/useToday';
+import { clock, dayLabel } from '@/aspects/kit/time';
 import { useBody } from '@/lib/body';
 import { startContactSync } from '@/lib/contacts';
 import { TodayPlan, TodayToast, useTodayToast } from '@/today2/TodayPlan';
@@ -166,26 +169,16 @@ function PhoneToday() {
     return () => { for (const off of offs) off(); };
   }, []);
 
-  if (t.state.status === 'loading') return <View style={s.screen} />;
   if (t.state.status === 'signedOut') return <SignIn onDone={t.reload} />;
-  if (t.state.status === 'error' || !t.view) {
-    return (
-      <View style={[s.screen, s.center]}>
-        <Backdrop />
-        <Text style={s.errTitle}>Today didn&apos;t load</Text>
-        <Text style={s.errBody}>{t.state.status === 'error' ? t.state.message : ''}</Text>
-        <Pressable accessibilityRole="button" onPress={t.reload} style={s.retry}><Text style={s.retryText}>Try again</Text></Pressable>
-      </View>
-    );
-  }
 
   const v = t.view;
+  const day = t.state.status === 'ready' ? t.state : null;
   const orb = orbFromBottom(insets.bottom);
   return (
     // every touch on Today is passed to the smiley, which looks toward the finger
     <View style={s.screen} {...gazeTouch}>
       <Backdrop orb={orb} />
-      <ScrollView
+      {v && day ? (<ScrollView
         contentContainerStyle={{ flexGrow: 1 }}
         contentOffset={{ x: 0, y: insets.top + HERO_H - 40 }}
         showsVerticalScrollIndicator={false}
@@ -195,16 +188,26 @@ function PhoneToday() {
         <Hero view={v} reach={reach} top={insets.top} topBar={TOP_GAP + TOP_H} active={focused && heroOn && !aspect && !moodFrom} />
 
         <View style={[s.sheet, { paddingBottom: insets.bottom + 140 }]}>
-          {t.state.status === 'ready' ? (
-            <TodayPlan today={t.state.today} life={t.state.life} areas={t.state.areas} body={b.body} say={tt.say} hide={tt.hide}
-              onOpen={openLink} onToggleTask={(id) => { void toggle(id); }} onCancelTask={(id) => { void cancel(id); }} onRestoreTask={(id) => { void restore(id); }}
-              onHome={(list) => noraUi.openHome(list)} onRoutine={setRoutine} />
-          ) : null}
+          <TodayPlan today={day.today} life={day.life} areas={day.areas} body={b.body} say={tt.say} hide={tt.hide}
+            onOpen={openLink} onToggleTask={(id) => { void toggle(id); }} onCancelTask={(id) => { void cancel(id); }} onRestoreTask={(id) => { void restore(id); }}
+            onHome={(list) => noraUi.openHome(list)} onRoutine={setRoutine} />
           <Pressable accessibilityRole="button" onPress={async () => { await signOut(); t.reload(); }} style={s.more}>
             <Text style={[s.moreText, { color: C.faint }]}>Sign out</Text>
           </Pressable>
         </View>
-      </ScrollView>
+      </ScrollView>) : (
+        // No day to draw: the first launch on this phone before the PC answers, or the PC out of reach with no day ever
+        // saved. The top bar and dock still work around it, so Nora, Projects, Account and the PC tools stay in reach.
+        <View style={[s.fill, s.center]}>
+          {t.state.status === 'error' ? (<>
+            <Text style={s.errTitle}>Today didn&apos;t load</Text>
+            <Text style={s.errBody}>{t.state.message}</Text>
+            <Pressable accessibilityRole="button" accessibilityState={{ busy: t.retrying }} disabled={t.retrying} onPress={() => { void t.retry(); }} style={s.retry}>
+              {t.retrying ? <ActivityIndicator size="small" color={C.scene} /> : <Text style={s.retryText}>Try again</Text>}
+            </Pressable>
+          </>) : <Animated.View entering={FadeIn.delay(600)}><ActivityIndicator color={C.muted} /></Animated.View>}
+        </View>
+      )}
 
       {/* t^2.6 over the zone: about 1 pt where the navbar's top edge sits (40% down), then dense under the
           bar, 14 pt at the bottom edge */}
@@ -214,9 +217,13 @@ function PhoneToday() {
       {native || !noraOpen ? <TopBar top={insets.top} width={width} live={live} petActive={focused && !aspect} onMic={() => { setClosedLive(false); setMicOpen(true); }}
         onRemote={() => setRemoteOpen(true)} onRemoteHold={() => setPcTab('media')}
         onVoices={() => setVoicesOpen(true)} onFiles={() => setFilesOpen(true)} onAccount={() => setAccountOpen(true)} onMood={setMoodFrom} /> : null}
+      {day && (day.from || t.offline) ? (
+        <SavedCopy top={insets.top + TOP_GAP + TOP_H + 10} from={day.from} offline={t.offline} busy={t.retrying} onRetry={() => { void t.retry(); }} />
+      ) : null}
       {/* an aspect page grows out of the orb, over Today and its top bar; the dock stays above it */}
-      {/* the pages read today's rows and tick them through Today, so a tick shows on both at once */}
-      <LifeContext value={{ sections: v.sections, areaAspects: t.state.life.areaAspects, toggle }}>
+      {/* the pages read today's rows and tick them through Today, so a tick shows on both at once; with no day drawn
+          they have their own saved copies */}
+      <LifeContext value={v && day ? { sections: v.sections, areaAspects: day.life.areaAspects, toggle } : null}>
         <AspectHost aspect={aspect} origin={{ x: width / 2, y: height - orb }} dock={immersive ? insets.bottom : dockClearance(insets.bottom)}
           entry={entry} onEntryDone={doneEntry} onClose={closeAspect} onOpen={openAspect} onNotice={setLocal} onImmersive={setImmersive} />
       </LifeContext>
@@ -244,8 +251,35 @@ function PhoneToday() {
   );
 }
 
+/** Says the day on screen isn't the PC's latest: the copy saved on the phone (an earlier day's while the PC is asked,
+ *  or the last one with the PC out of reach). A tap asks the PC again. */
+function SavedCopy({ top, from, offline, busy, onRetry }: {
+  top: number; from?: string; offline: Offline | null; busy: boolean; onRetry: () => void;
+}) {
+  const when = from ? dayLabel(from) : 'Today';
+  const copy = when === 'Today' ? 'Saved copy' : when === 'Yesterday' ? 'Yesterday\'s copy' : `Copy from ${when}`;
+  const why = !offline ? 'updating' : `${offline.unreachable ? 'PC offline' : 'not updated'} since ${clock(offline.since)}`;
+  return (
+    // an earlier day's copy is usually replaced within a second: the pill comes in only if it is still up after that
+    <Animated.View entering={offline ? FadeIn.duration(160) : FadeIn.delay(900).duration(160)} exiting={FadeOut.duration(160)}
+      pointerEvents="box-none" style={[s.savedWrap, { top }]}>
+      <Pressable accessibilityRole="button" accessibilityLabel={`${copy}, ${why}. Try again.`} accessibilityState={{ busy }}
+        disabled={busy} onPress={onRetry} hitSlop={8} style={s.saved}>
+        <View style={[s.savedDot, { backgroundColor: offline ? '#F5A524' : C.muted }]} />
+        <Text style={s.savedText}>{copy} · {why}</Text>
+        {busy || !offline ? <ActivityIndicator size="small" color={C.muted} style={s.savedSpin} /> : (
+          <Svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke={C.textSoft} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+            <Path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" /><Path d="M21 3v5h-5" />
+          </Svg>
+        )}
+      </Pressable>
+    </Animated.View>
+  );
+}
+
 const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: C.scene },
+  fill: { flex: 1 },
   center: { alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
   sheet: {
     flexGrow: 1, backgroundColor: C.sheet, borderTopLeftRadius: 28, borderTopRightRadius: 28,
@@ -258,4 +292,12 @@ const s = StyleSheet.create({
   errBody: { fontFamily: F.regular, fontSize: 16, lineHeight: 24, color: C.muted, textAlign: 'center' },
   retry: { height: 48, paddingHorizontal: 24, borderRadius: 24, backgroundColor: C.text, alignItems: 'center', justifyContent: 'center' },
   retryText: { fontFamily: F.semibold, fontSize: 16, color: C.scene },
+  savedWrap: { position: 'absolute', left: 16, right: 16, alignItems: 'center' },
+  saved: {
+    flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 34, paddingLeft: 12, paddingRight: 10, paddingVertical: 7,
+    borderRadius: 17, backgroundColor: 'rgba(30,31,35,0.94)', boxShadow: '0 6px 18px rgba(0,0,0,0.4)',
+  },
+  savedDot: { width: 7, height: 7, borderRadius: 4 },
+  savedText: { flexShrink: 1, fontFamily: F.medium, fontSize: 13, lineHeight: 18, color: C.textSoft },
+  savedSpin: { width: 16, height: 16, transform: [{ scale: 0.8 }] },
 });

@@ -1,9 +1,9 @@
 import { Image } from 'expo-image';
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { Button, Chip, DayPicker, Field, Icon, MonthDayPicker, myDay, Press, R, Row, Sheet, shortDay, SURF, t, today, useAspect } from '@/aspects/kit';
+import { Button, Chip, DayPicker, Field, Group, Icon, Item, MonthDayPicker, myDay, Press, R, Sheet, shortDay, SURF, t, today, useAspect } from '@/aspects/kit';
 import { newId, useCollection } from '@/lib/mod';
-import { C } from '@/theme';
+import { C, F } from '@/theme';
 import { amendMoment, errText, momentDraft, moments, names, pickPhoto, refresh, sendPhoto, whenDay, yesterday, type LocalPhoto } from './data';
 import type { DateDoc, IdeaDoc, MomentBrief, PersonDoc } from './types';
 import { G, Photo } from './ui';
@@ -26,7 +26,7 @@ function PeopleChips({ people, value, onChange, single }: { people: P[]; value: 
 }
 
 function Problem({ text }: { text: string | null }) {
-  return text ? <Text style={[t.small, { color: C.danger }]} accessibilityLiveRegion="polite">{text}</Text> : null;
+  return text ? <Text style={[t.footnote, { color: C.danger }]} accessibilityLiveRegion="polite">{text}</Text> : null;
 }
 
 /** Pick a photo, see it, change or drop it. */
@@ -36,7 +36,7 @@ function PhotoPick({ photo, onChange, onError }: { photo: LocalPhoto | null; onC
     return (
       <Press label="Add a photo" onPress={pick} style={s.photoEmpty}>
         <G name="photo" size={22} color={C.textSoft} />
-        <Text style={[t.label, { color: C.textSoft }]}>Add a photo</Text>
+        <Text style={[t.subhead, { color: C.textSoft }]}>Add a photo</Text>
       </Press>
     );
   }
@@ -94,15 +94,15 @@ export function MemorySheet({ open, onClose, people, preset, notice }: { open: b
         multiline autoFocus={preset.focus === 'line'} maxLength={400} />
       {attach ? null : (
         <>
-          <View style={s.group}><Text style={t.label}>Who was there</Text><PeopleChips people={people} value={who} onChange={setWho} /></View>
+          <View style={s.group}><Text style={[t.footnote, s.medium]}>Who was there</Text><PeopleChips people={people} value={who} onChange={setWho} /></View>
           <View style={s.group}>
-            <Text style={t.label}>When</Text>
+            <Text style={[t.footnote, s.medium]}>When</Text>
             <View style={s.chips}>{days.map((d) => <Chip key={d} label={d === today() ? 'Today' : d === yesterday() ? 'Yesterday' : shortDay(d)} selected={day === d} onPress={() => setDay(d)} />)}</View>
           </View>
         </>
       )}
       <Problem text={err} />
-      <Button label={busy ? 'Saving' : 'Save'} onPress={save} disabled={!ready} busy={busy} />
+      <Button label={busy ? 'Saving' : 'Save'} kind="accent" onPress={save} disabled={!ready} busy={busy} />
     </Sheet>
   );
 }
@@ -136,7 +136,7 @@ export function MentionSheet({ open, onClose, people, person, notice }: { open: 
       <Field value={text} onChangeText={(v) => { setText(v); setErr(null); }} placeholder="A warm shawl, a new phone cover" autoFocus maxLength={120} onSubmit={save} label="What was it?" />
       <View style={s.chips}>{MENTION_KINDS.map((k) => <Chip key={k.key} label={k.label} selected={kind === k.key} onPress={() => setKind(k.key)} />)}</View>
       <Problem text={err} />
-      <Button label="Save" onPress={save} disabled={!ready} />
+      <Button label="Save" kind="accent" onPress={save} disabled={!ready} />
     </Sheet>
   );
 }
@@ -191,7 +191,7 @@ export function DateSheet({ open, onClose, people, preset, notice }: {
         // an anniversary is a couple's: fill in the first two when fewer are chosen
         if (k.key === 'anniversary' && who.length < 2 && people.length >= 2) setWho([...new Set([...who, ...people.map((p) => p.id)])].slice(0, 2));
       }} />)}</View>
-      <View style={s.group}><Text style={t.label}>{kind === 'birthday' ? 'Whose' : 'For'}</Text><PeopleChips people={people} value={who} onChange={setWho} single={kind === 'birthday'} /></View>
+      <View style={s.group}><Text style={[t.footnote, s.medium]}>{kind === 'birthday' ? 'Whose' : 'For'}</Text><PeopleChips people={people} value={who} onChange={setWho} single={kind === 'birthday'} /></View>
       {kind === 'festival' || kind === 'other' || kind === 'anniversary' ? (
         <Field label={kind === 'anniversary' ? 'Name, if you like' : 'What is it?'} value={title} onChangeText={setTitle}
           placeholder={kind === 'festival' ? 'Diwali, Raksha Bandhan' : kind === 'anniversary' ? 'Their anniversary' : 'A day that matters'} maxLength={60} />
@@ -199,24 +199,24 @@ export function DateSheet({ open, onClose, people, preset, notice }: {
       {yearly ? (
         <>
           <View style={s.group}>
-            <Text style={t.label}>Month</Text>
+            <Text style={[t.footnote, s.medium]}>Month</Text>
             <View style={s.months}>
               {MONTHS.map((m, i) => <Chip key={m} label={m} selected={month === i + 1} onPress={() => setMonth(i + 1)} wrap={s.month} />)}
             </View>
           </View>
           <View style={s.group}>
-            <Text style={t.label}>{`Day: ${d} ${MONTHS[month - 1]}`}</Text>
+            <Text style={[t.footnote, s.medium]}>{`Day: ${d} ${MONTHS[month - 1]}`}</Text>
             <MonthDayPicker value={d} onChange={(v) => setDay(Math.min(v, max))} />
           </View>
         </>
       ) : (
-        <View style={s.group}><Text style={t.label}>Day</Text><DayPicker value={on} onChange={setOn} /></View>
+        <View style={s.group}><Text style={[t.footnote, s.medium]}>Day</Text><DayPicker value={on} onChange={setOn} /></View>
       )}
       {yearly ? <Field label="Year, if you know it" value={year} onChangeText={setYear} keyboardType="number-pad" maxLength={4} placeholder={kind === 'anniversary' ? 'The year they married' : 'The year of birth'} /> : null}
       {!yearOk ? <Problem text="That year doesn't look right." /> : null}
       {passed ? <Problem text="That day has passed. Pick one coming up." /> : null}
-      {!yearly ? <Text style={t.small}>{`Saved for ${shortDay(on)}${on.slice(0, 4) !== now.slice(0, 4) ? ` ${on.slice(0, 4)}` : ''}. Festivals move each year, so add next year's when it is known.`}</Text> : null}
-      <Button label="Save" onPress={save} disabled={!ready} />
+      {!yearly ? <Text style={t.footnote}>{`Saved for ${shortDay(on)}${on.slice(0, 4) !== now.slice(0, 4) ? ` ${on.slice(0, 4)}` : ''}. Festivals move each year, so add next year's when it is known.`}</Text> : null}
+      <Button label="Save" kind="accent" onPress={save} disabled={!ready} />
     </Sheet>
   );
 }
@@ -228,7 +228,7 @@ export function OwnSheet({ open, onClose, name, onSave }: { open: boolean; onClo
   return (
     <Sheet open={open} onClose={onClose} title={`Something for ${name}`}>
       <Field value={text} onChangeText={setText} placeholder="Fix the light in the kitchen" autoFocus maxLength={80} onSubmit={save} label="What will you do this week?" />
-      <Button label="Make it this week's" onPress={save} disabled={!text.trim()} />
+      <Button label="Make it this week's" kind="accent" onPress={save} disabled={!text.trim()} />
     </Sheet>
   );
 }
@@ -257,7 +257,7 @@ export function PersonSheet({ open, onClose, notice }: { open: boolean; onClose:
       <Field label="Name" value={name} onChangeText={setName} placeholder="What you call them" autoFocus maxLength={40} />
       <Field label="Who they are, if you like" value={role} onChangeText={setRole} placeholder="Grandmother, cousin" maxLength={40} />
       <View style={s.chips}>{(['he', 'she', 'they'] as const).map((p) => <Chip key={p} label={p === 'he' ? 'He' : p === 'she' ? 'She' : 'They'} selected={pronoun === p} onPress={() => setPronoun(p)} />)}</View>
-      <Button label="Add" onPress={save} disabled={!ready} />
+      <Button label="Add" kind="accent" onPress={save} disabled={!ready} />
     </Sheet>
   );
 }
@@ -273,7 +273,7 @@ export function AddSheet({ open, onClose, onPick }: { open: boolean; onClose: ()
   ];
   return (
     <Sheet open={open} onClose={onClose} title="Add">
-      <View>{rows.map((r) => <Row key={r.k} title={r.title} sub={r.sub} left={<View style={s.menuIcon}>{r.icon}</View>} onPress={() => onPick(r.k)} chevron />)}</View>
+      <Group inset={68}>{rows.map((r) => <Item key={r.k} title={r.title} sub={r.sub} left={<View style={s.menuIcon}>{r.icon}</View>} onPress={() => onPick(r.k)} chevron />)}</Group>
     </Sheet>
   );
 }
@@ -298,11 +298,11 @@ export function MemoryView({ open, onClose, m, nameOf, onAttach, notice }: {
   };
   return (
     <Sheet open={open} onClose={close}>
-      {m.photo ? <Photo id={m.photo} thumb={false} style={{ width: width - 32, height: Math.round((width - 32) * 0.8), borderRadius: R.row }} label={m.note ?? m.title ?? 'A memory'} /> : null}
+      {m.photo ? <Photo id={m.photo} thumb={false} style={{ width: width - 32, height: Math.round((width - 32) * 0.8), borderRadius: R.tile }} label={m.note ?? m.title ?? 'A memory'} /> : null}
       <View style={s.group}>
-        {m.note ? <Text style={t.lead}>{m.note}</Text> : null}
-        {m.title && m.title !== m.note ? <Text style={m.note ? t.small : t.lead}>{m.title}</Text> : null}
-        <Text style={t.small}>{`${names(m.people.map(nameOf))}, ${whenDay(m.date)}`}</Text>
+        {m.note ? <Text style={t.title3}>{m.note}</Text> : null}
+        {m.title && m.title !== m.note ? <Text style={m.note ? t.subhead : t.title3}>{m.title}</Text> : null}
+        <Text style={t.footnote}>{`${names(m.people.map(nameOf))}, ${whenDay(m.date)}`}</Text>
       </View>
       <View style={s.viewActions}>
         <Button label={m.photo ? (m.note ? 'Change the line' : 'Add a line') : m.note ? 'Add a photo' : 'Add a photo or line'} kind="quiet" small onPress={() => onAttach(m)} />
@@ -324,6 +324,7 @@ const s = StyleSheet.create({
   photoWrap: { gap: 8 },
   photoPreview: { width: '100%', borderRadius: R.row, backgroundColor: SURF.card },
   photoActions: { flexDirection: 'row', gap: 8 },
-  menuIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: SURF.card, alignItems: 'center', justifyContent: 'center' },
+  menuIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: SURF.raised, alignItems: 'center', justifyContent: 'center' },
+  medium: { fontFamily: F.medium },
   viewActions: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
 });

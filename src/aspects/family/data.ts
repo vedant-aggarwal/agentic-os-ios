@@ -23,10 +23,18 @@ export function momentDraft(o: Partial<MomentDoc> & { people: string[] }): Momen
   };
 }
 
-/** A moment that exists on the PC, with some fields changed (a photo or a line added later). */
+/** A moment as it stands: the copy the page already holds, else the one on the PC. Null when neither has it. */
+export async function momentDoc(id: string): Promise<MomentDoc | null> {
+  const held = moments.get()?.find((m) => m.id === id);
+  if (held) return held;
+  return api<{ item: MomentDoc }>(`/mod/people/moments/${encodeURIComponent(id)}`).then((r) => r.item).catch(() => null);
+}
+
+/** A moment that exists, with some fields changed (a photo or a line added later). */
 export async function amendMoment(id: string, change: Partial<MomentDoc>) {
-  const r = await api<{ item: MomentDoc }>(`/mod/people/moments/${encodeURIComponent(id)}`);
-  const { created_at: _c, updated_at: _u, deleted_at: _d, ...cur } = r.item;
+  const doc = await momentDoc(id);
+  if (!doc) throw new Error('That moment is not on your PC any more.');
+  const { created_at: _c, updated_at: _u, deleted_at: _d, ...cur } = doc;
   return moments.put({ ...cur, ...change, id });
 }
 
@@ -134,7 +142,7 @@ export const jarWords = (j: Jar, at: number) =>
   `${j.target ? `${rupees(j.saved)} of ${rupees(j.target)}` : `${rupees(j.saved)} put aside`}, ${asOf(at)}`;
 /** A goal's line, the progress dated: "40% done, by 6 Dec, as of 16:20 today"; null when there is nothing to say. */
 export function goalWords(g: Goal, at: number) {
-  const done = g.progress != null && g.progress > 0 ? `${Math.round(g.progress)}% done` : null;
+  const done = g.progress != null && Math.round(g.progress) >= 1 ? `${Math.round(g.progress)}% done` : null;
   const parts = [done, g.due ? `by ${shortDay(g.due)}` : null].filter(Boolean);
   if (!parts.length) return null;
   return done ? `${parts.join(', ')}, ${asOf(at)}` : parts.join(', ').replace(/^b/, 'B');

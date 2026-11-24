@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import type { ReactNode } from 'react';
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
-import { CheckRing, Glyph, IconButton, Press, R, SURF, t, tint, useAspect } from '@/aspects/kit';
+import { Avatar, CheckRing, Glyph, IconButton, Press, R, SURF, t, tint, useAspect } from '@/aspects/kit';
 import { C, F } from '@/theme';
 import { monthShort, photoSource } from './data';
 import type { Cand, MomentBrief } from './types';
@@ -22,12 +22,35 @@ export function G({ name, size = 18, color = C.text }: { name: keyof typeof GLYP
   return <Glyph sf={sf as never} d={d} size={size} color={color} />;
 }
 
-/** A person's initial in a quiet circle, where there is no photo of them yet. */
-export function Monogram({ name, size = 44 }: { name: string; size?: number }) {
+/** A person: their latest photo with you, else their initial on the page's colour. */
+export function Face({ name, photo, size = 44 }: { name: string; photo?: string | null; size?: number }) {
+  return <Avatar name={name} size={size} source={photo ? photoSource(photo) : null} />;
+}
+/** Older name for a face without a photo. */
+export const Monogram = ({ name, size = 44 }: { name: string; size?: number }) => <Face name={name} size={size} />;
+
+/** A tick on its own, beside a row that opens something else: 44 points to tap. */
+export function CheckButton({ done, label, onPress }: { done: boolean; label: string; onPress: () => void }) {
   return (
-    <View style={[s.mono, { width: size, height: size, borderRadius: size / 2 }]} accessibilityElementsHidden importantForAccessibility="no">
-      <Text style={[size >= 56 ? t.title2 : t.heading, { color: C.textSoft }]}>{(name.trim()[0] ?? '?').toUpperCase()}</Text>
-    </View>
+    <Press label={label} onPress={onPress} role="checkbox" state={{ checked: done }} feel={done ? 'light' : 'medium'} hitSlop={4} style={s.checkBtn} scale={0.9}>
+      <CheckRing done={done} size={28} />
+    </Press>
+  );
+}
+
+/** A whole row that ticks: a step to get ready, a thing they mentioned. */
+export function CheckRow({ title, sub, done, onPress, onLongPress, label }: {
+  title: string; sub?: string | null; done: boolean; onPress: () => void; onLongPress?: () => void; label?: string;
+}) {
+  return (
+    <Press label={label ?? `${title}. ${done ? 'Done, tap to undo' : 'Tap when done'}`} onPress={onPress} onLongPress={onLongPress} role="checkbox" state={{ checked: done }}
+      feel={done ? 'light' : 'medium'} style={s.checkRow} scale={0.99}>
+      <CheckRing done={done} />
+      <View style={s.thingText}>
+        <Text numberOfLines={2} style={[t.callout, done && { color: C.muted }]}>{title}</Text>
+        {sub ? <Text numberOfLines={2} style={t.footnote}>{sub}</Text> : null}
+      </View>
+    </Press>
   );
 }
 
@@ -46,8 +69,8 @@ export function DateTile({ day, live = false }: { day: string; live?: boolean })
   const { color } = useAspect();
   return (
     <View style={[s.tile, live && { backgroundColor: tint(color, 0.14) }]} accessibilityElementsHidden importantForAccessibility="no">
-      <Text style={[t.strong, t.num, s.tileDay, live && { color }]}>{Number(day.slice(8, 10))}</Text>
-      <Text style={[t.caption, s.tileMonth]}>{monthShort(day)}</Text>
+      <Text style={[t.headline, t.num, s.tileDay, live && { color }]}>{Number(day.slice(8, 10))}</Text>
+      <Text style={[t.micro, s.tileMonth]}>{monthShort(day)}</Text>
     </View>
   );
 }
@@ -68,8 +91,8 @@ export function ThingRow({ pick, done, onToggle, onSwap, sub }: {
         role="checkbox" state={{ checked: !!done }} wrap={s.thingHit} style={s.thingPress} scale={0.98}>
         <CheckRing done={!!done} />
         <View style={s.thingText}>
-          <Text numberOfLines={2} style={t.strong}>{title}</Text>
-          {done ? <Text style={[t.small, { color }]}>Done this week</Text> : sub ? <Text numberOfLines={2} style={t.small}>{sub}</Text> : null}
+          <Text numberOfLines={2} style={t.callout}>{title}</Text>
+          {done ? <Text style={[t.footnote, { color }]}>Done this week</Text> : sub ? <Text numberOfLines={2} style={t.footnote}>{sub}</Text> : null}
         </View>
       </Press>
       {!done && onSwap ? (
@@ -98,12 +121,12 @@ export function MemoryTile({ m, width, onPress, caption }: { m: MomentBrief; wid
     <Press label={label} onPress={onPress} wrap={{ width }} style={s.memTile} scale={0.97}>
       {m.photo ? <Photo id={m.photo} style={{ width, height: h, borderRadius: R.row }} /> : (
         <View style={[s.memText, { width, height: h }]}>
-          <Text numberOfLines={6} style={[t.body, { color: C.textSoft }]}>{m.note ?? m.title}</Text>
+          <Text numberOfLines={6} style={[t.subhead, { color: C.textSoft }]}>{m.note ?? m.title}</Text>
         </View>
       )}
       <View style={s.memCap}>
-        {m.photo && (m.note || m.title) ? <Text numberOfLines={2} style={[t.small, { color: C.textSoft }]}>{m.note ?? m.title}</Text> : null}
-        <Text style={t.caption}>{caption}</Text>
+        {m.photo && (m.note || m.title) ? <Text numberOfLines={2} style={[t.footnote, { color: C.textSoft }]}>{m.note ?? m.title}</Text> : null}
+        <Text numberOfLines={1} style={t.micro}>{caption}</Text>
       </View>
     </Press>
   );
@@ -114,15 +137,16 @@ export function LinkRow({ icon, label, onPress, color }: { icon: ReactNode; labe
   return (
     <Press label={label} onPress={onPress} style={s.link} hitSlop={4}>
       {icon}
-      <Text style={[t.label, color ? { color } : { color: C.textSoft }]}>{label}</Text>
+      <Text style={[t.subhead, color ? { color } : { color: C.textSoft }]}>{label}</Text>
     </Press>
   );
 }
 
 const s = StyleSheet.create({
-  mono: { alignItems: 'center', justifyContent: 'center', backgroundColor: SURF.raised },
+  checkBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  checkRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56, paddingHorizontal: 16, paddingVertical: 10 },
   photoBox: { overflow: 'hidden', backgroundColor: SURF.card },
-  tile: { width: 44, height: 48, borderRadius: R.chip, backgroundColor: SURF.raised, alignItems: 'center', justifyContent: 'center' },
+  tile: { width: 44, height: 48, borderRadius: R.chip, borderCurve: 'continuous', backgroundColor: SURF.raised, alignItems: 'center', justifyContent: 'center' },
   tileDay: { fontSize: 18, lineHeight: 20, fontFamily: F.semibold },
   tileMonth: { color: C.muted },
   thing: { flexDirection: 'row', alignItems: 'center', gap: 4 },
@@ -130,7 +154,7 @@ const s = StyleSheet.create({
   thingPress: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56, paddingVertical: 8 },
   thingText: { flex: 1, minWidth: 0, gap: 2 },
   memTile: { gap: 8 },
-  memText: { borderRadius: R.row, backgroundColor: SURF.card, padding: 16, justifyContent: 'flex-end', borderWidth: StyleSheet.hairlineWidth, borderColor: SURF.line },
+  memText: { borderRadius: R.tile, borderCurve: 'continuous', backgroundColor: SURF.group, padding: 16, justifyContent: 'flex-end', borderWidth: StyleSheet.hairlineWidth, borderColor: SURF.hair },
   memCap: { gap: 2 },
   link: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44 },
 });

@@ -7,6 +7,10 @@ import type {
 // Thin client for the hub's routes (contract in ./types.ts). GETs remember their ETag so an unchanged answer is a
 // 304 with no body; writes carry an Idempotency-Key so a retried write never lands twice.
 
+/** Continue on phone (POST /orca/agents/:id/continue): the terminal agent now carrying an Orca chat tab on, null until
+ *  it reports in (note says what happened); again: it was carried on before and that terminal is still open. */
+export type OrcaCarry = { agent: OrcaAgent | null; terminal: string | null; again: boolean; note: string | null };
+
 const etags = new Map<string, string>();
 let seq = 0;
 export const newKey = () => `w${Date.now().toString(36)}${(seq++).toString(36)}${Math.random().toString(36).slice(2, 6)}`;
@@ -92,6 +96,10 @@ export const workApi = {
       method: 'POST', key, body: { text, ...(opts.force ? { force: true } : {}), ...(opts.deny ? { deny: true } : {}) },
     })),
   orcaLaunch: (b: OrcaLaunch, key: string) => must(call<{ agent: OrcaAgent | null }>('/orca/launch', { method: 'POST', body: b, key })),
+  /** Continue on phone: the PC carries an Orca chat tab on (a fork of its Claude session) in an Orca terminal, which
+   *  takes replies. Takes up to ~30 s while Claude starts there. */
+  orcaContinue: (id: string, key: string) =>
+    must(call<OrcaCarry>(`/orca/agents/${encodeURIComponent(id)}/continue`, { method: 'POST', body: {}, key })),
   /** What a terminal agent's screen shows now, as plain text: what a permission prompt asks, before he answers it. */
   orcaScreen: (id: string) => must(call<{ text: string; state: string }>(`/orca/agents/${encodeURIComponent(id)}/screen`)),
   orcaControl: (id: string, what: OrcaControl) =>

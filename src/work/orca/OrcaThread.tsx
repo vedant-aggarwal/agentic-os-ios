@@ -1,3 +1,4 @@
+import { type Href, router } from 'expo-router';
 import { type ComponentRef, useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, { useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated';
@@ -29,7 +30,8 @@ import { NEEDS } from '../ui/tokens';
 // a reply box, Stop while it works, and Allow / Deny (with what its screen asks) on a permission prompt. A reply sent
 // while it works waits in its input and shows as queued until the turn ends; on a permission prompt the reply box
 // denies it and sends the text instead. A reply to a cold cache stops at "Send anyway?" first. The menu shows it on
-// the PC, starts a new job in its project, or ends it. Chat tabs take replies only in Orca itself.
+// the PC, starts a new job in its project, or ends it. Chat tabs take replies only in Orca itself, so a Claude chat
+// offers Continue on phone: the PC carries it on in an Orca terminal (a fork of its session) and this screen moves there.
 
 const BAR = 56;
 
@@ -88,6 +90,7 @@ export function OrcaThread({ id }: { id: string }) {
   const [acting, setActing] = useState<OrcaControl | null>(null);
   const [screen, setScreen] = useState<{ stamp: string; text: string | null; error: string | null } | null>(null);
   const [queued, setQueued] = useState<Queued[]>([]);
+  const [moving, setMoving] = useState(false);
   const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
   const screenScroll = useRef<ComponentRef<typeof ScrollView>>(null);
   const kb = useAnimatedKeyboard();
@@ -141,6 +144,17 @@ export function OrcaThread({ id }: { id: string }) {
     } finally { setActing(null); }
   }, [id, load]);
   const newJob = () => { setMenu(false); openSheet({ kind: 'job', project: a?.project ?? null }); };
+  // A Claude chat tab carries on in an Orca terminal; this screen then becomes that terminal agent's.
+  const claudeChat = chat && a?.agent === 'claude';
+  const carryOn = useCallback(async () => {
+    setMenu(false);
+    setMoving(true);
+    const r = await work.continueOrcaChat(id);
+    setMoving(false);
+    if (!r) return;
+    work.notify(r.again ? 'It’s already on the phone. Reply here.' : 'Carried on in an Orca terminal. Reply here.');
+    router.replace(`/work/orca/${encodeURIComponent(r.agent.id)}` as Href);
+  }, [id]);
   useEffect(() => { if (entries?.length) setTimeout(() => scroll.current?.scrollToEnd({ animated: false }), 0); }, [entries]);
 
   const send = useCallback(async (text: string, opts: { force?: boolean; deny?: boolean } = {}) => {
@@ -194,10 +208,26 @@ export function OrcaThread({ id }: { id: string }) {
         {a ? <CacheChip cache={a.cache} working={working} /> : null}
         {chat ? (
           <View style={s.note}>
-            <Text style={s.noteText}>This is an Orca chat tab. Reply to it in Orca on your PC. Jobs you start from here run as Orca terminals, which take replies from the phone.</Text>
-            <Press accessibilityLabel="New job here" onPress={newJob} style={s.noteBtn}>
-              <Text style={s.noteBtnText}>New job here</Text>
-            </Press>
+            <Text style={s.noteText}>
+              {!claudeChat ? 'This is an Orca chat tab. Reply to it in Orca on your PC. Jobs you start from here run as Orca terminals, which take replies from the phone.'
+                : working ? 'This is an Orca chat tab, and it’s working. Once it stops, Continue on phone carries the chat on in an Orca terminal, which takes replies from here.'
+                : 'This is an Orca chat tab, which takes replies only in Orca. Continue on phone carries the chat on in an Orca terminal, which takes replies from here. This tab stays as it is.'}
+            </Text>
+            <View style={s.noteRow}>
+              {claudeChat ? (
+                <Press accessibilityLabel="Continue on phone" disabled={moving || working} onPress={carryOn} style={[s.noteBtn, s.noteBtnMain, (moving || working) && s.sendOff]}>
+                  {moving ? (
+                    <View style={s.noteBusy}>
+                      <ActivityIndicator color={C.scene} size="small" />
+                      <Text style={[s.noteBtnText, s.noteBtnMainText]}>Starting in Orca…</Text>
+                    </View>
+                  ) : <Text style={[s.noteBtnText, s.noteBtnMainText]}>Continue on phone</Text>}
+                </Press>
+              ) : null}
+              <Press accessibilityLabel="New job here" disabled={moving} onPress={newJob} style={s.noteBtn}>
+                <Text style={s.noteBtnText}>New job here</Text>
+              </Press>
+            </View>
           </View>
         ) : (
           <>
@@ -281,9 +311,10 @@ export function OrcaThread({ id }: { id: string }) {
         <PopMenu top={insets.top + BAR + 2} onClose={() => setMenu(false)}>
           <MenuInfo title={`${engineName(a)} in Orca`} sub={shortPath(a.path) ?? where} />
           {!chat ? <MenuItem label="Show on PC" sub="Brings it up in Orca" disabled={!!acting} onPress={() => act('show')} /> : null}
+          {claudeChat ? <MenuItem label="Continue on phone" sub="Carries it on in an Orca terminal" disabled={moving || working} onPress={carryOn} /> : null}
           <MenuItem label="New job here" sub={where ? `In ${where}` : 'Pick a project'} onPress={newJob} />
           {!chat ? <MenuItem label="End agent" sub="Closes its tab in Orca" danger disabled={!!acting} onPress={() => { setMenu(false); setEnding(true); }} /> : null}
-          {chat ? <MenuHint>Chat tabs are run from Orca on your PC.</MenuHint> : null}
+          {chat ? <MenuHint>Chat tabs take replies only in Orca on your PC.</MenuHint> : null}
         </PopMenu>
       ) : null}
 
@@ -339,8 +370,12 @@ const s = StyleSheet.create({
   noticeAnchor: { position: 'absolute', left: 0, right: 0, bottom: '100%', height: 0, alignItems: 'center' },
   note: { marginHorizontal: 16, marginBottom: 12, padding: 14, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.05)' },
   noteText: { fontFamily: F.regular, fontSize: 13, lineHeight: 19, color: C.muted },
-  noteBtn: { alignSelf: 'flex-start', marginTop: 10, height: 36, paddingHorizontal: 14, borderRadius: 18, justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.1)' },
+  noteRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
+  noteBtn: { height: 36, paddingHorizontal: 14, borderRadius: 18, justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.1)' },
+  noteBtnMain: { backgroundColor: C.text },
   noteBtnText: { fontFamily: F.semibold, fontSize: 14, lineHeight: 20, color: C.text },
+  noteBtnMainText: { color: C.scene },
+  noteBusy: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   stop: { height: 36, paddingHorizontal: 12, borderRadius: 18, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#E5484D' },
   stopText: { fontFamily: F.semibold, fontSize: 14, lineHeight: 20, color: '#fff' },
   ask: { marginHorizontal: 16, marginBottom: 12, borderRadius: 24, borderCurve: 'continuous', boxShadow: `0 0 0 1px ${NEEDS}55, 0 16px 40px rgba(0,0,0,0.45)` },

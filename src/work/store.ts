@@ -469,6 +469,26 @@ export const work = {
   },
 
   /**
+   * Continue on phone: the PC carries an Orca chat tab on in an Orca terminal, which takes replies. Answers that
+   * terminal agent (in the Orca list at once) and whether it was carried on before; null when it hasn't reported in
+   * yet (the notice says so); undefined on failure (the notice says why).
+   */
+  async continueOrcaChat(id: string) {
+    if (DEMO) { set((s) => ({ ...s, notice: 'Demo: chats move to the phone on the real PC.' })); return undefined; }
+    try {
+      const r = await workApi.orcaContinue(id, newKey());
+      const agent = r.agent;
+      if (agent) set((s) => (s.orca.data ? { ...s, orca: { ...s.orca, data: { ...s.orca.data, agents: [agent, ...s.orca.data.agents.filter((x) => x.id !== agent.id)] } } } : s));
+      else set((s) => ({ ...s, notice: r.note ?? 'It’s starting in Orca on your PC.' }));
+      loadOrca();
+      return agent ? { agent, again: r.again } : null;
+    } catch (e) {
+      set((s) => ({ ...s, notice: (e as Error).message }));
+      return undefined;
+    }
+  },
+
+  /**
    * Resolves a job or an Orca agent: it leaves every list at once and shows under Resolved; the PC saves its chat, then
    * closes it (an Orca tab closes on the PC). 'working' when the PC says it is still working (nothing changed then):
    * ask him, then call again with force.

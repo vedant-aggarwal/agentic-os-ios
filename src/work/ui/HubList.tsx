@@ -3,6 +3,7 @@ import { type GestureResponderEvent, RefreshControl, SectionList, type SectionLi
 import { C } from '@/theme';
 import type { Idea, JobBrief, NeedItem, OrcaAgent, ProjectCard, RepoState, SessionBrief, Task } from '../types';
 import { NeedCard } from './NeedCard';
+import { openSheet } from '../bus';
 import { notBuilt, openJob, openOrcaAgent, openProject } from './nav';
 import { OrcaRow } from './orca';
 import { IdeaProjectRow, TilePair } from './projects';
@@ -11,6 +12,7 @@ import { EmptyLine, MoreLine, SectionHeader } from './Section';
 import { useShellInsets } from './Shell';
 import { ErrorState } from './States';
 import { GUTTER } from './tokens';
+import type { WorkDesign } from '../variants/types';
 
 // One virtualized list for both hub pages. A screen builds sections of typed items; this draws them.
 
@@ -41,10 +43,15 @@ export type ListHandlers = {
   onProjectAction?: (project: ProjectCard, action: 'pin' | 'settings') => void;
 };
 
-export function HubList({ sections, header, refreshing, onRefresh, handlers }: {
+/** skin: a Work design's section header and project tile (src/work/variants); topBar false when the page has no
+ *  top buttons, so the list starts higher. */
+export function HubList({ sections, header, refreshing, onRefresh, handlers, skin, topBar = true }: {
   sections: Sec[]; header: React.ReactElement; refreshing: boolean; onRefresh: () => void; handlers: ListHandlers;
+  skin?: Pick<WorkDesign, 'SectionHeader' | 'Tile'>; topBar?: boolean;
 }) {
-  const pad = useShellInsets();
+  const pad = useShellInsets(topBar);
+  const Head = skin?.SectionHeader ?? SectionHeader;
+  const Tile = skin?.Tile;
   const { onHide, onUndo, onSent, onHold, onProjectAction } = handlers;
 
   const renderItem = useCallback(({ item }: { item: Item }) => {
@@ -59,19 +66,20 @@ export function HubList({ sections, header, refreshing, onRefresh, handlers }: {
       case 'orca': return <OrcaRow agent={item.agent} where={item.where} onPress={() => openOrcaAgent(item.agent.id)} />;
       case 'tiles':
         return (
-          <TilePair items={item.projects.map((t) => ({
+          <TilePair Tile={Tile} items={item.projects.map((t) => ({
             ...t, onPress: () => openProject(t.project.slug), onLongPress: (e: GestureResponderEvent) => onHold?.(t.project, e),
           }))} />
         );
       case 'ideaProject':
-        return <IdeaProjectRow project={item.project} onPress={() => openProject(item.project.slug)} onLongPress={(e) => onHold?.(item.project, e)} />;
+        return <IdeaProjectRow project={item.project} onPress={() => openProject(item.project.slug)} onLongPress={(e) => onHold?.(item.project, e)}
+          onStart={() => openSheet({ kind: 'job', project: item.project.slug })} />;
       case 'project':
         return (
           <ProjectRow project={item.project} onPress={() => openProject(item.project.slug)}
             onLongPress={(e) => onHold?.(item.project, e)} onAction={(a) => onProjectAction?.(item.project, a)} />
         );
-      case 'idea': return <IdeaRow idea={item.idea} onPress={() => notBuilt('Opening an idea')} />;
-      case 'task': return <TaskLine task={item.task} onPress={() => notBuilt('Editing a task')} />;
+      case 'idea': return <IdeaRow idea={item.idea} onPress={() => openSheet({ kind: 'editIdea', idea: item.idea })} />;
+      case 'task': return <TaskLine task={item.task} onPress={() => openSheet({ kind: 'editTask', task: item.task })} />;
       case 'session': return <SessionRow session={item.session} onPress={() => notBuilt('Reading sessions')} />;
       case 'repo': return <RepoRow repo={item.repo} folders={item.folders} onPress={() => notBuilt('Uncommitted changes')} />;
       case 'empty': return <EmptyLine text={item.text} add={item.add} />;
@@ -79,11 +87,11 @@ export function HubList({ sections, header, refreshing, onRefresh, handlers }: {
       case 'loading': return <SkeletonRows />;
       case 'error': return <ErrorState title={item.title} message={item.message} onRetry={item.onRetry} />;
     }
-  }, [onHide, onUndo, onSent, onHold, onProjectAction]);
+  }, [onHide, onUndo, onSent, onHold, onProjectAction, Tile]);
 
   const renderSectionHeader = useCallback(({ section }: { section: SectionListData<Item, Sec> }) => (
-    section.title ? <SectionHeader title={section.title} count={section.count} add={section.add} extra={section.extra} /> : null
-  ), []);
+    section.title ? <Head title={section.title} count={section.count} add={section.add} extra={section.extra} /> : null
+  ), [Head]);
 
   return (
     <SectionList<Item, Sec>

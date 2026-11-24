@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import { useCallback, useMemo, useState } from 'react';
-import { type GestureResponderEvent, StyleSheet, Text, View } from 'react-native';
+import { type GestureResponderEvent, View } from 'react-native';
 import { tap } from '@/components/Glass';
 import { SignIn } from '@/components/SignIn';
 import { openSheet } from '@/work/bus';
@@ -9,15 +9,16 @@ import type { OrcaAgent, ProjectCard } from '@/work/types';
 import { HubList, type Item, type ListHandlers, type Sec } from '@/work/ui/HubList';
 import { IdeaIcon, JobIcon, TaskIcon } from '@/work/ui/icons';
 import { useAnswered } from '@/work/ui/NeedCard';
-import { orcaLive, orcaWaiting, orcaWorking, OrcaPill } from '@/work/ui/orca';
+import { orcaLive, orcaWaiting, orcaWorking } from '@/work/ui/orca';
 import { type MenuAt, ProjectMenu } from '@/work/ui/ProjectMenu';
 import { isIdeaProject, type ProjectTab, ProjectTabs } from '@/work/ui/projects';
 import { Shell, useShellInsets } from '@/work/ui/Shell';
-import { T } from '@/work/ui/tokens';
-import { UsageStrip } from '@/work/ui/UsageStrip';
+import { DesignSwitcher } from '@/work/variants/Switcher';
+import { useWorkDesign } from '@/work/variants/useDesign';
 
-// The Work orb's tap. Top: his Claude and Codex limits and whether Orca (where agents run on the PC) is there.
-// Then everything waiting on him, what's running (app jobs and Orca agents), his projects (Active as tiles, idea
+// The Work orb's tap. Top: the chosen design's head (his Claude and Codex limits, whether Orca is there; see
+// src/work/variants), then
+// everything waiting on him, what's running (app jobs and Orca agents), his projects (Active as tiles, idea
 // projects behind a switch), what finished in Orca lately, and the inbox. Draws from the phone's copy at once.
 
 const INBOX_CUT = 6;
@@ -34,7 +35,8 @@ const QUICK = [
 export default function WorkHome() {
   const home = useWorkHome();
   const orca = useOrca();
-  const pad = useShellInsets();
+  const design = useWorkDesign();
+  const pad = useShellInsets(false);
   const { hidden, hide, unhide } = useAnswered();
   const [refreshing, setRefreshing] = useState(false);
   const [allInbox, setAllInbox] = useState(false);
@@ -165,21 +167,28 @@ export default function WorkHome() {
     }
   };
 
+  const d = home.data;
+  const counts = {
+    needs: (d ? d.needs.filter((n) => !hidden.has(n.id)).length : 0) + agents.filter(orcaWaiting).length,
+    live: (d ? d.live.length : 0) + agents.filter(orcaLive).length,
+    active: d ? d.projects.filter((p) => !isIdeaProject(p)).length : 0,
+  };
+  const Head = design.Header;
+  const Ambient = design.Ambient;
   const header = (
-    <View style={s.header}>
-      <View style={s.titleRow}>
-        <Text accessibilityRole="header" style={T.title}>Work</Text>
-        <OrcaPill state={orca.data} onPress={orcaInfo} />
-      </View>
-      <UsageStrip usage={orca.data?.usage ?? null} up={orca.data ? orca.data.up : null} />
+    <View>
+      <DesignSwitcher active={design.key} />
+      <Head orca={orca.data} orcaError={orca.error} onOrcaPress={orcaInfo} counts={counts} />
     </View>
   );
 
   return (
     <Shell
       actions={QUICK}
+      ambient={Ambient ? <Ambient /> : null}
       overlay={menu ? (
         <ProjectMenu at={menu} top={pad.safeTop + 16} bottom={pad.bottom} onClose={() => setMenu(null)}
+          onStart={() => { openSheet({ kind: 'job', project: menu.project.slug }); setMenu(null); }}
           onPin={() => { work.patchProject(menu.project.slug, { pinned: !menu.project.pinned }); setMenu(null); }}
           onMove={() => {
             const toIdeas = menu.project.status !== 'paused';
@@ -189,12 +198,8 @@ export default function WorkHome() {
           }}
           onSettings={() => { openSheet({ kind: 'projectSettings', project: menu.project.slug }); setMenu(null); }} />
       ) : null}>
-      <HubList sections={sections} header={header} refreshing={refreshing} onRefresh={refresh} handlers={handlers} />
+      <HubList sections={sections} header={header} refreshing={refreshing} onRefresh={refresh} handlers={handlers} skin={design} topBar={false} />
     </Shell>
   );
 }
 
-const s = StyleSheet.create({
-  header: { paddingBottom: 24, gap: 16 },
-  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-});

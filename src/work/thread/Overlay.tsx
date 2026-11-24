@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { Easing, FadeIn, FadeOut, Keyframe } from 'react-native-reanimated';
 import { Glass } from '@/components/Glass';
@@ -38,6 +38,40 @@ function Item({ label, sub, onPress, disabled, chevron, danger }: {
       {chevron ? <IcChevron size={13} color={C.faint} /> : null}
     </Press>
   );
+}
+
+export { Item as MenuItem };
+
+/** A small menu that grows from the bar's right button, for pages other than a job's. Tap outside to close. */
+export function PopMenu({ top, onClose, children }: { top: number; onClose: () => void; children: ReactNode }) {
+  return (
+    <View style={StyleSheet.absoluteFill}>
+      <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(120)} style={StyleSheet.absoluteFill}>
+        <Pressable accessibilityLabel="Close the menu" style={[StyleSheet.absoluteFill, s.scrimLight]} onPress={onClose} />
+      </Animated.View>
+      <Animated.View entering={menuIn} exiting={FadeOut.duration(120)} style={[s.menu, { top }]}>
+        <Glass radius={20} />
+        {children}
+      </Animated.View>
+    </View>
+  );
+}
+
+/** The menu's first lines (what it is, where) and the rule under them. */
+export function MenuInfo({ title, sub }: { title: string; sub?: string | null }) {
+  return (
+    <>
+      <View style={s.info}>
+        <Text style={s.infoTitle} numberOfLines={1}>{title}</Text>
+        {sub ? <Text style={s.itemSub} numberOfLines={1} ellipsizeMode="head">{sub}</Text> : null}
+      </View>
+      <View style={s.rule} />
+    </>
+  );
+}
+
+export function MenuHint({ children }: { children: string }) {
+  return <Text style={s.hint}>{children}</Text>;
 }
 
 export function JobMenu({ top, job, turns, hasAnswer, busy, onClose, onCopy, onRevert, onDone }: {

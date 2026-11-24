@@ -2,7 +2,7 @@ import { type GestureResponderEvent, StyleSheet, Text, View } from 'react-native
 import { C, F } from '@/theme';
 import type { ProjectCard } from '../types';
 import { ago, countsLine, plural } from './format';
-import { PinIcon } from './icons';
+import { JobIcon, PinIcon } from './icons';
 import { Press } from './Press';
 import { LIVE, NEEDS, T } from './tokens';
 
@@ -32,7 +32,7 @@ export function ProjectTabs({ tab, counts, onChange }: { tab: ProjectTab; counts
   );
 }
 
-type TileProps = {
+export type TileProps = {
   project: ProjectCard; orcaWorking: number; orcaWaiting: number;
   onPress: () => void; onLongPress: (e: GestureResponderEvent) => void;
 };
@@ -70,18 +70,19 @@ function Tile({ project: p, orcaWorking, orcaWaiting, onPress, onLongPress }: Ti
 }
 
 /** One row of the Active grid: two tiles, or one and a gap. */
-export function TilePair({ items }: { items: TileProps[] }) {
+export function TilePair({ items, Tile: Custom }: { items: TileProps[]; Tile?: (p: TileProps) => React.ReactElement }) {
+  const One = Custom ?? Tile;
   return (
     <View style={s.pair}>
-      {items.map((t) => <Tile key={t.project.slug} {...t} />)}
+      {items.map((t) => <One key={t.project.slug} {...t} />)}
       {items.length === 1 ? <View style={s.tileWrap} /> : null}
     </View>
   );
 }
 
-/** An idea project: kept for later, so it reads quieter than the active ones. */
-export function IdeaProjectRow({ project: p, onPress, onLongPress }: {
-  project: ProjectCard; onPress: () => void; onLongPress: (e: GestureResponderEvent) => void;
+/** An idea project: kept for later, so it reads quieter than the active ones. The round button starts a job in it. */
+export function IdeaProjectRow({ project: p, onPress, onLongPress, onStart }: {
+  project: ProjectCard; onPress: () => void; onLongPress: (e: GestureResponderEvent) => void; onStart: () => void;
 }) {
   const open = p.counts.ideas + p.counts.tasks;
   return (
@@ -91,6 +92,9 @@ export function IdeaProjectRow({ project: p, onPress, onLongPress }: {
       <Text numberOfLines={1} style={s.ideaName}>{p.name}</Text>
       {open ? <Text style={s.ideaCount}>{open}</Text> : null}
       <Text style={T.meta}>{ago(p.lastActiveAt)}</Text>
+      <Press onPress={onStart} haptic hitSlop={6} style={s.start} accessibilityRole="button" accessibilityLabel={`Start a job in ${p.name}`}>
+        <JobIcon size={14} color={C.textSoft} />
+      </Press>
     </Press>
   );
 }
@@ -121,6 +125,7 @@ const s = StyleSheet.create({
   folders: { flexShrink: 1, fontFamily: F.medium, fontSize: 12, lineHeight: 16, color: 'rgba(161,166,174,0.75)' },
 
   idea: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 48, paddingVertical: 6 },
+  start: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.07)' },
   ideaMark: { width: 8, height: 8, marginHorizontal: 8, borderRadius: 4, borderWidth: 1.5, borderColor: 'rgba(161,166,174,0.5)' },
   ideaName: { flex: 1, fontFamily: F.medium, fontSize: 15, lineHeight: 20, color: C.textSoft },
   ideaCount: {

@@ -1,6 +1,6 @@
 import { API, ApiError, currentToken } from '@/lib/api';
 import type {
-  EngineHealth, FolderSuggestion, Idea, JobDiff, JobEvent, JobFull, NewJob, OrcaAgent, OrcaLaunch, OrcaRead, OrcaState, ProjectCard,
+  EngineHealth, FolderSuggestion, Idea, JobDiff, JobEvent, JobFull, NewJob, OrcaAgent, OrcaControl, OrcaLaunch, OrcaRead, OrcaState, ProjectCard,
   ProjectHome, Task, WorkHome,
 } from './types';
 
@@ -57,8 +57,11 @@ export const workApi = {
     must(call<Task>('/tasks', { method: 'POST', body: b, key })),
   patchIdea: (id: string, b: Partial<Pick<Idea, 'title' | 'body' | 'project' | 'status'>>, key: string) =>
     must(call<{ idea: Idea }>(`/ideas/${id}`, { method: 'PATCH', body: b, key })),
-  patchTask: (id: string, b: Partial<Pick<Task, 'title' | 'project' | 'status' | 'due'>>, key: string) =>
+  patchTask: (id: string, b: Partial<Pick<Task, 'title' | 'project' | 'status' | 'due' | 'notes'>>, key: string) =>
     must(call<Task>(`/tasks/${id}`, { method: 'PATCH', body: b, key })),
+  /** An idea becomes a task (title and detail carried over); answers both. */
+  ideaToTask: (id: string, b: { project?: string | null; due?: string | null }, key: string) =>
+    must(call<{ idea: Idea; task: Task }>(`/ideas/${id}/task`, { method: 'POST', body: b, key })),
 
   startJob: (b: NewJob, key: string) => must(call<{ job: JobFull }>('/jobs', { method: 'POST', body: b, key })),
   job: (id: string, tail = 200) => must(call<{ job: JobFull; events: JobEvent[]; more: boolean }>(`/jobs/${id}?tail=${tail}`)),
@@ -85,4 +88,8 @@ export const workApi = {
   orcaPrompt: (id: string, text: string, key: string, force = false) =>
     must(call<{ ok: boolean }>(`/orca/agents/${encodeURIComponent(id)}/prompt`, { method: 'POST', body: force ? { text, force: true } : { text }, key })),
   orcaLaunch: (b: OrcaLaunch, key: string) => must(call<{ agent: OrcaAgent | null }>('/orca/launch', { method: 'POST', body: b, key })),
+  /** What a terminal agent's screen shows now, as plain text: what a permission prompt asks, before he answers it. */
+  orcaScreen: (id: string) => must(call<{ text: string; state: string }>(`/orca/agents/${encodeURIComponent(id)}/screen`)),
+  orcaControl: (id: string, what: OrcaControl) =>
+    must(call<{ ok: boolean }>(`/orca/agents/${encodeURIComponent(id)}/${what}`, { method: 'POST', body: {} })),
 };

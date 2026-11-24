@@ -1,4 +1,5 @@
 import { useEffect, useSyncExternalStore } from 'react';
+import type { Idea, Task } from './types';
 
 // How the fan, the hub pages and the capture sheets talk without importing each other.
 // Anyone calls openSheet(); the one <WorkSheets /> host (src/work/sheets) shows it.
@@ -7,7 +8,9 @@ import { useEffect, useSyncExternalStore } from 'react';
 export type SheetRequest =
   | { kind: 'idea' | 'task' | 'job'; project: string | null; seq: number; text?: string; idea?: string | null; tasks?: string[] }
   | { kind: 'project'; seq: number; name?: string }
-  | { kind: 'projectSettings'; project: string; seq: number };
+  | { kind: 'projectSettings'; project: string; seq: number }
+  | { kind: 'editIdea'; idea: Idea; seq: number }
+  | { kind: 'editTask'; task: Task; seq: number };
 
 let current: SheetRequest | null = null;
 let n = 0;
@@ -17,7 +20,9 @@ const subscribe = (f: () => void) => { subs.add(f); return () => { subs.delete(f
 type Open =
   | { kind: 'idea' | 'task' | 'job'; project: string | null; text?: string; idea?: string | null; tasks?: string[] }
   | { kind: 'project'; name?: string }
-  | { kind: 'projectSettings'; project: string };
+  | { kind: 'projectSettings'; project: string }
+  | { kind: 'editIdea'; idea: Idea }
+  | { kind: 'editTask'; task: Task };
 
 export function openSheet(r: Open) {
   current = { ...r, seq: ++n } as SheetRequest;

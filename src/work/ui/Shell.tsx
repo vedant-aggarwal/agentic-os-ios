@@ -17,24 +17,27 @@ import { QUICK_H, QuickBar, type QuickAction } from './QuickBar';
 const BTN = 44;
 const BTN_GAP = 8;
 
-/** Space the floating chrome takes, for a list's padding: content starts under the back button and ends above the bar. */
-export function useShellInsets() {
+/** Space the floating chrome takes, for a list's padding: content starts under the top buttons (just under the
+ *  status bar when there are none) and ends above the bar. */
+export function useShellInsets(topBar = true) {
   const insets = useSafeAreaInsets();
   const lift = Math.max(insets.bottom, 12) + 12; // the dock's lift, so the bar sits where the dock did
-  return { top: insets.top + BTN_GAP + BTN + 16, bottom: lift + QUICK_H + 32, lift, safeTop: insets.top };
+  return { top: insets.top + (topBar ? BTN_GAP + BTN + 16 : 16), bottom: lift + QUICK_H + 32, lift, safeTop: insets.top };
 }
 
 /**
- * A full hub page: the app background, the list (passed in), a floating back button with an optional right
- * button, the quick bar, edge blurs where content runs under the chrome, and the hub's notice line.
+ * A full hub page: the app background (and a design's ambient layer), the list (passed in), the quick bar with Back
+ * at its left (a top-left Back on a page without the bar), an optional top-right button, edge blurs where content
+ * runs under the chrome, and the hub's notice line.
  * Back is the chevron or a swipe from the left edge. On iOS that swipe is the native stack's own, which tracks
  * the finger and shows the page underneath; elsewhere (web preview, Android) the page follows the finger here.
  */
-export function Shell({ children, right, actions, overlay }: {
+export function Shell({ children, right, actions, overlay, ambient }: {
   children: React.ReactNode;
   right?: { label: string; icon: React.ReactNode; onPress: () => void };
   actions?: QuickAction[];
   overlay?: React.ReactNode;
+  ambient?: React.ReactNode;
 }) {
   const { lift, safeTop } = useShellInsets();
   const notice = useWorkNotice();
@@ -42,14 +45,17 @@ export function Shell({ children, right, actions, overlay }: {
   return (
     <View style={s.screen}>
       <Backdrop />
+      {ambient}
       <EdgeBack>{desktop ? <View style={s.column}>{children}</View> : children}</EdgeBack>
-      <EdgeBlur edge="top" height={safeTop + BTN_GAP + BTN + 24} strength={30} curve={2} />
+      <EdgeBlur edge="top" height={safeTop + (right || !actions ? BTN_GAP + BTN + 24 : 20)} strength={30} curve={2} />
       <EdgeBlur height={lift + QUICK_H + 48} strength={35} curve={2.6} />
-      <View pointerEvents="box-none" style={[s.top, { top: safeTop + BTN_GAP }]}>
-        <RoundButton label="Back" onPress={goBack}><BackIcon /></RoundButton>
-        {right ? <RoundButton label={right.label} onPress={right.onPress}>{right.icon}</RoundButton> : null}
-      </View>
-      {actions ? <QuickBar bottom={lift} actions={actions} /> : null}
+      {right || !actions ? (
+        <View pointerEvents="box-none" style={[s.top, { top: safeTop + BTN_GAP }]}>
+          {actions ? <View /> : <RoundButton label="Back" onPress={goBack}><BackIcon /></RoundButton>}
+          {right ? <RoundButton label={right.label} onPress={right.onPress}>{right.icon}</RoundButton> : null}
+        </View>
+      ) : null}
+      {actions ? <QuickBar bottom={lift} actions={actions} onBack={goBack} /> : null}
       <Notice text={notice} bottom={lift + QUICK_H + 16} onClear={work.clearNotice} />
       {overlay}
     </View>

@@ -416,8 +416,8 @@ export const work = {
     ).then((r) => { scheduleRefetch(patch.project ?? from?.project ?? null); return r; });
   },
 
-  /** Edits a task (tick with status 'done', rename, due, or move with `project`). */
-  patchTask(id: string, patch: Partial<Pick<Task, 'title' | 'project' | 'status' | 'due'>>) {
+  /** Edits a task (tick with status 'done', rename, notes, due, or move with `project`). */
+  patchTask(id: string, patch: Partial<Pick<Task, 'title' | 'project' | 'status' | 'due' | 'notes'>>) {
     const snap = state;
     const from = findItem<Task>(id, 'tasks');
     return write(
@@ -425,6 +425,20 @@ export const work = {
       () => moveItem<Task>(id, 'tasks', patch, from?.project ?? null),
       () => { state = snap; emit(); },
     ).then((r) => { scheduleRefetch(patch.project ?? from?.project ?? null); return r; });
+  },
+
+  /** Turns an idea into a task on the PC; true when it worked (a failure shows as the notice). */
+  async ideaToTask(id: string) {
+    if (DEMO) { set((s) => ({ ...s, notice: 'Demo: ideas become tasks on the real PC.' })); return false; }
+    const from = findItem<Idea>(id, 'ideas');
+    try {
+      await workApi.ideaToTask(id, {}, newKey());
+      scheduleRefetch(from?.project ?? null);
+      return true;
+    } catch (e) {
+      set((s) => ({ ...s, notice: (e as Error).message }));
+      return false;
+    }
   },
 
   /** Moves a project between Active and Ideas (an idea project is 'paused' on the PC). */

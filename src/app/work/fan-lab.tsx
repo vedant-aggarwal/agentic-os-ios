@@ -29,6 +29,8 @@ export default function FanLab() {
   const asked = !sheet ? null
     : sheet.kind === 'project' ? 'Sheet: new project'
     : sheet.kind === 'projectSettings' ? `Sheet: settings for ${sheet.project}`
+    : sheet.kind === 'editIdea' ? `Sheet: idea ${sheet.idea.id}`
+    : sheet.kind === 'editTask' ? `Sheet: task ${sheet.task.id}`
     : `Sheet: new ${sheet.kind}${sheet.project ? ` in ${sheet.project}` : ''}`;
   return (
     <View style={s.screen}>

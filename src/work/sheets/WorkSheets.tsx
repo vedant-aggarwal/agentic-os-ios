@@ -1,6 +1,8 @@
 import { StyleSheet, View } from 'react-native';
 import { type SheetRequest, useSheetRequest } from '../bus';
 import { useVoiceHost, VoiceContext } from '../voice';
+import { EditIdeaSheet } from './EditIdeaSheet';
+import { EditTaskSheet } from './EditTaskSheet';
 import { IdeaSheet } from './IdeaSheet';
 import { JobSheet } from './JobSheet';
 import { NewProjectSheet, ProjectSettingsSheet } from './ProjectSheet';
@@ -37,5 +39,7 @@ function SheetFor({ req }: { req: SheetRequest }) {
     }
     case 'project': return <NewProjectSheet name={req.name} />;
     case 'projectSettings': return <ProjectSettingsSheet project={req.project} />;
+    case 'editIdea': return <EditIdeaSheet idea={req.idea} />;
+    case 'editTask': return <EditTaskSheet task={req.task} />;
   }
 }

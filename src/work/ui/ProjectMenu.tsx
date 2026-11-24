@@ -4,7 +4,7 @@ import Animated, { FadeIn, FadeOut, useAnimatedStyle, useReducedMotion, useShare
 import { Glass } from '@/components/Glass';
 import { C } from '@/theme';
 import type { ProjectCard } from '../types';
-import { IdeaIcon, PinIcon, SettingsIcon } from './icons';
+import { IdeaIcon, JobIcon, PinIcon, SettingsIcon } from './icons';
 import { Press } from './Press';
 import { EASE, GUTTER, T } from './tokens';
 
@@ -12,14 +12,14 @@ export type MenuAt = { project: ProjectCard; y: number };
 
 const W = 232;
 const ITEM = 48;
-const H = ITEM * 3 + 40; // three items, the name line, the inset
+const H = ITEM * 4 + 40; // four items, the name line, the inset
 
 /**
- * What a held project offers: pin or unpin, move between Active and Ideas, and its settings. It grows out of the
+ * What a held project offers: start a job in it, pin or unpin, move between Active and Ideas, and its settings. It grows out of the
  * finger's spot, below it, or above when the finger is low; the page dims behind it and a tap anywhere else closes it.
  */
-export function ProjectMenu({ at, top, bottom, onPin, onMove, onSettings, onClose }: {
-  at: MenuAt; top: number; bottom: number; onPin: () => void; onMove: () => void; onSettings: () => void; onClose: () => void;
+export function ProjectMenu({ at, top, bottom, onStart, onPin, onMove, onSettings, onClose }: {
+  at: MenuAt; top: number; bottom: number; onStart: () => void; onPin: () => void; onMove: () => void; onSettings: () => void; onClose: () => void;
 }) {
   const { height } = useWindowDimensions();
   const reduce = useReducedMotion();
@@ -38,6 +38,7 @@ export function ProjectMenu({ at, top, bottom, onPin, onMove, onSettings, onClos
       <Animated.View accessibilityViewIsModal style={[s.menu, { top: y, transformOrigin: below ? 'top left' : 'bottom left' }, grow]}>
         <Glass radius={20} />
         <Text numberOfLines={1} style={[T.meta, s.name]}>{at.project.name}</Text>
+        <Item label="Start a job" icon={<JobIcon size={16} />} onPress={onStart} />
         <Item label={pinned ? 'Unpin' : 'Pin to top'} icon={<PinIcon size={16} color={C.text} />} onPress={onPin} />
         <Item label={at.project.status === 'paused' ? 'Move to Active' : 'Move to Ideas'} icon={<IdeaIcon size={17} color={C.text} />} onPress={onMove} />
         <Item label="Settings" icon={<SettingsIcon />} onPress={onSettings} />

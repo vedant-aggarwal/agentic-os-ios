@@ -5,7 +5,7 @@ import { SignIn } from '@/components/SignIn';
 import { openSheet } from '@/work/bus';
 import { useOrca, useProjectHome, work } from '@/work/store';
 import { HubList, type Item, type ListHandlers, type Sec } from '@/work/ui/HubList';
-import { IdeaIcon, JobIcon, MicIcon, SettingsIcon, TaskIcon } from '@/work/ui/icons';
+import { IdeaIcon, JobIcon, SettingsIcon, TaskIcon } from '@/work/ui/icons';
 import { useAnswered } from '@/work/ui/NeedCard';
 import { orcaLive, orcaWaiting } from '@/work/ui/orca';
 import { ProjectHeader } from '@/work/ui/ProjectHeader';
@@ -41,8 +41,6 @@ export default function ProjectHome() {
   const handlers = useMemo<ListHandlers>(() => ({ onHide: hide, onUndo: unhide, onSent: () => { reload(); } }), [hide, unhide, reload]);
 
   const quick = useMemo<QuickAction[]>(() => [
-    // Push to talk recording is the capture sheets' job; until it lands, the mic opens the idea sheet.
-    { key: 'record', label: 'Record', a11y: 'Record an idea', iconOnly: true, icon: <MicIcon />, onPress: () => openSheet({ kind: 'idea', project: slug }) },
     { key: 'idea', label: 'Idea', a11y: 'New idea', icon: <IdeaIcon />, onPress: () => openSheet({ kind: 'idea', project: slug }) },
     { key: 'task', label: 'Task', a11y: 'New task', icon: <TaskIcon />, onPress: () => openSheet({ kind: 'task', project: slug }) },
     { key: 'job', label: 'Job', a11y: 'New job', icon: <JobIcon />, onPress: () => openSheet({ kind: 'job', project: slug }) },

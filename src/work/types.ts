@@ -160,4 +160,6 @@ export type OrcaUsage = { claude: ProviderUsage | null; codex: ProviderUsage | n
 export type OrcaState = { up: boolean; error: string | null; agents: OrcaAgent[]; usage: OrcaUsage | null; at: string };
 export type OrcaEntry = { kind: 'message' | 'tool'; role: 'user' | 'assistant' | null; text: string | null; name: string | null; state: string | null };
 export type OrcaRead = { agent: OrcaAgent; entries: OrcaEntry[]; state: string; limited: boolean };
+/** stop: end its turn. allow / deny: answer its permission prompt. show: bring it up in Orca on the PC. end: close its tab. */
+export type OrcaControl = 'stop' | 'allow' | 'deny' | 'show' | 'end';
 export type OrcaLaunch = { agent?: 'claude' | 'codex'; folder: string; prompt: string; model?: string | null; effort?: string | null };

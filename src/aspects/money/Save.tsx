@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useGet } from '@/lib/mod';
 import {
-  Bar, Button, Chip, Empty, Field, haptic, Icon, IconButton, Row, rupees, Screen, Sheet, shortDay, SP, t, today, useAspect,
+  Bar, Button, Chip, Empty, Field, haptic, Icon, IconButton, myDay, Row, rupees, Screen, Sheet, shortDay, SP, t, undoable, useAspect,
 } from '@/aspects/kit';
 import { act, amountOf, useAccounts, useFunds, useTx } from './data';
 import type { Account, Home, Jar } from './types';
@@ -64,7 +64,7 @@ export function SaveScreen({ open, onClose, home, onNewJar }: { open: boolean; o
   const goalTitle = (id: string | null) => (id ? goals.data?.goals.find((g) => g.id === id)?.title ?? null : null);
   const putIn = async (j: Jar, amount: number) => {
     const r = await act(tx.put({ kind: 'move', amount, fund: j.id, merchant: j.name, at: new Date().toISOString(), source: 'app' }), a.notice);
-    if (r) { haptic.success(); a.notice(`Put ${rupees(amount)} in ${j.name}`); }
+    if (r) { haptic.success(); undoable(`Put ${rupees(amount)} in ${j.name}`, () => void act(tx.remove(r.id), a.notice, "Couldn't undo that")); }
   };
   return (
     <Screen open={open} onClose={onClose} title="Save">
@@ -155,7 +155,7 @@ export function JarSheet({ open, jar, onClose }: { open: boolean; jar: Jar | nul
   const a = useAspect();
   const funds = useFunds();
   const goals = useGet<{ goals: Goal[] }>(open ? '/goals' : null).data?.goals ?? null;
-  const ym = today().slice(0, 7);
+  const ym = myDay().slice(0, 7);
   const [was, setWas] = useState(false);
   const [name, setName] = useState('');
   const [target, setTarget] = useState('');
@@ -189,8 +189,10 @@ export function JarSheet({ open, jar, onClose }: { open: boolean; jar: Jar | nul
   };
   const remove = async () => {
     if (!jar) return;
+    const before = funds.items?.find((f) => f.id === jar.id) ?? null;
     onClose();
-    await act(funds.remove(jar.id), a.notice, "Couldn't remove that");
+    const r = await act(funds.remove(jar.id).then(() => true), a.notice, "Couldn't remove that");
+    if (r && before) undoable(`Removed the jar ${jar.name}`, () => void act(funds.put(before), a.notice, "Couldn't undo that"));
   };
   return (
     <Sheet open={open} onClose={onClose} title={jar ? jar.name : 'New jar'}>
@@ -242,8 +244,10 @@ function AccountSheet({ item, onClose }: { item: Account | 'new' | null; onClose
   };
   const remove = async () => {
     if (!x || x === 'new') return;
+    const before = accounts.items?.find((d) => d.id === x.id) ?? null;
     onClose();
-    await act(accounts.remove(x.id), a.notice, "Couldn't remove that");
+    const r = await act(accounts.remove(x.id).then(() => true), a.notice, "Couldn't remove that");
+    if (r && before) undoable(`Removed ${x.name}`, () => void act(accounts.put(before), a.notice, "Couldn't undo that"));
   };
   return (
     <Sheet open={!!item} onClose={onClose} title={isNew ? 'Add a balance' : x ? x.name : ''}>

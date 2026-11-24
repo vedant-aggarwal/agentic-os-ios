@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState, type ComponentRef } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { C, F } from '@/theme';
 import { Chip, haptic, Icon, IconButton, Press, R, rupees, SP, SURF, t, useAspect } from '@/aspects/kit';
@@ -18,14 +18,22 @@ export function LogLine({ home, autoFocus = false }: { home: Home; autoFocus?: b
   const [busy, setBusy] = useState(false);
   const [last, setLast] = useState<TxDoc | null>(null);
   const [picking, setPicking] = useState(false);
+  const input = useRef<ComponentRef<typeof TextInput>>(null);
   const cats = home.spend.cats;
   const catName = (id?: string | null) => (id === 'bills' ? 'Bills' : cats.find((c) => c.id === id)?.name ?? 'Other');
 
-  const send = async (p: ReturnType<typeof logLine>) => {
+  // after a refusal the words stay, selected, so the next thing he types replaces them instead of joining them
+  const selectAll = () => {
+    const el = input.current as (ComponentRef<typeof TextInput> & { setSelectionRange?: (from: number, to: number) => void }) | null;
+    if (!el || !text) return;
+    el.focus();
+    if (typeof el.setSelection === 'function') el.setSelection(0, text.length); else el.setSelectionRange?.(0, text.length);
+  };
+  const send = async (p: ReturnType<typeof logLine>, typed = false) => {
     setBusy(true);
     const r = await act(p, a.notice, "Couldn't log that");
     setBusy(false);
-    if (!r) return;
+    if (!r) { if (typed) selectAll(); return; }
     haptic.medium();
     setText('');
     setLast(r.item);
@@ -33,8 +41,8 @@ export function LogLine({ home, autoFocus = false }: { home: Home; autoFocus?: b
   const submit = () => {
     const v = text.trim();
     if (!v || busy) return;
-    if (!/\d/.test(v)) { a.notice('Start with the amount, like 20 for chai'); return; }
-    void send(logLine(v));
+    if (!/\d/.test(v)) { a.notice('Start with the amount, like 20 for chai'); selectAll(); return; }
+    void send(logLine(v), true);
   };
   const fix = async (category: string) => {
     if (!last) return;
@@ -52,7 +60,7 @@ export function LogLine({ home, autoFocus = false }: { home: Home; autoFocus?: b
   return (
     <View style={s.wrap}>
       <View style={s.field}>
-        <TextInput accessibilityLabel="Log a spend in one line" value={text} onChangeText={setText} placeholder="20 for chai"
+        <TextInput ref={input} accessibilityLabel="Log a spend in one line" value={text} onChangeText={setText} placeholder="20 for chai"
           placeholderTextColor={C.faint} selectionColor={a.color} keyboardAppearance="dark" returnKeyType="done" autoFocus={autoFocus}
           onSubmitEditing={submit} blurOnSubmit={false} maxLength={120} style={s.input} />
         <IconButton label="Log it" size={36} onPress={submit} disabled={!text.trim() || busy}>

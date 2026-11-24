@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import {
-  Button, Chip, dayLabel, Empty, Field, haptic, Icon, Press, Row, rupees, Screen, Segmented, Sheet, shortDay, SP, Stepper, t, today, useAspect,
+  Button, Chip, dayLabel, Empty, Field, haptic, Icon, MonthDayPicker, myDay, Press, Row, rupees, Screen, Segmented, Sheet, shortDay, SP, t, undoable, useAspect,
 } from '@/aspects/kit';
-import { act, amountOf, decideLeak, useBills, useTx, type BillDoc } from './data';
+import { collection, type Doc } from '@/lib/mod';
+import { act, amountOf, decideLeak, useBills, useTx, type BillDoc, type TxDoc } from './data';
 import { LogLine } from './log';
 import type { Bill, Home, Leak, Spent } from './types';
 import { AmountInput, CategorySheet, ChipRow, Group, Head, s as ui } from './ui';
@@ -134,12 +135,23 @@ function groupByDay(rows: Spent[]) {
 /** One thing the PC noticed. It asks one question. */
 function LeakRow({ leak }: { leak: Leak }) {
   const a = useAspect();
+  const bills = useBills();
   const [busy, setBusy] = useState(false);
   const decide = async (keep: boolean) => {
+    // what Undo puts back: the bill as it was before a cut (the PC marks it cancelled)
+    const billBefore = leak.ref ? bills.items?.find((b) => b.id === leak.ref) ?? null : null;
     setBusy(true);
-    const r = await act(decideLeak(leak.id, keep), a.notice);
+    const r = (await act(decideLeak(leak.id, keep), a.notice)) as { leak: Doc; bill: Doc | null } | null;
     setBusy(false);
-    if (r) { haptic.medium(); a.notice(keep ? `Kept ${leak.title}` : `${leak.title}: marked to cut`); }
+    if (!r) return;
+    haptic.medium();
+    undoable(leak.kind === 'over' ? `Noted: ${leak.title}` : keep ? `Kept ${leak.title}` : `${leak.title}: marked to cut`, async () => {
+      const steps: Promise<unknown>[] = [collection<Doc & { state?: string; decided?: string | null }>('money', 'leaks').put({ ...r.leak, state: 'open', decided: null })];
+      // a cut bill comes back as it was; a bill made by keeping a found charge goes again
+      if (billBefore && leak.id.startsWith('sub:')) steps.push(bills.put(billBefore));
+      else if (r.bill && leak.id.startsWith('charge:')) steps.push(bills.remove(r.bill.id));
+      await act(Promise.all(steps), a.notice, "Couldn't undo that");
+    });
   };
   const info = leak.kind === 'over';
   return (
@@ -169,31 +181,38 @@ function BillSheet({ bill, onClose }: { bill: Bill | null; onClose: () => void }
   const bills = useBills();
   const [shown, setShown] = useState<Bill | null>(bill);
   const [amount, setAmount] = useState('');
-  const [day, setDay] = useState(1);
+  const [day, setDay] = useState<number | null>(null);
   if (bill && bill !== shown) { setShown(bill); setAmount(String(bill.amount)); setDay(bill.day); }
   const b = bill ?? shown;
   const n = amountOf(amount);
+  const doc = () => (b ? bills.items?.find((x) => x.id === b.id) ?? null : null);
   const save = async () => {
-    if (!b || !n) return;
+    if (!b || !n || !day) return;
     onClose();
-    await act(bills.patch(b.id, { amount: n, day }), a.notice);
+    // a yearly bill's next charge moves with its day, in the same month
+    const next = b.every === 'year' && day !== b.day ? nextYearly(myDay(), Number((doc()?.next ?? b.next).slice(5, 7)), day) : undefined;
+    await act(bills.patch(b.id, { amount: n, day, ...(next ? { next } : {}) }), a.notice);
   };
   const cancel = async () => {
+    const before = doc();
     if (!b) return;
     onClose();
     const r = await act(bills.patch(b.id, { state: 'cancelled', cancelled_at: new Date().toISOString(), leak: false }), a.notice);
-    if (r) a.notice(`${b.name} marked cancelled`);
+    if (r && before) undoable(`${b.name} marked cancelled`, () => void act(bills.put(before), a.notice, "Couldn't undo that"));
   };
   const remove = async () => {
+    const before = doc();
     if (!b) return;
     onClose();
-    await act(bills.remove(b.id), a.notice, "Couldn't remove that");
+    const r = await act(bills.remove(b.id).then(() => true), a.notice, "Couldn't remove that");
+    if (r && before) undoable(`Removed ${b.name}`, () => void act(bills.put(before), a.notice, "Couldn't undo that"));
   };
   return (
     <Sheet open={!!bill} onClose={onClose} title={b?.name ?? ''}>
       <AmountInput value={amount} onChange={setAmount} label={`Amount ${b?.every === 'year' ? 'a year' : 'a month'}`} autoFocus={false} />
-      <Stepper label="Day it is charged" value={day} onChange={setDay} min={1} max={31} format={(v) => `Charged on the ${ordinal(v)}`} />
-      <Button label="Save" onPress={() => void save()} disabled={!n} />
+      <Text style={t.label}>{day ? `Charged on the ${ordinal(day)}` : 'Day it is charged'}</Text>
+      <MonthDayPicker value={day} onChange={setDay} />
+      <Button label="Save" onPress={() => void save()} disabled={!n || !day} />
       <Text style={t.small}>Cancelled it with the company? Mark it here so the monthly total stays true. This page never cancels anything for you.</Text>
       <Button label="Mark cancelled" kind="soft" onPress={() => void cancel()} />
       <Button label="Remove, it was a mistake" kind="quiet" onPress={() => void remove()} />
@@ -203,21 +222,21 @@ function BillSheet({ bill, onClose }: { bill: Bill | null; onClose: () => void }
 const ordinal = (n: number) => `${n}${n % 10 === 1 && n !== 11 ? 'st' : n % 10 === 2 && n !== 12 ? 'nd' : n % 10 === 3 && n !== 13 ? 'rd' : 'th'}`;
 
 /** Add a subscription or bill: a name (common ones are chips), the amount, monthly or yearly, the day. */
-function AddBillSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function AddBillSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const a = useAspect();
   const bills = useBills();
-  const now = today();
+  const now = myDay();
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
   const [every, setEvery] = useState<'month' | 'year'>('month');
-  const [day, setDay] = useState(Number(now.slice(8, 10)));
+  const [day, setDay] = useState<number | null>(null);
   const [mon, setMon] = useState(Number(now.slice(5, 7)));
   const n = amountOf(amount);
-  const reset = () => { setName(''); setAmount(''); setEvery('month'); setDay(Number(now.slice(8, 10))); };
+  const reset = () => { setName(''); setAmount(''); setEvery('month'); setDay(null); };
   const close = () => { onClose(); reset(); };
   const save = async (again: boolean) => {
     const nm = name.trim();
-    if (!nm || !n) return;
+    if (!nm || !n || !day) return;
     const doc: Omit<BillDoc, 'id' | 'created_at' | 'updated_at' | 'deleted_at'> = { name: nm.slice(0, 60), amount: n, every, day, state: 'active', next: every === 'year' ? nextYearly(now, mon, day) : null };
     if (again) reset(); else close();
     const r = await act(bills.put(doc), a.notice);
@@ -235,9 +254,10 @@ function AddBillSheet({ open, onClose }: { open: boolean; onClose: () => void })
       {every === 'year' ? (
         <ChipRow>{MON.map((m, i) => <Chip key={m} label={m} selected={mon === i + 1} onPress={() => setMon(i + 1)} />)}</ChipRow>
       ) : null}
-      <Stepper label="Day it is charged" value={day} onChange={setDay} min={1} max={31} format={(v) => `On the ${ordinal(v)}`} />
-      <Button label="Save" onPress={() => void save(false)} disabled={!name.trim() || !n} />
-      <Button label="Save and add another" kind="quiet" onPress={() => void save(true)} disabled={!name.trim() || !n} />
+      <Text style={t.label}>{day ? `Charged on the ${ordinal(day)}` : 'Day it is charged'}</Text>
+      <MonthDayPicker value={day} onChange={setDay} />
+      <Button label="Save" onPress={() => void save(false)} disabled={!name.trim() || !n || !day} />
+      <Button label="Save and add another" kind="quiet" onPress={() => void save(true)} disabled={!name.trim() || !n || !day} />
     </Sheet>
   );
 }
@@ -264,8 +284,10 @@ function SpendSheet({ item, onClose, home }: { item: Spent | null; onClose: () =
   };
   const remove = async () => {
     if (!x) return;
+    const before = tx.items?.find((d) => d.id === x.id) ?? null;
     onClose();
-    await act(tx.remove(x.id), a.notice, "Couldn't remove that");
+    const r = await act(tx.remove(x.id).then(() => true), a.notice, "Couldn't remove that");
+    if (r && before) undoable(`Removed ${rupees(x.amount)}, ${x.merchant}`, () => void act(tx.put(before as TxDoc), a.notice, "Couldn't undo that"));
   };
   return (
     <>

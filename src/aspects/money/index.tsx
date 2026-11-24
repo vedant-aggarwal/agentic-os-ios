@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { Button, Failed, Icon, Page, R, Row, rupees, shortDay, Skeleton, SP, t, useAspect, useEntry } from '@/aspects/kit';
+import { Button, dayLabel, Failed, Icon, myDay, Page, R, Row, rupees, shortDay, Skeleton, SP, t, useAspect, useEntry, useOnReturn } from '@/aspects/kit';
 import { useHome } from './data';
 import { EarnLead, EarnScreen, MoneyInSheet, OwedRow, TargetSheet } from './Earn';
 import { LogLine } from './log';
 import { JarMini, JarSheet, netNote, SaveScreen } from './Save';
-import { SpendScreen, todayLine } from './Spend';
+import { AddBillSheet, SpendScreen, todayLine } from './Spend';
 import { StatementScreen } from './Statement';
 import type { Home } from './types';
 import { Band, Group, Line } from './ui';
@@ -25,16 +25,21 @@ export default function Money() {
   const [moneyIn, setMoneyIn] = useState(false);
   const [target, setTarget] = useState(false);
   const [newJar, setNewJar] = useState(false);
+  const [addBill, setAddBill] = useState(false);
   const { refresh } = home;
-  // fresh figures each time the page opens (it stays mounted while closed)
-  useEffect(() => { if (a.open) void refresh(); }, [a.open]); // eslint-disable-line react-hooks/exhaustive-deps
+  // fresh figures each time the page opens again (it stays mounted while closed) and when the app comes back
+  useOnReturn(() => void refresh());
+  // figures from a day before his day ("Today" would be yesterday's): fetch again. Before 4 AM his day is still
+  // yesterday while the PC's date has moved on, so only an older date counts as stale (no refetch loop)
+  const date = home.data?.date;
+  useEffect(() => { if (a.open && date && date < myDay()) void refresh(); }, [a.open, date]); // eslint-disable-line react-hooks/exhaustive-deps
   // money/<part>: earn, spend (money/flow, the weekly and repeat charge pushes), save (also money/jars),
   // statement[/<id>] (an import to review).
   useEntry((e) => {
     const [p, id] = e.parts;
     setPart(p === 'earn' ? 'earn' : p === 'spend' || p === 'flow' ? 'spend' : p === 'save' || p === 'jars' ? 'save' : null);
     setStatement(p === 'statement' ? { id: id ?? null } : null);
-    setMoneyIn(false); setTarget(false); setNewJar(false);
+    setMoneyIn(false); setTarget(false); setNewJar(false); setAddBill(false);
   });
   const closePart = useCallback(() => setPart(null), []);
   const closeStatement = useCallback(() => setStatement(null), []);
@@ -59,9 +64,10 @@ export default function Money() {
           <MoneyInSheet open={moneyIn} onClose={() => setMoneyIn(false)} home={d} />
           <TargetSheet open={target} onClose={() => setTarget(false)} home={d} />
           <JarSheet open={newJar} jar={null} onClose={() => setNewJar(false)} />
+          <AddBillSheet open={addBill} onClose={() => setAddBill(false)} />
         </>
       }>
-      {home.error ? <Text style={t.small}>Showing what loaded last. {home.error}</Text> : null}
+      {home.error ? <Text style={t.small}>{loadedFrom(d.date)} {home.error}</Text> : null}
       <Band title="Earn" onOpen={() => setPart('earn')}>
         <EarnLead home={d} onMoneyIn={() => setMoneyIn(true)} onTarget={() => setTarget(true)} />
         {d.earn.pending && d.earn.pending.items.length ? (
@@ -80,6 +86,13 @@ export default function Money() {
         <Group>
           <Line label="Today" value={rupees(d.spend.today.spent)} sub={todayLine(d)} />
           <Line label={d.month.name} value={rupees(d.spend.month.spent)} sub={monthSub(d)} />
+          {d.spend.recurring.count ? (
+            <Line label="Subscriptions" value={rupees(d.spend.recurring.monthly)} sub={subsSub(d)} onPress={() => setPart('spend')}
+              a11y={`Subscriptions, ${rupees(d.spend.recurring.monthly)} a month. ${subsSub(d).replace('\n', ' ')}`} />
+          ) : (
+            <Row title="Add your AI tools" sub="And other subscriptions, so you see what they cost each month" left={<Icon name="plus" size={18} color={a.color} />}
+              onPress={() => setAddBill(true)} chevron />
+          )}
         </Group>
         {d.spend.imports.review.length ? (
           <Group>
@@ -118,6 +131,22 @@ function monthSub(d: Home) {
   if (!parts.length) return d.spend.month.count === 0 ? 'Nothing logged yet' : null;
   const out = parts.join(', ');
   return out.charAt(0).toUpperCase() + out.slice(1);
+}
+
+/** "A month, AI tools ₹1,000" and, under it, the next charge: "Next: Claude ₹1,000 on 3 Dec". */
+function subsSub(d: Home) {
+  const rec = d.spend.recurring, from = myDay();
+  const head = rec.ai <= 0 ? 'A month. No AI tools added yet' : rec.ai >= rec.monthly ? 'A month, all AI tools' : `A month, AI tools ${rupees(rec.ai)}`;
+  const next = rec.items.filter((b) => b.next >= from).sort((x, y) => x.next.localeCompare(y.next) || y.amount - x.amount)[0];
+  if (!next) return head;
+  const when = dayLabel(next.next);
+  return `${head}\nNext: ${next.name} ${rupees(next.amount)} ${when === 'Today' || when === 'Tomorrow' ? when.toLowerCase() : `on ${shortDay(next.next)}`}`;
+}
+
+/** When the PC can't be reached: which day the figures shown are from. */
+function loadedFrom(date: string) {
+  const when = dayLabel(date);
+  return when === 'Today' ? 'Showing what loaded earlier today.' : `Showing figures from ${when === 'Yesterday' ? 'yesterday' : when}.`;
 }
 
 function HomeSkeleton() {

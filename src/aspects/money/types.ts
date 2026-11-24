@@ -15,7 +15,7 @@ export type Spent = {
 };
 export type Bill = {
   id: string; name: string; amount: number; every: 'month' | 'year' | 'week'; monthly: number; day: number;
-  next: string; ai: boolean; charged: boolean; note: string | null; found: boolean;
+  next: string; ai: boolean; charged: boolean; note: string | null; found: boolean; thisMonth?: number;
 };
 export type Ended = { id: string; name: string; amount: number; every: string; monthly: number; cancelledAt: string | null };
 export type Leak = {

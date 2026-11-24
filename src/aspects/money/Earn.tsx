@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Line as SvgLine } from 'react-native-svg';
 import { C } from '@/theme';
 import {
-  Bar, Button, Chip, dayLabel, Empty, Field, haptic, Icon, R, Row, rupees, Screen, Sheet, SP, SURF, t, tint, today, addDays, useAspect,
+  Bar, Button, Chip, dayLabel, Empty, Field, haptic, Icon, myDay, R, Row, rupees, Screen, Sheet, SP, SURF, t, tint, addDays, undoable, useAspect,
 } from '@/aspects/kit';
 import { act, amountOf, setTarget, useSources, useTx } from './data';
 import type { Home, Income, Owed } from './types';
@@ -167,8 +167,10 @@ function IncomeSheet({ item, onClose, home }: { item: Income | null; onClose: ()
   };
   const remove = async () => {
     if (!x) return;
+    const before = tx.items?.find((d) => d.id === x.id) ?? null;
     onClose();
-    await act(tx.remove(x.id), a.notice, "Couldn't remove that");
+    const r = await act(tx.remove(x.id).then(() => true), a.notice, "Couldn't remove that");
+    if (r && before) undoable(`Removed ${rupees(x.amount)} in`, () => void act(tx.put(before), a.notice, "Couldn't undo that"));
   };
   return (
     <Sheet open={!!item} onClose={onClose} title={x ? `${rupees(x.amount)} in, ${dayLabel(x.date)}` : ''}>
@@ -199,7 +201,7 @@ export function MoneyInSheet({ open, onClose, home }: { open: boolean; onClose: 
   const close = () => { onClose(); setAmount(''); setNote(''); setSrc(null); setDay('today'); setAdding(false); setNewName(''); };
   const save = async () => {
     if (!n) return;
-    const at = day === 'today' ? new Date().toISOString() : `${addDays(today(), -1)}T06:30:00.000Z`;
+    const at = day === 'today' ? new Date().toISOString() : `${addDays(myDay(), -1)}T06:30:00.000Z`;
     const custom = choices.find((c) => c.id === pick && c.custom);
     close();
     const r = await act(tx.put({ kind: 'in', amount: n, category: pick, merchant: custom ? custom.name : null, note: note.trim(), at, source: 'app' }), a.notice);

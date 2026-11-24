@@ -124,16 +124,19 @@ export function CategorySheet({ open, onClose, cats, value, onPick, title = 'Cat
 }
 
 /** Two short words and a value, side by side: "Today ... ₹120". */
-export function Line({ label, value, sub }: { label: string; value: string; sub?: string | null }) {
-  return (
-    <View style={s.lineRow}>
+export function Line({ label, value, sub, onPress, a11y }: { label: string; value: string; sub?: string | null; onPress?: () => void; a11y?: string }) {
+  const body = (
+    <>
       <View style={s.fill}>
         <Text style={t.strong}>{label}</Text>
         {sub ? <Text style={t.small}>{sub}</Text> : null}
       </View>
       <Text style={[t.lead, t.num]}>{value}</Text>
-    </View>
+      {onPress ? <Icon name="right" size={16} color={C.faint} /> : null}
+    </>
   );
+  if (!onPress) return <View style={s.lineRow}>{body}</View>;
+  return <Press label={a11y ?? `${label}, ${value}`} onPress={onPress} scale={0.99} style={s.lineRow}>{body}</Press>;
 }
 
 export const s = StyleSheet.create({

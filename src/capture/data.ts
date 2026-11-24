@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { api } from '@/lib/api';
 import { DEMO, demoData } from '@/lib/demo';
-import { fileSource, invalidate, newId, upload, useCollection, useGet, type Doc } from '@/lib/mod';
+import { collection, fileSource, invalidate, newId, upload, useCollection, useGet, type Doc } from '@/lib/mod';
 import { aspectFields, ASPECT_KEYS, ASPECT_NAME } from '@/lib/aspects';
 import { nora } from '@/lib/nora';
 import type { LifePayload } from '@/lib/today';
@@ -45,6 +45,8 @@ type Session = Doc & { kind?: string; date: string; book?: string | null; title?
 type Sit = Doc & { date: string; secs: number; source?: string };
 type Entry = Doc & { date: string; text: string };
 type Habit = Doc & { title: string; archived?: boolean };
+/** What a tap did, for the toast, with the way back when it took something off. */
+export type Said = { said: string; undo: () => Promise<unknown> };
 
 // ── the photos taken here today, kept on the device so the roll survives closing the app ────────────────────────────
 export type Shot = { id?: string; path?: string; uri?: string; state: 'sending' | 'sent' | 'failed'; error?: string; at: string;
@@ -268,7 +270,9 @@ export function useCapture() {
     } catch (e) { setGlass(null); throw e; }
   }
 
-  async function toggle(id: TickId, on: boolean) {
+  /** A plain tick, or its untick. Woke, Book and Journal log through wake(), page() and journalLine() instead, and a tap
+   *  on them never takes anything off (their toasts carry Undo). What a tap takes off comes back with an undo. */
+  async function toggle(id: TickId, on: boolean): Promise<string | Said | null> {
     switch (id) {
       case 'drink': await putCheck('wake-drink', on); return on ? 'Wake-up drink done' : 'Wake-up drink unticked';
       case 'nosugar': await putCheck('no-sugar', on); tickHabit(/sugar/i, on); return on ? 'No sugar today' : 'No sugar unticked';
@@ -276,38 +280,26 @@ export function useCapture() {
       case 'chess': case 'sudoku': case 'matiks': {
         const name = id === 'chess' ? 'Chess' : id === 'sudoku' ? 'Sudoku' : 'Matiks';
         const sid = `game-${day}-${id}`;
-        if (on) await sessions.put({ id: sid, kind: 'game', date: day, title: name, source: 'capture' } as never);
-        else await sessions.remove(sid);
-        return on ? `${name} logged` : `${name} taken off`;
+        if (on) { await sessions.put({ id: sid, kind: 'game', date: day, title: name, source: 'capture' } as never); return `${name} logged`; }
+        const was = (sessions.items ?? []).find((x) => x.id === sid);
+        await sessions.remove(sid);
+        return { said: `${name} taken off`, undo: () => sessions.put((was ?? { id: sid, kind: 'game', date: day, title: name, source: 'capture' }) as never) };
       }
       case 'meditate': {
         if (on) { await sits.put({ date: day, at: stamp(), secs: 600, mins: 10, pattern: 'even', source: 'capture' } as never); tickHabit(/meditat/i, true); return 'Meditation, 10 minutes'; }
-        const mine = (sits.items ?? []).filter((x) => x.date === day && x.source === 'capture');
+        // only the sits logged here come off; a real one from Soul stays, and so does the habit's tick
+        const all = (sits.items ?? []).filter((x) => x.date === day);
+        const mine = all.filter((x) => x.source === 'capture');
+        if (!mine.length) throw new Error('Sat in Soul. Change it there.');
         for (const x of mine) await sits.remove(x.id);
-        tickHabit(/meditat/i, false);
-        return 'Meditation taken off';
+        const none = mine.length === all.length;
+        if (none) tickHabit(/meditat/i, false);
+        return {
+          said: none ? 'Meditation taken off' : 'Meditation taken off. Your sit in Soul stays.',
+          undo: async () => { for (const x of mine) await sits.put(x as never); if (none) tickHabit(/meditat/i, true); },
+        };
       }
-      case 'wake': {
-        if (on) return null; // logging goes through wake(), with its time
-        await putCheck('wake', false);
-        return 'Wake-up taken off';
-      }
-      case 'journal': {
-        if (on) return null; // writing goes through journalLine()
-        const all = (journal.items ?? []).filter((x) => x.date === day && x.text?.trim());
-        const mine = all.filter((x) => (x as { source?: string }).source === 'capture');
-        if (!mine.length) throw new Error('Written in Growth. Change it there.');
-        for (const x of mine) await journal.remove(x.id);
-        if (mine.length === all.length) tickHabit(/journal/i, false);
-        invalidate('/mod/soul/journal');
-        return 'Journal line taken off';
-      }
-      case 'book': {
-        if (on) return null; // logging goes through page()
-        for (const x of (sessions.items ?? []).filter((x) => x.date === day && x.kind === 'reading')) await sessions.remove(x.id);
-        invalidate('/mod/mind/');
-        return 'Reading taken off';
-      }
+      case 'wake': case 'journal': case 'book': return null; // through wake(), journalLine() and page()
       case 'clean': {
         if (!on) {
           if (DEMO) { await fakeWait(300); setDemoClean({ ...demoClean, pledged: false } as CleanNow); return 'Pledge taken back'; }
@@ -355,26 +347,49 @@ export function useCapture() {
     };
   }
 
-  /** Woke at `hm` ("06:40") today. */
+  /** Woke at `hm` ("06:40") today. Resolves with the undo: back to the time it had, or to not logged. */
   async function wake(hm: string) {
+    const before = todayChecks.get('wake');
     const at = new Date(`${day}T${hm}:00+05:30`).toISOString();
     await putCheck('wake', true, { at, time: hm });
+    return () => (before?.done ? putCheck('wake', true, { at: before.at, time: before.time }) : putCheck('wake', false));
   }
 
+  /** Another line in today's journal. Resolves with the undo: that line goes, and the Journal habit's tick with it when
+   *  it was the day's only line. */
   async function journalLine(text: string) {
     const at = stamp();
-    await journal.put({ date: dayOf(at), at, text: text.trim(), kind: 'typed', by: 'me', source: 'capture' } as never);
+    const id = newId('jr');
+    const date = dayOf(at);
+    await journal.put({ id, date, at, text: text.trim(), kind: 'typed', by: 'me', source: 'capture' } as never);
     tickHabit(/journal/i, true);
     invalidate('/mod/soul/journal');
+    return async () => {
+      await journal.remove(id);
+      const left = (collection<Entry>('growth', 'journal').get() ?? []).some((x) => x.id !== id && x.date === date && x.text?.trim());
+      if (!left) tickHabit(/journal/i, false);
+      invalidate('/mod/soul/journal');
+    };
   }
 
-  async function page(n: number) {
+  /** A sitting up to page `n` of the book he is reading. Resolves with what to say and the undo: the sitting goes and
+   *  the book is back on the page it was on. */
+  async function page(n: number): Promise<Said> {
     if (!book) throw new Error('No book open. Pick one in Mind > Read.');
-    if (DEMO) { await fakeWait(400); return `${book.title}, page ${n}`; }
-    await api('/mod/mind/read/sitting', { method: 'POST', body: { book: book.id, to_page: n } });
+    const said = `${book.title}, page ${n}`;
+    if (DEMO) { await fakeWait(400); return { said, undo: () => fakeWait(200) }; }
+    const r = await api<{ session: { id: string; from_page?: number | null } }>('/mod/mind/read/sitting', { method: 'POST', body: { book: book.id, to_page: n } });
     invalidate('/mod/mind/');
     void sessions.refresh();
-    return `${book.title}, page ${n}`;
+    const b = book.id;
+    return {
+      said,
+      undo: async () => {
+        await sessions.remove(r.session.id);
+        if (r.session.from_page != null) await api('/mod/mind/read/edit', { method: 'POST', body: { book: b, page: r.session.from_page } });
+        invalidate('/mod/mind/');
+      },
+    };
   }
 
   async function task(o: { title: string; aspect: AspectKey | null; today: boolean; tagNora: boolean }) {

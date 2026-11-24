@@ -50,9 +50,16 @@ export function Plan({ d, body, now, onOpen, onToggleTask, onCancelTask, onResto
   const [editing, setEditing] = useState<{ morning: RoutineItem[]; night: RoutineItem[] } | null>(null);
   const fail = useCallback((e: unknown) => say(e instanceof Error ? e.message : 'That didn’t save.'), [say]);
 
+  /** A toast with Undo for something a tap logged or took off. */
+  const undoable = useCallback((text: string, back: () => Promise<unknown>) =>
+    say(text, { label: 'Undo', onPress: () => { hide(); back().catch(fail); } }), [say, hide, fail]);
   const tick = useCallback(async (id: Parameters<Day['cap']['toggle']>[0], on: boolean) => {
-    try { const m = await cap.toggle(id, on); if (m) say(m); } catch (e) { fail(e); }
-  }, [cap, say, fail]);
+    try {
+      const r = await cap.toggle(id, on);
+      if (typeof r === 'string') say(r);
+      else if (r) undoable(r.said, r.undo);
+    } catch (e) { fail(e); }
+  }, [cap, say, fail, undoable]);
   const check = useCallback((id: CheckId) => { d.toggle(id).catch(fail); }, [d, fail]);
   const shoot = useCallback(async (id: FrameId) => {
     let picked;
@@ -110,7 +117,7 @@ export function Plan({ d, body, now, onOpen, onToggleTask, onCancelTask, onResto
     const n = new Date(now + 5.5 * 3600_000);
     const m = Math.floor(n.getUTCMinutes() / 5) * 5;
     const hmNow = `${String(n.getUTCHours()).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-    try { await cap.wake(hmNow); say(`Woke at ${hmNow}`); } catch (e) { fail(e); }
+    try { undoable(`Woke at ${hmNow}`, await cap.wake(hmNow)); } catch (e) { fail(e); }
   };
 
   const T = d.tasks.by;
@@ -167,7 +174,7 @@ export function Plan({ d, body, now, onOpen, onToggleTask, onCancelTask, onResto
     sections.push({ key: 'core', finished: p.done === p.total, node: (
       <Section key="core" label="Core habits" parts={parts} finished={p.done === p.total} onOpen={() => onOpen('soul')}>
         <View style={st.tiles}>
-          <Habit name="Journaling" big="1" unit="line" done={j} color={A.soul} onTick={() => (j ? tick('journal', false) : setLine('journal'))} onOpen={() => onOpen('soul/journal')} />
+          <Habit name="Journaling" big="1" unit="line" done={j} color={A.soul} onTick={() => setLine('journal')} onOpen={() => onOpen('soul/journal')} />
           <Habit name="Day count" big={cap.cleanDay != null ? String(cap.cleanDay) : '–'} unit={cap.cleanDay === 1 ? 'day' : 'days'} done={cl} color={A.soul}
             onTick={() => (cap.cleanReady ? tick('clean', !cl) : say('Start Clean in Soul first.'))}
             foot={<Link text="Reset" onPress={() => onOpen('soul/clean')} />} onOpen={() => onOpen('soul/clean')} />
@@ -291,7 +298,7 @@ export function Plan({ d, body, now, onOpen, onToggleTask, onCancelTask, onResto
     const speakActs = routineActs('Impromptu speaking', 'practice-speak', speak, () => { d.togglePractice('speak').catch(fail); }, (v) => d.skipPractice('speak', v));
     const courseActs = routineActs('Communication course', 'practice-course', course, () => { d.togglePractice('course').catch(fail); }, (v) => d.skipPractice('course', v));
     // the book's first tap opens the page line, so it has no double tap: hold it to cancel
-    const bookActs = rowActs('Book', 'book', book, () => (book ? tick('book', false) : cap.book ? setLine('page') : say('No book open. Pick one in Mind > Read.')));
+    const bookActs = rowActs('Book', 'book', book, () => (cap.book ? setLine('page') : say('No book open. Pick one in Mind > Read.')));
     const p = count(rf.mind, dueOf('mind'));
     sections.push({ key: 'mind', finished: p.done === p.total, node: (
       <Section key="mind" label="Mind" parts={[{ color: A.mind, ...p }]} finished={p.done === p.total} onOpen={() => onOpen('mind')}>
@@ -418,7 +425,7 @@ export function Plan({ d, body, now, onOpen, onToggleTask, onCancelTask, onResto
       ) : null}
       {done.map((x) => x.node)}
       <WakeDial open={dial} now={now} wakeHm={wakeHm} onClose={() => setDial(false)}
-        onSave={async (hmv) => { setDial(false); try { await cap.wake(hmv); say(`Woke at ${hmv}`); } catch (e) { fail(e); } }} />
+        onSave={async (hmv) => { setDial(false); try { undoable(`Woke at ${hmv}`, await cap.wake(hmv)); } catch (e) { fail(e); } }} />
       <MealPopup meal={meal} st={meal ? cap.frames[meal.id] : undefined} onClose={() => setMeal(null)} onPhoto={() => { const m = meal; setMeal(null); if (m) void shoot(m.id); }}
         onType={() => { const m = meal; setMeal(null); if (m) onTypeMeal(m.id); }} />
       <HoldMenu target={menu} onClose={() => setMenu(null)} />
@@ -426,8 +433,8 @@ export function Plan({ d, body, now, onOpen, onToggleTask, onCancelTask, onResto
         onSubmit={async (text) => {
           const k = line; setLine(null);
           try {
-            if (k === 'journal') { await cap.journalLine(text); say('Journal line saved'); }
-            else if (k === 'page') { const n = parseInt(text, 10); if (!n) throw new Error('A page number, please.'); say(await cap.page(n)); }
+            if (k === 'journal') undoable('Journal line saved', await cap.journalLine(text));
+            else if (k === 'page') { const n = parseInt(text, 10); if (!n) throw new Error('A page number, please.'); const r = await cap.page(n); undoable(r.said, r.undo); }
           } catch (e) { fail(e); }
         }} />
     </View>

@@ -85,6 +85,9 @@ function Surface({ p: pv, open, from, floor, onClose }: {
   // an undo stays long enough to reach for
   useEffect(() => { if (!toast) return; const id = setTimeout(() => setToast(null), toast.action ? 6000 : 2200); return () => clearTimeout(id); }, [toast]);
   const fail = useCallback((e: unknown) => { haptic.warn(); say((e as Error).message); }, [say]);
+  /** A toast with Undo; `after` is what it says once taken back. */
+  const undoable = useCallback((text: string, undo: () => Promise<unknown>, after: string) =>
+    say(text, { label: 'Undo', onPress: () => { setToast(null); haptic.light(); void undo().then(() => say(after), fail); } }), [say, fail]);
   const alive = useRef(true);
   useEffect(() => () => { alive.current = false; }, []);
 
@@ -163,11 +166,11 @@ function Surface({ p: pv, open, from, floor, onClose }: {
     setBusy(true);
     try {
       if (mode.kind === 'journal') {
-        await d.journalLine(v); haptic.medium(); say("In today's journal"); toLine(); input.current?.blur();
+        const undo = await d.journalLine(v); haptic.medium(); undoable("In today's journal", undo, 'Line taken back'); toLine(); input.current?.blur();
       } else if (mode.kind === 'page') {
         const n = Math.round(Number(v.replace(/[^0-9.]/g, '')));
         if (!v.match(/\d/) || !Number.isFinite(n) || n < 0) throw new Error('A page number, like 142.');
-        say(await d.page(n)); haptic.medium(); toLine(); input.current?.blur();
+        const r = await d.page(n); haptic.medium(); undoable(r.said, r.undo, 'Sitting taken back'); toLine(); input.current?.blur();
       } else if (mode.kind === 'describe') {
         setFiled(null); setFixing(false);
         const it = await d.describe(v);
@@ -180,12 +183,12 @@ function Surface({ p: pv, open, from, floor, onClose }: {
     setBusy(false);
   };
 
-  // ── wake: logged the moment it is tapped, then the time can be moved ──
+  // ── wake: logged the moment it is tapped, then the time can be moved; tapped again, it opens at the saved time ──
   const wake = async () => {
     const hm = d.wakeAt ?? roundHm(hmNow());
     setMode({ kind: 'wake', hm });
     if (!d.wakeAt) {
-      try { await d.wake(hm); haptic.medium(); say(`Woke at ${hm}`); } catch (e) { fail(e); }
+      try { const undo = await d.wake(hm); haptic.medium(); undoable(`Woke at ${hm}`, undo, 'Wake-up taken back'); } catch (e) { fail(e); }
     }
   };
   const moveWake = (delta: number) => { if (mode.kind === 'wake') { haptic.tick(); setMode({ kind: 'wake', hm: shiftHm(mode.hm, delta) }); } };
@@ -194,21 +197,25 @@ function Surface({ p: pv, open, from, floor, onClose }: {
     const hm = mode.hm;
     toLine();
     if (hm === d.wakeAt) return;
-    try { await d.wake(hm); haptic.medium(); say(`Woke at ${hm}`); } catch (e) { fail(e); }
+    try { const undo = await d.wake(hm); haptic.medium(); undoable(`Woke at ${hm}`, undo, d.wakeAt ? `Back to ${d.wakeAt}` : 'Wake-up taken back'); } catch (e) { fail(e); }
   };
 
   // ── ticks ──
   const tick = async (id: TickId) => {
     const t = tickOf(id);
     const on = !d.doneTicks.has(id);
-    // a ticked one, whatever its kind, unticks on a tap
-    if (on && t.kind === 'time') return void wake();
-    if (on && t.kind === 'line') return ask({ kind: 'journal' });
-    if (on && t.kind === 'page') { if (!d.book) { fail(new Error('No book open. Pick one in Mind > Read.')); return; } return ask({ kind: 'page' }); }
-    if (!on && id === 'wake' && mode.kind === 'wake') toLine();
+    // Woke opens its time (the saved one once logged, to move it); Journal takes another line and Book the page he is
+    // on now. A tap never wipes what they logged: each logging toast has Undo instead.
+    if (t.kind === 'time') return void wake();
+    if (t.kind === 'line') return ask({ kind: 'journal' });
+    if (t.kind === 'page') { if (!d.book) { fail(new Error('No book open. Pick one in Mind > Read.')); return; } return ask({ kind: 'page' }); }
     if (id === 'clean' && !d.cleanReady) { fail(new Error('Start Clean in Soul first.')); return; }
     if (on) haptic.medium(); else haptic.light();
-    try { const msg = await d.toggle(id, on); if (msg) say(msg); } catch (e) { fail(e); }
+    try {
+      const r = await d.toggle(id, on);
+      if (typeof r === 'string') say(r);
+      else if (r) undoable(r.said, r.undo, 'Put back');
+    } catch (e) { fail(e); }
   };
 
   // ── photos ──

@@ -17,12 +17,12 @@ demoSource({
     '/goals': () => ({
       horizons: ['life', 'year', 'quarter', 'month', 'week'],
       goals: [
-        goal(101, 'Sample: train four days a week', 'quarter', ['body'], { progress: 0.45, progressMode: 'measure' }),
-        goal(102, 'Sample: finish one course end to end', 'quarter', ['mind'], { progress: 0.3 }),
-        goal(103, 'Sample: reach the monthly income target', 'month', ['money'], { progress: 0.62, progressMode: 'measure' }),
-        goal(104, 'Sample: plan the anniversary dinner', 'quarter', ['family'], { progress: 0.2 }),
-        goal(105, 'Sample: ship the client dashboard', 'week', ['mission'], { progress: 0.5 }),
-        goal(106, 'Sample: a new plan with a friend every week', 'month', ['friends'], { progress: 0.25 }),
+        goal(101, 'Sample: train four days a week', 'quarter', ['body'], { progress: 45, progressMode: 'measure' }),
+        goal(102, 'Sample: finish one course end to end', 'quarter', ['mind'], { progress: 30 }),
+        goal(103, 'Sample: reach the monthly income target', 'month', ['money'], { progress: 62, progressMode: 'measure' }),
+        goal(104, 'Sample: plan the anniversary dinner', 'quarter', ['family'], { progress: 20 }),
+        goal(105, 'Sample: ship the client dashboard', 'week', ['mission'], { progress: 50 }),
+        goal(106, 'Sample: a new plan with a friend every week', 'month', ['friends'], { progress: 25 }),
       ],
     }),
     '/mod/soul/moods': () => ({ items: [3, 4, 4, 2, 4, 5, 4].map((v, i) => ({ id: `mood-${i}`, date: addDays(day, i - 6), at: `${addDays(day, i - 6)}T15:30:00.000Z`, v })) }),

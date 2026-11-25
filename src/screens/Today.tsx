@@ -12,6 +12,7 @@ import { Dock, orbFromBottom } from '@/components/Dock';
 import { Notice } from '@/components/Notice';
 import { SignIn } from '@/components/SignIn';
 import { AccountSheet } from '@/components/AccountSheet';
+import { KbMicBar } from '@/components/KbMicBar';
 import { PcMicSheet } from '@/components/PcMicSheet';
 import { VoicesSheet } from '@/components/VoicesSheet';
 import { RemoteDesktop } from '@/components/remote/RemoteDesktop';
@@ -231,7 +232,8 @@ function PhoneToday() {
       {!immersive ? <EdgeBlur height={insets.bottom + 150} strength={35} curve={2.6} /> : null}
       {!immersive ? <EdgeGlow height={insets.bottom + 200} orb={orb} /> : null}
       <TodayToast toast={tt.toast} bottom={insets.bottom + 112} />
-      <Notice text={kbMic.state === 'recording' ? 'Listening for the keyboard. Swipe back to your app and talk.' : kbMic.error ?? local ?? t.notice} bottom={insets.bottom + 112} onClear={clear} />
+      {kbMic.state === 'recording' ? <KbMicBar bottom={insets.bottom + 112} onStop={() => void kbMic.stop()} /> : null}
+      <Notice text={kbMic.state === 'recording' ? null : kbMic.error ?? local ?? t.notice} bottom={insets.bottom + 112} onClear={clear} />
       <Dock bottom={insets.bottom} width={width} aspects={planned} onNotBuilt={notBuilt}
         onAspect={openAspect} onHome={aspect ? closeAspect : undefined} hidden={immersive} />
       {/* opens by itself while a volume press has Wispr going, and closes once it has sent */}

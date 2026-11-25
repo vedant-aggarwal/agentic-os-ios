@@ -170,6 +170,7 @@ export function useGptRecorder() {
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const [live, setLive] = useState('');
   const [offline, setOffline] = useState(false); // the PC isn't getting the audio right now (it's still saved here)
+  const lastUp = useRef(0); // when the PC last took an upload of this take (or the take started)
   const streaming = useRef(false); // the mic is open (recording, or kept warm between keyboard takes)
   const cool = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onCold = useRef<(() => void) | null>(null);
@@ -224,9 +225,11 @@ export function useGptRecorder() {
     remember(s.t);
     cur.current = s;
     setLive(''); setOffline(false);
+    lastUp.current = Date.now();
     let following = false, stopped = false;
     timer.current = setInterval(() => {
       push(s).then(() => {
+        lastUp.current = Date.now();
         setOffline(false);
         if (!following && s.created) { following = true; void follow(s); }
         if (s.stop && !stopped && cur.current === s) { stopped = true; opts.onRemoteStop?.(); }
@@ -308,6 +311,8 @@ export function useGptRecorder() {
   /** Keep the mic open `ms` after each take (0: close at once); `cold` runs when it finally closes. */
   const setWarm = useCallback((ms: number, cold?: () => void) => { warmFor.current = ms; onCold.current = cold ?? null; }, []);
   const recording = useCallback(() => !!cur.current, []);
+  /** When the PC last took an upload of the take (its start, before the first). */
+  const lastUpload = useCallback(() => lastUp.current, []);
 
-  return { start, finish, cancel, live, offline, setWarm, close, recording };
+  return { start, finish, cancel, live, offline, setWarm, close, recording, lastUpload };
 }

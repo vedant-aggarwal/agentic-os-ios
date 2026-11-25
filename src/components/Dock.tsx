@@ -11,7 +11,8 @@ import { Home, Nora, Plus, Work } from '@/components/Icons';
 import { Sym } from '@/components/Sym';
 import { router } from 'expo-router';
 import { useWorkOrb } from '@/work/useWorkOrb';
-import { Capture } from '@/capture/Capture';
+import { Capture, type CaptureStart } from '@/capture/Capture';
+import { QuickWater, useQuickPlus } from '@/capture/QuickFan';
 import { NoraOver, NoraUnder } from '@/nora/NoraHost';
 import { Ball, useTurn } from '@/nora/Sphere';
 import { noraUi, useNora } from '@/nora/state';
@@ -304,6 +305,22 @@ function Round({ label, onPress, children }: { label: string; onPress: () => voi
   );
 }
 
+/** The + in the pill: a tap opens quick capture, a hold its quick actions (src/capture/QuickFan.tsx). */
+function PlusRound({ quick }: { quick: ReturnType<typeof useQuickPlus> }) {
+  const [down, setDown] = useState(false);
+  const h = quick.handlers;
+  return (
+    <View {...h} hitSlop={6}
+      onResponderGrant={(e) => { setDown(true); h.onResponderGrant?.(e); }}
+      onResponderRelease={(e) => { setDown(false); h.onResponderRelease?.(e); }}
+      onResponderTerminate={(e) => { setDown(false); h.onResponderTerminate?.(e); }}>
+      <Animated.View style={[s.round, quick.pressStyle, down && { backgroundColor: 'rgba(255,255,255,0.1)' }]}>
+        <Sym name="plus" size={22} fallback={<Plus />} />
+      </Animated.View>
+    </View>
+  );
+}
+
 /** A floating orb beside the pill: the same glass, detached, a true circle, holding one page. `badge` counts what
  *  waits on him behind it (Home: the calls on Nora's line that need him). */
 function SideOrb({ label, side, onPress, on = false, badge = 0, children }: {
@@ -341,8 +358,10 @@ function WorkOrb({ fan }: { fan: ReturnType<typeof useWorkOrb> }) {
   );
 }
 
-export function Dock({ bottom, width, aspects, onNotBuilt, onAspect, onHome, hidden = false }: {
+export function Dock({ bottom, width, aspects, onNotBuilt, onAspect, onHome, onMood, onSay, hidden = false }: {
   bottom: number; width: number; aspects: AspectProgress; onNotBuilt: (what: string) => void;
+  /** the +'s quick action Log mood: the mood logger, flying out of the + */ onMood?: (from: { x: number; y: number }) => void;
+  /** a quick action's toast (a glass of water, with Undo) */ onSay?: (text: string, action?: { label: string; onPress: () => void }) => void;
   /** Let go on a wedge: open that aspect's page. */
   onAspect: (key: AspectKey) => void;
   /** Set while an aspect page is open: Home goes back to Today. */
@@ -366,6 +385,18 @@ export function Dock({ bottom, width, aspects, onNotBuilt, onAspect, onHome, hid
   const chatAt = { x: left + SIDE + G + w - Math.max(0, G - (48 - ICON) / 2) - 24, y: rowY };
   const plusAt = { x: left + SIDE + G + Math.max(0, G - (48 - ICON) / 2) + 24, y: rowY }; // quick capture grows from here
   const [capture, setCapture] = useState(false);
+  const [start, setStart] = useState<CaptureStart | null>(null); // what a hold on the + asked the panel for
+  const [glasses, setGlasses] = useState(0); // glasses of water asked for from the + (QuickWater adds them)
+  const quick = useQuickPlus({
+    at: plusAt,
+    onTap: () => { noraUi.closeHome(); setStart(null); setCapture(true); },
+    onAct: (kind) => {
+      noraUi.closeHome();
+      if (kind === 'water') setGlasses((n) => n + 1);
+      else if (kind === 'mood') onMood?.(plusAt);
+      else { setStart({ kind, n: Date.now() }); setCapture(true); }
+    },
+  });
   const open = useSharedValue(0); // the dial
   const ringFade = useAnimatedStyle(() => ({ opacity: open.value > 0.001 ? 0 : 1 })); // the wedges take over
   const [pick, setPick] = useState(-1);
@@ -438,7 +469,7 @@ export function Dock({ bottom, width, aspects, onNotBuilt, onAspect, onHome, hid
         <View style={[s.bar, { width: w, paddingHorizontal: Math.max(0, G - (48 - ICON) / 2) }]}>
           <Glass radius={BAR_H / 2} />
           {/* quick capture (src/capture): photos, water, habits, a task or a line, a voice note to Nora */}
-          <Round label="Capture" onPress={() => { noraUi.closeHome(); setCapture(true); }}><Sym name="plus" size={22} fallback={<Plus />} /></Round>
+          <PlusRound quick={quick} />
           <Round label="Chat with Nora" onPress={() => noraUi.openChat()}><Sym name="sparkle" size={22} fallback={<Nora />} /></Round>
         </View>
         <WorkOrb fan={fan} />
@@ -459,8 +490,10 @@ export function Dock({ bottom, width, aspects, onNotBuilt, onAspect, onHome, hid
         </View>
       </Animated.View>
       {fan.overlay}
+      {quick.overlay}
       {/* clear of the orb's ring, which rises above the bar */}
-      <Capture open={capture} from={plusAt} floor={cy - ARC_R - 12} onClose={() => setCapture(false)} />
+      <Capture open={capture} from={plusAt} floor={cy - ARC_R - 12} start={start} onClose={() => setCapture(false)} />
+      {glasses ? <QuickWater n={glasses} onSay={onSay} onDone={() => setGlasses(0)} /> : null}
       <NoraOver chat={chatAt} orb={{ x: cx, y: cy }} />
     </>
   );

@@ -313,7 +313,7 @@ function PhoneToday() {
       <TodayToast toast={tt.toast} bottom={insets.bottom + 112} />
       {kbMic.state === 'recording' ? <KbMicBar bottom={insets.bottom + 112} onStop={() => void kbMic.stop()} /> : null}
       <Notice text={kbMic.state === 'recording' ? null : kbMic.error ?? local ?? t.notice} bottom={insets.bottom + 112} onClear={clear} />
-      <Dock bottom={insets.bottom} width={width} aspects={planned} onNotBuilt={notBuilt}
+      <Dock bottom={insets.bottom} width={width} aspects={planned} onNotBuilt={notBuilt} onMood={setMoodFrom} onSay={tt.say}
         onAspect={openAspect} onHome={aspect ? closeAspect : undefined} hidden={immersive} />
       {/* opens by itself while a volume press has Wispr going, and closes once it has sent */}
       <PcMicSheet open={!callUp && (micOpen || (live && !closedLive))} onScreen={() => setRemoteOpen(true)} origin={micCenter(insets.top, width)} phase={mic.phase}

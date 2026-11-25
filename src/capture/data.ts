@@ -570,6 +570,8 @@ export function useCapture(on?: string) {
   return {
     // `live`: the day is today's (photos and the smart photo work only then)
     day, live, frames, doneTicks, water, waterTarget,
+    /** the day's water has been read: a glass added before then would overwrite the count */
+    waterKnown: dietData != null,
     wakeAt: todayChecks.get('wake')?.done ? (todayChecks.get('wake')?.time ?? null) : null,
     cleanDay: cleanData && cleanData.setup ? cleanData.day : null,
     cleanReady: !cleanData || cleanData.setup,

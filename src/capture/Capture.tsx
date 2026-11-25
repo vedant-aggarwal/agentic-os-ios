@@ -47,13 +47,18 @@ const hmNow = () => { const d = new Date(); return `${String(d.getHours()).padSt
 const roundHm = (hm: string) => { const [h, m] = hm.split(':').map(Number); const t = h * 60 + Math.floor(m / 5) * 5; return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`; };
 const shiftHm = (hm: string, d: number) => { const [h, m] = hm.split(':').map(Number); const t = (h * 60 + m + d + 1440) % 1440; return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`; };
 
-export function Capture({ open, from, floor, onClose }: {
+/** What a hold on the + asked the panel to start with (src/capture/QuickFan.tsx); `n` tells one ask from the next. */
+export type CaptureStart = { kind: 'smart' | 'dictate' | 'describe' | 'task'; n: number };
+
+export function Capture({ open, from, floor, onClose, start }: {
   open: boolean;
   /** the + button's centre on screen: the panel grows from it and its close button sits on it */
   from: { x: number; y: number };
   /** the screen y the panel's bottom edge stays above (clear of the dock's orb and its ring) */
   floor: number;
   onClose: () => void;
+  /** opened from the +'s quick actions: the smart photo, dictation, or the line for a description or a task */
+  start?: CaptureStart | null;
 }) {
   const [mounted, setMounted] = useState(open);
   if (open && !mounted) setMounted(true);
@@ -65,14 +70,14 @@ export function Capture({ open, from, floor, onClose }: {
     return () => clearTimeout(id);
   }, [open, pv]);
   if (!mounted) return null;
-  return <Surface p={pv} open={open} from={from} floor={floor} onClose={onClose} />;
+  return <Surface p={pv} open={open} from={from} floor={floor} onClose={onClose} start={start ?? null} />;
 }
 
 type Rect = { x: number; y: number; w: number; h: number };
 type Flight = { key: number; uri: string; frame: FrameId; to: Rect; /** where it starts (the smart button); else the middle */ from?: Rect };
 
-function Surface({ p: pv, open, from, floor, onClose }: {
-  p: SharedValue<number>; open: boolean; from: { x: number; y: number }; floor: number; onClose: () => void;
+function Surface({ p: pv, open, from, floor, onClose, start }: {
+  p: SharedValue<number>; open: boolean; from: { x: number; y: number }; floor: number; onClose: () => void; start: CaptureStart | null;
 }) {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
@@ -311,6 +316,22 @@ function Surface({ p: pv, open, from, floor, onClose }: {
     try { const it = await d.describeAs(filed, kind); haptic.success(); setFiled(it); setFixing(false); } catch (e) { fail(e); }
     setFixBusy(false);
   };
+
+  // a quick action from holding the +: it runs once, just after the panel starts to grow, so the camera or the
+  // keyboard comes up over it (the latest handlers, through a ref)
+  const acts = useRef({ smart, micTap, ask });
+  useEffect(() => { acts.current = { smart, micTap, ask }; });
+  const startN = open ? start?.n : undefined, startKind = start?.kind;
+  useEffect(() => {
+    if (startN == null || !startKind) return;
+    const id = setTimeout(() => {
+      const a = acts.current;
+      if (startKind === 'smart') void a.smart();
+      else if (startKind === 'dictate') void a.micTap();
+      else a.ask({ kind: startKind });
+    }, 120);
+    return () => clearTimeout(id);
+  }, [startN, startKind]);
 
   const tag = mode.kind === 'journal' ? { text: 'Journal', color: ASPECT_COLOR.soul } : mode.kind === 'page' ? { text: 'Book', color: ASPECT_COLOR.mind }
     : mode.kind === 'task' ? { text: 'Task', color: C.text } : null;

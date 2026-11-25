@@ -168,7 +168,7 @@ function Sweep() {
 }
 
 // ── water ────────────────────────────────────────────────────────────────────────────────────────────────────────
-const litres = (glasses: number) => {
+export const litres = (glasses: number) => {
   const l = (glasses * 250) / 1000;
   return Number.isInteger(l) ? `${l}` : l.toFixed(2).replace(/0$/, '');
 };

@@ -67,8 +67,8 @@ export function Chart({ series, weeks, felt, width, height = 120, trend, axis = 
       </Svg>
       {axis ? (
         <View style={s.axis}>
-          <Text style={t.caption}>{weeks[0] ? `Week of ${shortDay(weeks[0].from)}` : ''}</Text>
-          <Text style={t.caption}>{weeks[n - 1]?.partial ? 'This week' : weeks[n - 1] ? `Week of ${shortDay(weeks[n - 1].from)}` : ''}</Text>
+          <Text style={t.micro}>{weeks[0] ? `Week of ${shortDay(weeks[0].from)}` : ''}</Text>
+          <Text style={t.micro}>{weeks[n - 1]?.partial ? 'This week' : weeks[n - 1] ? `Week of ${shortDay(weeks[n - 1].from)}` : ''}</Text>
         </View>
       ) : null}
     </View>
@@ -80,9 +80,9 @@ export function ChartKey({ trend = false }: { trend?: boolean }) {
   const { color } = useAspect();
   return (
     <View style={s.key}>
-      <View style={s.keyItem}><View style={[s.swatch, { backgroundColor: color }]} /><Text style={t.caption}>Your score</Text></View>
-      <View style={s.keyItem}><View style={[s.swatch, { backgroundColor: C.text }]} /><Text style={t.caption}>What the data shows</Text></View>
-      {trend ? <View style={s.keyItem}><View style={s.dash} /><Text style={t.caption}>Four week averages</Text></View> : null}
+      <View style={s.keyItem}><View style={[s.swatch, { backgroundColor: color }]} /><Text style={t.footnote}>Your score</Text></View>
+      <View style={s.keyItem}><View style={[s.swatch, { backgroundColor: C.text }]} /><Text style={t.footnote}>What the data shows</Text></View>
+      {trend ? <View style={s.keyItem}><View style={s.dash} /><Text style={t.footnote}>Four week averages</Text></View> : null}
     </View>
   );
 }

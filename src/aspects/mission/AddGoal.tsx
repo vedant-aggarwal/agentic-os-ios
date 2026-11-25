@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { addDays, Button, Chip, Field, haptic, IconButton, Icon, Segmented, Sheet, shortDay, Skeleton, t, today, useAspect, weekday, weekStart } from '@/aspects/kit';
+import { addDays, Button, Chip, Field, Group, haptic, IconButton, Icon, Item, SegTabs, Sheet, shortDay, Skeleton, t, today, useAspect, weekday, weekStart } from '@/aspects/kit';
 import { call, useGet } from '@/lib/mod';
 import { C, type AspectKey } from '@/theme';
 import { act, ASPECT_KEYS, ASPECT_LABEL, M, message, nextStart, NUMBER_WORDS, slotsPath } from './data';
 import type { AddInit } from './nav';
-import { Dot, s as ps, Tile } from './parts';
+import { Dot, s as ps } from './parts';
 import type { Full, GoalDraft, Horizon, Ladder } from './types';
 
 const HORIZONS = [
@@ -95,18 +95,20 @@ function Body({ init, onClose, day }: { init: AddInit; onClose: () => void; day:
     const later = periodWord(h, laterStart);
     return (
       <View style={st.body}>
-        <Text accessibilityRole="header" style={t.heading}>{f ? `${f.label} already holds ${NUMBER_WORDS[f.limit] ?? f.limit}` : 'That period is full'}</Text>
-        <Text style={t.small}>Pick the goal this one replaces, or keep the new one for {later}.</Text>
-        {!f ? (full.error ? <Text style={t.small}>{full.error}</Text> : <Skeleton height={120} radius={16} />) : (
-          <View style={st.list}>
+        <Text accessibilityRole="header" style={t.title3}>{f ? `${f.label} already holds ${NUMBER_WORDS[f.limit] ?? f.limit}` : 'That period is full'}</Text>
+        <Text style={t.subhead}>Pick the goal this one replaces, or keep the new one for {later}.</Text>
+        {!f ? (full.error ? <Text style={t.footnote}>{full.error}</Text> : <Skeleton height={120} radius={22} />) : (
+          <Group inset={36}>
             {f.goals.map((g) => (
-              <Tile key={g.id} title={g.title} sub={replace === g.id ? 'Replaced, kept on your record as let go' : ASPECT_LABEL[g.aspect as AspectKey] ?? 'Goal'}
-                selected={replace === g.id} onPress={() => setReplace(g.id)} wrap={st.full} />
+              <Item key={g.id} title={g.title} left={<Dot aspect={g.aspect as AspectKey} />} onPress={() => setReplace(g.id)}
+                label={`${g.title}${replace === g.id ? ', chosen' : ''}`}
+                sub={replace === g.id ? 'Replaced, kept on your record as let go' : ASPECT_LABEL[g.aspect as AspectKey] ?? 'Goal'}
+                right={replace === g.id ? <Icon name="check" size={18} color={a.color} /> : undefined} />
             ))}
-          </View>
+          </Group>
         )}
-        {error ? <Text style={[t.small, st.err]}>{error}</Text> : null}
-        <Button label="Replace it" onPress={() => void save({ replaces: replace! })} disabled={!replace} busy={busy === 'save'} />
+        {error ? <Text style={[t.footnote, st.err]}>{error}</Text> : null}
+        <Button label="Replace it" kind="accent" onPress={() => void save({ replaces: replace! })} disabled={!replace} busy={busy === 'save'} />
         <Button label={`Keep it for ${later}`} kind="quiet" onPress={() => { setStart(laterStart); setFullAt(null); void save({ start: laterStart }); }} />
       </View>
     );
@@ -115,19 +117,19 @@ function Body({ init, onClose, day }: { init: AddInit; onClose: () => void; day:
   if (draft) {
     return (
       <View style={st.body}>
-        <Text accessibilityRole="header" style={t.heading}>Here is a goal from that</Text>
+        <Text accessibilityRole="header" style={t.title3}>Here is a goal from that</Text>
         <Field label="Goal" value={title} onChangeText={setTitle} maxLength={300} />
-        {draft.measure ? <Text style={t.small}>Done when: {draft.measure}</Text> : null}
-        <Text style={t.label}>Milestones</Text>
+        {draft.measure ? <Text style={t.subhead}>{`Done when ${draft.measure.replace(/^./, (c) => c.toLowerCase())}`}</Text> : null}
+        <Text style={t.footnote}>Milestones</Text>
         {steps.map((m, i) => (
           <View key={i} style={st.step}>
             <View style={ps.flex}><Field value={m} onChangeText={(v) => setSteps((xs) => xs.map((x, j) => (j === i ? v : x)))} maxLength={200} /></View>
             <IconButton label={`Remove milestone ${i + 1}`} size={36} onPress={() => setSteps((xs) => xs.filter((_, j) => j !== i))}><Icon name="close" size={14} /></IconButton>
           </View>
         ))}
-        {draft.note ? <Text style={t.caption}>{draft.note}</Text> : null}
-        {error ? <Text style={[t.small, st.err]}>{error}</Text> : null}
-        <Button label="Save goal" onPress={() => void save()} busy={busy === 'save'} disabled={!title.trim()} />
+        {draft.note ? <Text style={t.footnote}>{draft.note}</Text> : null}
+        {error ? <Text style={[t.footnote, st.err]}>{error}</Text> : null}
+        <Button label="Save goal" kind="accent" onPress={() => void save()} busy={busy === 'save'} disabled={!title.trim()} />
         <Button label="Back to my words" kind="quiet" onPress={() => setDraft(null)} />
       </View>
     );
@@ -135,15 +137,15 @@ function Body({ init, onClose, day }: { init: AddInit; onClose: () => void; day:
 
   return (
     <View style={st.body}>
-      <Text accessibilityRole="header" style={t.heading}>Add a goal</Text>
+      <Text accessibilityRole="header" style={t.title3}>Add a goal</Text>
       <Field label="What has to happen?" value={text} onChangeText={setText} placeholder="In your own words" autoFocus maxLength={300} />
       <View style={st.group}>
-        <Text style={t.label}>When</Text>
-        <Segmented options={HORIZONS} value={h} onChange={(k) => { setH(k); if (k !== init.horizon) setStart(null); setParent(null); }} />
-        <Text style={[t.caption, t.num]}>Goes in {periodWord(h, onDay)}</Text>
+        <Text style={t.footnote}>When</Text>
+        <SegTabs tabs={HORIZONS} value={h} onChange={(k) => { setH(k); if (k !== init.horizon) setStart(null); setParent(null); }} />
+        <Text style={[t.footnote, t.num]}>{`Goes in ${periodWord(h, onDay)}`}</Text>
       </View>
       <View style={st.group}>
-        <Text style={t.label}>Aspect</Text>
+        <Text style={t.footnote}>Sections it serves</Text>
         <View style={st.chips}>
           {ASPECT_KEYS.map((k) => (
             <Chip key={k} label={ASPECT_LABEL[k]} icon={<Dot aspect={k} />} selected={aspects.includes(k)}
@@ -153,15 +155,15 @@ function Body({ init, onClose, day }: { init: AddInit; onClose: () => void; day:
       </View>
       {parents.length ? (
         <View style={st.group}>
-          <Text style={t.label}>What it serves</Text>
+          <Text style={t.footnote}>What it serves</Text>
           <View style={st.chips}>
             {parents.map((p) => <Chip key={p.id} label={p.title.length > 34 ? `${p.title.slice(0, 32)}…` : p.title} icon={<Dot aspect={p.aspect} />} selected={parent === p.id} onPress={() => setParent(parent === p.id ? null : p.id)} />)}
           </View>
         </View>
       ) : null}
-      {error ? <Text style={[t.small, st.err]}>{error}</Text> : null}
-      <Button label="Draft it with Nora" kind="soft" onPress={() => void runDraft()} busy={busy === 'draft'} disabled={!text.trim() || !!busy} />
-      <Button label="Save as written" onPress={() => void save()} busy={busy === 'save'} disabled={!text.trim() || !!busy} />
+      {error ? <Text style={[t.footnote, st.err]}>{error}</Text> : null}
+      <Button label="Save" kind="accent" onPress={() => void save()} busy={busy === 'save'} disabled={!text.trim() || !!busy} />
+      <Button label="Draft it with Nora first" kind="quiet" onPress={() => void runDraft()} busy={busy === 'draft'} disabled={!text.trim() || !!busy} />
     </View>
   );
 }
@@ -170,8 +172,6 @@ const st = StyleSheet.create({
   body: { gap: 16 },
   group: { gap: 8 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  list: { gap: 8 },
-  full: { flexBasis: 'auto', flexGrow: 0 },
   step: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   err: { color: C.danger },
 });

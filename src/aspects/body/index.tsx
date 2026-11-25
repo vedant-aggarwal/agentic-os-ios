@@ -1,32 +1,34 @@
 import { useCallback, useMemo, useState } from 'react';
 import { invalidate, useCollection } from '@/lib/mod';
-import { Page, useAspect, useEntry } from '@/aspects/kit';
-import { B, PART_NAME, useHome, type FullSession, type Part } from './api';
-import { DietScreen } from './diet/Diet';
+import { Icon, IconButton, TabbedPage, TabPanel, useAspect, useEntry, useOnReturn } from '@/aspects/kit';
+import { B, useHome, type FullSession, type Part } from './api';
+import { DietTab } from './diet/Diet';
 import { LogMeal, TargetsSheet } from './diet/Log';
-import { FaceScreen } from './face/Face';
+import { FaceTab } from './face/Face';
 import { RoutinePlayer } from './face/Routine';
 import { ScanFlow } from './face/Scan';
-import { GymScreen } from './gym/Gym';
-import { LiveWorkout } from './gym/Live';
 import { QuickSheet, WeighSheet } from './gym/Sheets';
 import { emptyLive, liveFrom, type WorkoutDoc } from './gym/workout';
-import { Home } from './Home';
-import { NavContext, type BodyNav, type Flow, type SheetKind } from './nav';
+import { NavContext, TAB_OF, TABS, type BodyNav, type Detail, type Flow, type SheetKind, type Tab } from './nav';
+import { TodayTab } from './today/Today';
+import { DetailScreens } from './train/Detail';
+import { LiveWorkout } from './train/Live';
+import { TrainTab } from './train/Train';
 import { DrillPlayer } from './voice/Drills';
 import { SampleFlow } from './voice/Sample';
-import { VoiceScreen } from './voice/Voice';
-import { Linked } from '@/aspects/_linked/Linked';
+import { VoiceTab } from './voice/Voice';
 
-// The Body page: how he looks and presents himself, in four parts (Gym, Diet, Face, Voice). Home answers one
-// question, what to do for the body today and whether it is working; each part opens on top of it.
+// The Body page: training, food, face and voice in one place. Today answers what to do for the body now and whether
+// it is working; Train is the gym (the session, the live workout, recovery, records and history); Diet, Face and
+// Voice each have their own tab. Flows (the live workout, a scan, a routine, drills) open full screen on top.
 export default function Body() {
   const a = useAspect();
   const home = useHome();
   const workouts = useCollection<WorkoutDoc>('body', 'workouts');
-  const [part, setPart] = useState<Part | null>(null);
+  const [tab, setTab] = useState<Tab>('today');
   const [flow, setFlow] = useState<Flow | null>(null);
   const [sheet, setSheet] = useState<SheetKind | null>(null);
+  const [detail, setDetail] = useState<Detail | null>(null);
   const { notice } = a;
   const { items, put } = workouts;
 
@@ -44,27 +46,33 @@ export default function Body() {
   }, [items, put, notice]);
 
   const closeFlow = useCallback(() => { setFlow(null); invalidate(`${B}/`); }, []);
+  const openPart = useCallback((p: Part | null) => { setDetail(null); setTab(p ? TAB_OF[p] : 'today'); }, []);
+  const openTab = useCallback((x: Tab) => { setDetail(null); setTab(x); }, []);
 
-  // body/<part>: gym, diet, face, voice (body/looks is Face, the PM protocol's push). body/diet/meal opens the meal log
-  // on Diet, body/gym/weigh the weight. A full-screen flow or sheet that was open gives way to the link.
+  // body/<part>: gym, diet, face, voice (body/looks is Face, the PM protocol's push). body/diet/meal opens the meal log,
+  // body/gym/weigh the weigh in. A flow, sheet or detail that was open gives way to the link.
   useEntry((e) => {
     const [p, then] = e.parts;
-    const want = p === 'looks' ? 'face' : (Object.keys(PART_NAME) as Part[]).find((k) => k === p) ?? null;
+    const part: Part | null = p === 'looks' ? 'face' : p === 'gym' || p === 'diet' || p === 'face' || p === 'voice' ? p : null;
     if (flow) closeFlow();
-    setSheet(want === 'diet' && then === 'meal' ? { kind: 'meal' } : want === 'gym' && then === 'weigh' ? { kind: 'weigh' } : null);
-    setPart(want);
+    setDetail(null);
+    setSheet(part === 'diet' && then === 'meal' ? { kind: 'meal' } : part === 'gym' && then === 'weigh' ? { kind: 'weigh' } : null);
+    setTab(part ? TAB_OF[part] : p === 'train' ? 'train' : 'today');
   });
-  const nav = useMemo<BodyNav>(() => ({ part, openPart: setPart, flow, openFlow: setFlow, sheet, openSheet: setSheet, startWorkout }), [part, flow, sheet, startWorkout]);
+  // back from another app or the lock screen: the day may have moved on
+  useOnReturn(() => invalidate(`${B}/`));
+
+  const nav = useMemo<BodyNav>(() => ({
+    tab, openTab, openPart, flow, openFlow: setFlow, sheet, openSheet: setSheet, detail, openDetail: setDetail, startWorkout,
+  }), [tab, openTab, openPart, flow, sheet, detail, startWorkout]);
 
   return (
     <NavContext value={nav}>
-      <Page onRefresh={() => { void home.refresh(); }} refreshing={home.busy && !!home.data}
+      <TabbedPage tabs={TABS} tab={tab} onTab={openTab} onRefresh={() => { invalidate(`${B}/`); void home.refresh(); }} refreshing={home.busy && !!home.data}
+        right={tab === 'diet' ? <IconButton label="Log a meal" size={40} onPress={() => setSheet({ kind: 'meal' })}><Icon name="plus" size={18} /></IconButton> : undefined}
         footer={(
           <>
-            <GymScreen open={part === 'gym'} onClose={() => setPart(null)} title={PART_NAME.gym} />
-            <DietScreen open={part === 'diet'} onClose={() => setPart(null)} title={PART_NAME.diet} />
-            <FaceScreen open={part === 'face'} onClose={() => setPart(null)} title={PART_NAME.face} />
-            <VoiceScreen open={part === 'voice'} onClose={() => setPart(null)} title={PART_NAME.voice} />
+            <DetailScreens />
             <LiveWorkout open={flow?.kind === 'live'} onClose={closeFlow} />
             <ScanFlow open={flow?.kind === 'scan'} onClose={closeFlow} />
             <RoutinePlayer open={flow?.kind === 'routine'} when={flow?.kind === 'routine' ? flow.when : 'am'} onClose={closeFlow} />
@@ -76,9 +84,12 @@ export default function Body() {
             <TargetsSheet open={sheet?.kind === 'targets'} onClose={() => setSheet(null)} />
           </>
         )}>
-        <Home read={home} />
-        {home.data ? <Linked /> : null}
-      </Page>
+        <TabPanel active={tab === 'today'}><TodayTab read={home} /></TabPanel>
+        <TabPanel active={tab === 'train'}><TrainTab active={tab === 'train'} /></TabPanel>
+        <TabPanel active={tab === 'diet'}><DietTab active={tab === 'diet'} /></TabPanel>
+        <TabPanel active={tab === 'face'}><FaceTab active={tab === 'face'} /></TabPanel>
+        <TabPanel active={tab === 'voice'}><VoiceTab active={tab === 'voice'} /></TabPanel>
+      </TabbedPage>
     </NavContext>
   );
 }

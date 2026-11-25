@@ -113,10 +113,10 @@ export function Wheel({ sections, size, selected, onSelect, then = null, showDat
         return (
           <Press key={sec.key} label={words} onPress={() => onSelect(sec.key)} feel="tick" state={{ selected: on }}
             wrap={[s.label, { left: x - 36, top: y - 22 }]} style={s.labelIn}>
-            <Text numberOfLines={1} style={[t.caption, on && { color: C.text }]}>{sec.name}</Text>
+            <Text numberOfLines={1} style={[t.footnote, on && { color: C.text }]}>{sec.name}</Text>
             {sec.felt != null ? (
               <View style={s.valueRow}>
-                <Text style={[t.label, t.num, { color: on ? color : C.text }]}>{num(sec.felt, 1)}</Text>
+                <Text style={[t.callout, t.num, { color: on ? color : C.text }]}>{num(sec.felt, 1)}</Text>
                 {sec.moved && sec.change != null ? <Icon name={sec.change > 0 ? 'arrowUp' : 'arrowDown'} size={12} color={C.muted} /> : null}
               </View>
             ) : null}
@@ -134,18 +134,18 @@ export function WheelKey({ showData = true, thenLabel }: { showData?: boolean; t
     <View style={s.key}>
       <View style={s.keyItem}>
         <View style={[s.swatch, { backgroundColor: tint(color, 0.55), borderColor: color }]} />
-        <Text style={t.caption}>{thenLabel ? 'Latest score' : 'Your score'}</Text>
+        <Text style={t.footnote}>{thenLabel ? 'Latest score' : 'Your score'}</Text>
       </View>
       {showData ? (
         <View style={s.keyItem}>
           <View style={s.line} />
-          <Text style={t.caption}>What the data shows</Text>
+          <Text style={t.footnote}>What the data shows</Text>
         </View>
       ) : null}
       {thenLabel ? (
         <View style={s.keyItem}>
           <View style={s.dash} />
-          <Text style={t.caption}>{thenLabel}</Text>
+          <Text style={t.footnote}>{thenLabel}</Text>
         </View>
       ) : null}
     </View>

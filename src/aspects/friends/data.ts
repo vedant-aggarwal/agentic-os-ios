@@ -152,7 +152,7 @@ export function warmthOf(rhythm: Rhythm | null, st: Standing): 'warm' | 'due' | 
 export function lastLine(st: Standing) {
   const m = st.last;
   if (!m) return 'Nothing logged yet';
-  const verb = (m.kind ?? 'meet') === 'meet' ? 'Met' : 'Talked';
+  const verb = (m.kind ?? 'meet') === 'meet' ? 'Met' : m.kind === 'chat' ? 'Messaged' : 'Talked';
   const what = actWord(m.act);
   return `${verb} ${whenAgo(m.date, myDay())}${what ? `, ${what}` : ''}`;
 }

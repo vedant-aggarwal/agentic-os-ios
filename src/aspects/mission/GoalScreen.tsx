@@ -1,94 +1,80 @@
 import { useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import {
-  Button, Card, CheckRing, Chip, Failed, Field, haptic, Icon, IconButton, Row, Screen, Section, Sheet, Skeleton, myDay, shortDay, Stepper, t, today, useAspect, weekday,
+  Block, Button, Chip, Failed, Field, Group, haptic, Icon, IconButton, Item, Metric, myDay, Screen, Sheet, shortDay, Skeleton, Stepper, t, today, useAspect, weekday,
 } from '@/aspects/kit';
 import { call, useCollection, useGet } from '@/lib/mod';
 import { C, type AspectKey } from '@/theme';
 import { CloseChoice } from './CloseFlow';
 import {
-  act, ASPECT_KEYS, ASPECT_LABEL, count, daysLeftLabel, endedAgo, fmt, HORIZON_GOAL, M, liveReading, message, OUTCOME_WORD, pctKnown, progressOf, refresh,
-  sourceLine, useReadingSync, useSources, type Jar, type Sources,
+  act, ASPECT_KEYS, ASPECT_LABEL, count, daysLeftLabel, dueWords, endedAgo, fmt, HORIZON_GOAL, M, liveReading, message, OUTCOME_WORD, pctKnown, progressOf,
+  refresh, sourceLine, useReadingSync, useSources, type Jar, type Sources,
 } from './data';
 import { useNav } from './nav';
-import { colorOf, Dot, GoalBar, Link, s as ps, Tag, Tile } from './parts';
+import { aspectName, colorOf, Dot, GoalBar, GoalRow, s as ps, Serves, TickRow, Tile, useTickMilestone, useTickTask } from './parts';
 import type { Commitment, Goal, GoalDetail, Measure, Milestone } from './types';
 
-/** One goal: its progress and where the number comes from, its milestones, what it serves and what serves it. */
+/** One goal: its progress and where the number comes from, its next step, milestones, tasks, what it serves and what serves it. */
 export function GoalScreen({ id, open, onClose }: { id: string; open: boolean; onClose: () => void }) {
   const a = useAspect();
   const nav = useNav();
   const r = useGet<GoalDetail>(`${M}/goal/${id}`);
   const d = r.data;
-  const goals = useMemo(() => (d ? [d.goal] : []), [d]);
+  const goals = useMemo(() => (d ? [d.goal, ...d.children] : []), [d]);
   const src = useSources(goals);
   useReadingSync(goals, src);
   const [sheet, setSheet] = useState<'edit' | 'parent' | 'close' | null>(null);
 
   const g = d?.goal;
-  const tone = colorOf(g?.aspect, a.color);
   return (
     <Screen open={open} onClose={onClose} title={g ? HORIZON_GOAL[g.horizon] : 'Goal'}
       right={g ? <IconButton label="Edit goal" size={36} onPress={() => setSheet('edit')}><Icon name="pencil" size={16} /></IconButton> : undefined}>
       {!d && r.error ? <Failed message={r.error} onRetry={r.refresh} /> : !d || !g ? (
-        <View style={st.gap}><Skeleton height={64} /><Skeleton height={120} radius={24} /><Skeleton height={160} radius={24} /></View>
+        <View style={st.gap16}><Skeleton height={72} /><Skeleton height={150} radius={22} /><Skeleton height={160} radius={22} /></View>
       ) : (
         <>
           <View style={st.head}>
-            <Text style={[t.title2, g.status !== 'active' && { color: C.muted }]}>{g.title}</Text>
-            <Tag aspect={g.aspect} text={`${g.aspect ? ASPECT_LABEL[g.aspect] : 'No aspect yet'}, ${g.horizon === 'week' ? `week of ${g.label}` : g.label}`} />
-            <Text style={[t.caption, t.num]}>
+            <Text style={[t.title3, g.status !== 'active' && { color: C.muted }]}>{g.title}</Text>
+            <Serves aspect={g.aspect} text={`${aspectName(g.aspect)}, ${g.horizon === 'week' ? `week of ${g.label}` : g.label}`} strong />
+            <Text style={[t.footnote, t.num]}>
               {g.status === 'done' ? 'Done' : g.status === 'dropped' ? (g.closing ? OUTCOME_WORD[g.closing.outcome] : 'Let go')
                 : g.end ? (endedAgo(g.end) ?? daysLeftLabel(g.end)) : 'No end date'}
             </Text>
           </View>
 
-          <Card style={st.progress}>
-            {g.source.kind === 'none' ? (
-              <>
-                <Text style={t.strong}>No number yet</Text>
-                <Text style={t.small}>Give it milestones, tie tasks to it, or read it from Money or Body.</Text>
-                <Button label="Choose how to measure it" kind="soft" small onPress={() => nav.measure(g.id)} wrap={st.left} />
-              </>
-            ) : (
-              <>
-                <Text style={[t.big, t.num, { color: tone }]}>{pctKnown(g, src) ? `${Math.round(progressOf(g, src) * 100)}%` : bigReading(g, src)}</Text>
-                <GoalBar progress={progressOf(g, src)} time={g.time} color={tone} />
-                <Text style={t.small}>{sourceLine(g, src)}{g.time != null && g.time > 0.01 && g.status === 'active' ? `. ${Math.round(Math.min(1, g.time) * 100)}% of its time has gone.` : '.'}</Text>
-                <Link label="Change how it's measured" onPress={() => nav.measure(g.id)} />
-              </>
-            )}
-          </Card>
-
-          {'state' in g ? <WeekState c={g as Commitment} /> : null}
+          <Progress g={g} src={src} />
+          {'state' in g ? <NextStep c={g as Commitment} /> : null}
           <Milestones goal={g.id} initial={d.milestones} />
-
-          <Section title="What it serves" action={d.parents.length ? (g.parent ? 'Change' : 'Choose') : undefined} onAction={() => setSheet('parent')}>
-            {g.parent ? (
-              <Row title={g.parent.title} sub={HORIZON_GOAL[g.parent.horizon]} left={<Dot aspect={g.parent.aspect} />} chevron onPress={() => nav.goal(g.parent!.id)} />
-            ) : <Text style={t.small}>{d.parents.length ? 'Serves no bigger goal yet.' : 'Nothing above it on the ladder to serve.'}</Text>}
-          </Section>
-          {d.children.length ? (
-            <Section title="What serves it">
-              {d.children.map((c) => <Row key={c.id} title={c.title} sub={`${HORIZON_GOAL[c.horizon]}, ${c.label}`} left={<Dot aspect={c.aspect} />} chevron onPress={() => nav.goal(c.id)} />)}
-            </Section>
-          ) : null}
-
           <Tasks goal={g.id} d={d} />
 
+          <Block title="What it serves" action={d.parents.length ? (g.parent ? 'Change' : 'Choose') : undefined} onAction={() => setSheet('parent')}>
+            {g.parent ? (
+              <Group inset={36}>
+                <Item title={g.parent.title} sub={HORIZON_GOAL[g.parent.horizon]} left={<Dot aspect={g.parent.aspect} />} chevron onPress={() => nav.goal(g.parent!.id)} />
+              </Group>
+            ) : <Text style={[t.footnote, st.pad]}>{d.parents.length ? 'Serves no bigger goal yet.' : 'Nothing above it on the ladder to serve.'}</Text>}
+          </Block>
+          {d.children.length ? (
+            <Block title="What serves it">
+              <Group>{d.children.map((c) => <GoalRow key={c.id} g={c} src={src} />)}</Group>
+            </Block>
+          ) : null}
+
           {d.projects.length ? (
-            <Section title="Projects serving it">
-              {d.projects.map((p) => <Row key={p.slug} title={p.name} sub={p.status === 'paused' ? 'Parked' : 'Running'} />)}
-            </Section>
+            <Block title="Projects serving it">
+              <Group>{d.projects.map((p) => <Item key={p.slug} title={p.name} value={p.status === 'paused' ? 'Parked' : 'Running'} />)}</Group>
+            </Block>
           ) : null}
 
           {d.closings.length ? (
-            <Section title="Its record">
-              {d.closings.map((c) => (
-                <Row key={c.id} title={`${OUTCOME_WORD[c.outcome]}, ${c.horizon === 'week' ? `week of ${c.label}` : c.label}`}
-                  sub={[c.why, c.to ? `Into ${c.to.label}` : null, c.by === 'growth' ? 'From your weekly review' : null].filter(Boolean).join('. ') || null} />
-              ))}
-            </Section>
+            <Block title="Its record">
+              <Group>
+                {d.closings.map((c) => (
+                  <Item key={c.id} title={`${OUTCOME_WORD[c.outcome]}, ${c.horizon === 'week' ? `week of ${c.label}` : c.label}`}
+                    sub={[c.why, c.to ? `Into ${c.to.label}` : null, c.by === 'growth' ? 'From your weekly review' : null].filter(Boolean).join('. ') || null} />
+                ))}
+              </Group>
+            </Block>
           ) : null}
 
           {g.status === 'active'
@@ -97,14 +83,17 @@ export function GoalScreen({ id, open, onClose }: { id: string; open: boolean; o
 
           <EditSheet open={sheet === 'edit'} d={d} onClose={() => setSheet(null)} onSaved={() => r.refresh()} />
           <Sheet open={sheet === 'parent'} onClose={() => setSheet(null)} title="What does it serve?">
-            {d.parents.map((p) => (
-              <Row key={p.id} title={p.title} sub={HORIZON_GOAL[p.horizon]} left={<Dot aspect={p.aspect} />} right={g.parent?.id === p.id ? <Icon name="check" size={16} color={a.color} /> : undefined}
-                onPress={() => { setSheet(null); void act(`/goal/${g.id}`, { parent: p.id }).then(() => r.refresh()).catch((e) => a.notice(message(e))); }} />
-            ))}
-            {g.parent ? <Button label="Serves nothing bigger" kind="quiet" onPress={() => { setSheet(null); void act(`/goal/${g.id}`, { parent: null }).then(() => r.refresh()); }} /> : null}
+            <Group inset={36}>
+              {d.parents.map((p) => (
+                <Item key={p.id} title={p.title} sub={HORIZON_GOAL[p.horizon]} left={<Dot aspect={p.aspect} />} label={`${p.title}${g.parent?.id === p.id ? ', chosen' : ''}`}
+                  right={g.parent?.id === p.id ? <Icon name="check" size={18} color={a.color} /> : undefined}
+                  onPress={() => { setSheet(null); void act(`/goal/${g.id}`, { parent: p.id }).then(() => r.refresh()).catch((e) => a.notice(message(e))); }} />
+              ))}
+            </Group>
+            {g.parent ? <Button label="Serves nothing bigger" kind="quiet" onPress={() => { setSheet(null); void act(`/goal/${g.id}`, { parent: null }).then(() => r.refresh()).catch((e) => a.notice(message(e))); }} /> : null}
           </Sheet>
           <Sheet open={sheet === 'close'} onClose={() => setSheet(null)} title="What happened?">
-            <Text style={t.small}>{g.title}</Text>
+            <Text style={t.subhead}>{g.title}</Text>
             <CloseChoice goal={g} sunday={weekday(today()) === 0} onClosed={() => { setSheet(null); void r.refresh(); }} />
           </Sheet>
         </>
@@ -113,15 +102,57 @@ export function GoalScreen({ id, open, onClose }: { id: string; open: boolean; o
   );
 }
 
-function WeekState({ c }: { c: Commitment }) {
+/** How far it has come, where the number comes from, and how much of its time has gone. */
+function Progress({ g, src }: { g: Goal; src: Sources }) {
+  const a = useAspect();
   const nav = useNav();
-  if (c.status !== 'active') return null;
-  const head = c.state === 'moving' ? (c.tasks.doneWeek ? `Moving, ${count(c.tasks.doneWeek, 'task')} done this week` : 'Moving') : c.state === 'not_started' ? 'Not started yet' : 'Next step';
+  const tone = colorOf(g.aspect, a.color);
+  if (g.source.kind === 'none') {
+    return (
+      <Group pad>
+        <View style={st.gap4}>
+          <Text style={t.headline}>No number yet</Text>
+          <Text style={t.footnote}>Give it milestones, tie tasks to it, set it by hand, or read it from Money or Body.</Text>
+        </View>
+        <Button label="Choose how to measure it" kind="soft" small onPress={() => nav.measure(g.id)} wrap={st.left} />
+      </Group>
+    );
+  }
+  const p = progressOf(g, src);
+  const known = pctKnown(g, src);
+  const gone = g.time != null && g.time > 0.01 && g.status === 'active' ? ` ${Math.round(Math.min(1, g.time) * 100)}% of its time has gone.` : '';
   return (
-    <Section title={head}>
-      <Text style={t.body}>{c.next ? (c.state === 'not_started' ? `Smallest next step: ${c.next.title}` : c.next.title) : 'No next step yet. Tie one of your tasks, or add a milestone below.'}</Text>
-      {c.next ? null : <Link label="Tie a task to it" onPress={() => nav.tie(c.id)} />}
-    </Section>
+    <Group pad>
+      <Metric size="l" value={known ? `${Math.round(p * 100)}%` : bigReading(g, src)} color={g.status === 'active' ? tone : undefined} />
+      <GoalBar progress={p} time={g.status === 'active' ? g.time : null} color={tone} />
+      <Text style={[t.footnote, t.num]}>{`${sourceLine(g, src)}.${gone}`}</Text>
+      <View style={st.buttons}>
+        {g.source.kind === 'manual' && g.status === 'active' ? <Button label="Log progress" kind="soft" small onPress={() => nav.progress(g)} /> : null}
+        <Button label="Change measure" kind="quiet" small onPress={() => nav.measure(g.id)} />
+      </View>
+    </Group>
+  );
+}
+
+/** A week goal's next step, ticked here in one tap (Undo puts it back). */
+function NextStep({ c }: { c: Commitment }) {
+  const nav = useNav();
+  const tickTask = useTickTask();
+  const tickMilestone = useTickMilestone();
+  if (c.status !== 'active') return null;
+  const state = c.state === 'moving' ? (c.tasks.doneWeek ? `Moving, ${count(c.tasks.doneWeek, 'task')} done this week` : 'Moving') : c.state === 'not_started' ? 'Not started yet' : null;
+  const next = c.next;
+  return (
+    <Block title={c.state === 'not_started' ? 'Smallest next step' : 'Next step'} sub={state}>
+      <Group inset={64}>
+        {next ? (
+          <TickRow done={false} onTick={() => (next.kind === 'task' ? tickTask(next) : tickMilestone(next.id))} tickLabel={`Mark ${next.title} done`} title={next.title}
+            sub={next.kind === 'milestone' ? 'A milestone' : next.due ? `Due ${dueWords(next.due)}` : 'A task, on Today'} />
+        ) : (
+          <Item title="No next step yet" sub="Tie one of your tasks, or add a milestone below" action={<Button label="Tie a task" kind="soft" small onPress={() => nav.tie(c.id)} />} />
+        )}
+      </Group>
+    </Block>
   );
 }
 
@@ -129,12 +160,10 @@ function WeekState({ c }: { c: Commitment }) {
 function Milestones({ goal, initial }: { goal: string; initial: Milestone[] }) {
   const a = useAspect();
   const coll = useCollection<Milestone>('mission', 'milestones');
+  const tick = useTickMilestone();
   const [text, setText] = useState('');
   const list = (coll.items ? coll.items.filter((m) => m.goal === goal && !m.deleted_at) : initial).slice().sort((x, y) => x.position - y.position);
   const done = list.filter((m) => m.done).length;
-  const toggle = (m: Milestone) => {
-    void coll.patch(m.id, { done: !m.done, done_at: m.done ? null : new Date().toISOString() }).then(refresh).catch((e) => a.notice(message(e)));
-  };
   const add = () => {
     const title = text.trim();
     if (!title) return;
@@ -143,37 +172,49 @@ function Milestones({ goal, initial }: { goal: string; initial: Milestone[] }) {
       .then(() => { haptic.light(); refresh(); }).catch((e) => a.notice(message(e)));
   };
   return (
-    <Section title={list.length ? `Milestones, ${done} of ${list.length}` : 'Milestones'}>
-      {list.map((m) => <Row key={m.id} title={m.title} done={m.done} onToggle={() => toggle(m)} sub={m.done && m.done_at ? `Done ${shortDay(myDay(m.done_at))}` : null} />)}
+    <Block title="Milestones" sub={list.length ? `${done} of ${list.length} done` : 'The few points on the way'}>
+      {list.length ? (
+        <Group inset={64}>
+          {list.map((m) => (
+            <TickRow key={m.id} done={m.done} onTick={() => tick(m.id, !m.done)} tickLabel={m.done ? `Mark ${m.title} not done` : `Mark ${m.title} done`} title={m.title}
+              sub={m.done && m.done_at ? `Done ${shortDay(myDay(m.done_at))}` : m.due ? `Due ${dueWords(m.due)}` : null} />
+          ))}
+        </Group>
+      ) : null}
       <Field value={text} onChangeText={setText} placeholder={list.length ? 'Add a milestone' : 'Add the first milestone'} onSubmit={add} maxLength={200} />
       {text.trim() ? <Button label="Add milestone" kind="soft" small onPress={add} wrap={st.left} /> : null}
-    </Section>
+    </Block>
   );
 }
 
-/** Tasks tied to the goal. They are done on Today; here he can see them, tie one he already has, or add one. */
+/** Tasks tied to the goal, ticked here as on Today; tie one he already has, or add one. */
 function Tasks({ goal, d }: { goal: string; d: GoalDetail }) {
   const a = useAspect();
   const nav = useNav();
+  const tick = useTickTask();
   const [text, setText] = useState('');
   const add = () => {
     const title = text.trim();
     if (!title) return;
     setText('');
-    void act(`/goal/${goal}/task`, { title }).then(() => haptic.light()).catch((e) => a.notice(message(e)));
+    void act(`/goal/${goal}/task`, { title }).then(() => { haptic.light(); a.notice('Added to Today, tied to this goal'); }).catch((e) => a.notice(message(e)));
   };
   const open = d.tasks.filter((x) => x.status !== 'done');
   const done = d.tasks.filter((x) => x.status === 'done');
   return (
-    <Section title={d.tasks.length ? `Tasks, ${done.length} of ${d.tasks.length} done` : 'Tasks'} action="Tie a task" onAction={() => nav.tie(goal)}>
-      {[...open, ...done.slice(0, 5)].map((x) => (
-        <Row key={x.id} title={x.title} done={x.status === 'done'} left={<CheckRing done={x.status === 'done'} size={20} />}
-          sub={x.status === 'done' ? (x.doneAt ? `Done ${shortDay(myDay(x.doneAt))}` : 'Done') : x.due ? `Due ${shortDay(x.due)}` : null} />
-      ))}
-      {!d.tasks.length ? <Text style={t.small}>No tasks carry it yet. Tie one you already have, or add one here; it shows on Today.</Text> : null}
+    <Block title="Tasks" sub={d.tasks.length ? `${done.length} of ${d.tasks.length} done` : null} action="Tie a task" onAction={() => nav.tie(goal)}>
+      {d.tasks.length ? (
+        <Group inset={64}>
+          {[...open, ...done.slice(0, 5)].map((x) => (
+            <TickRow key={x.id} done={x.status === 'done'} onTick={() => tick(x, x.status !== 'done')} title={x.title}
+              tickLabel={x.status === 'done' ? `Mark ${x.title} not done` : `Mark ${x.title} done`}
+              sub={x.status === 'done' ? (x.doneAt ? `Done ${shortDay(myDay(x.doneAt))}` : 'Done') : x.due ? `Due ${dueWords(x.due)}` : null} />
+          ))}
+        </Group>
+      ) : <Text style={[t.footnote, st.pad]}>No tasks carry it yet. Tie one you already have, or add one here. It shows on Today.</Text>}
       <Field value={text} onChangeText={setText} placeholder="Add a task for it" onSubmit={add} maxLength={300} />
       {text.trim() ? <Button label="Add task" kind="soft" small onPress={add} wrap={st.left} /> : null}
-    </Section>
+    </Block>
   );
 }
 
@@ -191,14 +232,16 @@ function EditSheet({ open, d, onClose, onSaved }: { open: boolean; d: GoalDetail
   return (
     <Sheet open={open} onClose={onClose} title="Edit goal">
       <Field label="Goal" value={title} onChangeText={setTitle} maxLength={300} />
-      <Text style={t.label}>Aspect</Text>
-      <View style={st.chips}>
-        {ASPECT_KEYS.map((k) => (
-          <Chip key={k} label={ASPECT_LABEL[k]} selected={aspects.includes(k)} icon={<Dot aspect={k} />}
-            onPress={() => setAspects((xs) => (xs.includes(k) ? xs.filter((x) => x !== k) : [...xs, k].slice(-3)))} />
-        ))}
+      <View style={st.gap8}>
+        <Text style={t.footnote}>Sections it serves, up to three</Text>
+        <View style={st.chips}>
+          {ASPECT_KEYS.map((k) => (
+            <Chip key={k} label={ASPECT_LABEL[k]} selected={aspects.includes(k)} icon={<Dot aspect={k} />}
+              onPress={() => setAspects((xs) => (xs.includes(k) ? xs.filter((x) => x !== k) : [...xs, k].slice(-3)))} />
+          ))}
+        </View>
       </View>
-      <Button label="Save" onPress={save} busy={busy} disabled={!title.trim()} />
+      <Button label="Save" kind="accent" onPress={save} busy={busy} disabled={!title.trim()} />
     </Sheet>
   );
 }
@@ -239,7 +282,7 @@ function MeasureBody({ goal, onClose }: { goal: string; onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const jars = useGet<{ jars: Jar[] }>(k === 'jar' ? '/mod/money/jars' : null);
   const body = useGet<{ weight: { now: number | null; goal: { goal: number } | null } | null }>(k === 'weight' ? '/mod/body/today' : null);
-  if (!d) return r.error ? <Failed message={r.error} onRetry={r.refresh} /> : <Skeleton height={200} radius={24} />;
+  if (!d) return r.error ? <Failed message={r.error} onRetry={r.refresh} /> : <Skeleton height={200} radius={22} />;
 
   const value = pct ?? Math.round(d.goal.progress);
   const n = (s: string) => (s.trim() && Number.isFinite(Number(s)) ? Number(s) : null);
@@ -272,14 +315,14 @@ function MeasureBody({ goal, onClose }: { goal: string; onClose: () => void }) {
       {k === 'manual' ? <Stepper label="progress" value={value} onChange={setPct} step={5} min={0} max={100} format={(v) => `${v}%`} /> : null}
       {k === 'income' ? <Field label="Target for the month" value={target} onChangeText={setTarget} keyboardType="number-pad" suffix="₹" placeholder={same?.target ? String(same.target) : 'Money’s own target'} /> : null}
       {k === 'jar' ? (
-        items == null ? (jars.error ? <Text style={t.small}>{jars.error}</Text> : <Skeleton height={36} />)
+        items == null ? (jars.error ? <Text style={t.footnote}>{jars.error}</Text> : <Skeleton height={36} />)
           : items.length ? (
             <View style={st.chips}>
               {items.map((f) => (
                 <Chip key={f.id} label={`${f.name}, ${fmt(f.saved, 'rupees')}${f.goal === goal ? ', serves this goal' : ''}`} selected={pickJar === f.id} onPress={() => setJar(f.id)} />
               ))}
             </View>
-          ) : <Text style={t.small}>No savings jars in Money yet. Make one there and it shows here.</Text>
+          ) : <Text style={t.footnote}>No savings jars in Money yet. Make one there and it shows here.</Text>
       ) : null}
       {k === 'weight' ? (
         <View style={st.row2}>
@@ -287,18 +330,21 @@ function MeasureBody({ goal, onClose }: { goal: string; onClose: () => void }) {
           <View style={ps.flex}><Field label="Aiming for" value={target} onChangeText={setTarget} keyboardType="decimal-pad" suffix="kg" inputStyle={st.shrink} placeholder={same?.target != null ? String(same.target) : body.data?.weight?.goal ? String(body.data.weight.goal.goal) : ''} /></View>
         </View>
       ) : null}
-      <Text style={t.caption}>{k === 'auto' ? 'Done tasks and finished goals under it move it. With neither, milestones do.' : k === 'manual' ? 'Only you move this one.' : 'Read each time you open Mission, with the date it was true.'}</Text>
-      <Button label="Save" onPress={save} busy={busy} disabled={k === 'jar' && !pickJar} />
+      <Text style={t.footnote}>{k === 'auto' ? 'Done tasks and finished goals under it move it. With neither, milestones do.' : k === 'manual' ? 'Only you move this one. Log progress from the goal or from Now.' : 'Read each time you open Mission, with the date it was true.'}</Text>
+      <Button label="Save" kind="accent" onPress={save} busy={busy} disabled={k === 'jar' && !pickJar} />
     </>
   );
 }
 
 const st = StyleSheet.create({
   shrink: { minWidth: 0 }, // a web input keeps a wide default width; without this the suffix is pushed out of a half-width field
-  gap: { gap: 16 },
+  gap4: { gap: 4 },
+  gap8: { gap: 8 },
+  gap16: { gap: 16 },
   head: { gap: 8 },
-  progress: { gap: 8 },
-  left: { alignSelf: 'flex-start', marginTop: 4 },
+  pad: { paddingHorizontal: 4 },
+  left: { alignSelf: 'flex-start' },
+  buttons: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   tiles: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   row2: { flexDirection: 'row', gap: 12 },

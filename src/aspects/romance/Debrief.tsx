@@ -3,15 +3,14 @@ import { useEffect, useRef, useState } from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, ReduceMotion, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import {
-  Button, Card, Chip, dayLabel, dayOf, Divider, Empty, Failed, Field, haptic, Icon, IconButton, Loading, Press, R, Screen, Section, Skeleton, SURF, t,
-  timer, tint, today, useAspect,
+  Block, Button, Chip, dayLabel, dayOf, Empty, Failed, Field, Group, haptic, Icon, Item, Loading, Press, Screen, Skeleton, t, timer, tint, today, useAspect,
 } from '@/aspects/kit';
 import { ApiError, call, collection, newId, upload } from '@/lib/mod';
 import { C } from '@/theme';
 import { FEEL, PROMPTS, STUCK, TRIED, WELL } from './copy';
 import { useDebriefs } from './data';
 import { queueAudio, queuePut } from './local';
-import { placeName, useNow, whenIn } from './parts';
+import { capital, placeName, useNow, whenIn } from './parts';
 import type { Debrief, Outing, Review, TriedAnswer } from './types';
 
 type Audio = typeof import('expo-audio');
@@ -25,8 +24,13 @@ type Rec = { prepareToRecordAsync: () => Promise<void>; record: () => void; stop
 const useRecorder: () => Rec = audio ? () => audio.useAudioRecorder(audio.RecordingPresets.HIGH_QUALITY) as unknown as Rec : () => null;
 
 // ── the debrief screen ───────────────────────────────────────────────────────────────────────────────────────────
-export function DebriefScreen({ target, lastTry, onClose }: {
-  target: { outing: Outing | null; view: string | null } | null; lastTry: string | null; onClose: () => void;
+/**
+ * A minute of talk (or a few chips) about an outing, a plan with someone, or anything. `about` names a plan when
+ * there is no outing; `onMade` hears the id of the debrief this screen makes, so the page can tie it to the plan.
+ */
+export function DebriefScreen({ target, about, lastTry, onClose, onMade }: {
+  target: { outing: Outing | null; view: string | null } | null; about?: string | null; lastTry: string | null; onClose: () => void;
+  onMade?: (id: string) => void;
 }) {
   const a = useAspect();
   const d = useDebriefs();
@@ -47,7 +51,7 @@ export function DebriefScreen({ target, lastTry, onClose }: {
   const stopRef = useRef<() => void>(() => {});
 
   // a fresh screen each time it opens
-  const key = target ? `${target.outing?.id ?? 'none'}:${target.view ?? ''}` : null;
+  const key = target ? `${target.outing?.id ?? 'none'}:${target.view ?? ''}:${about ?? ''}` : null;
   const [lastKey, setLastKey] = useState<string | null>(null);
   if (key !== lastKey) {
     setLastKey(key);
@@ -60,7 +64,7 @@ export function DebriefScreen({ target, lastTry, onClose }: {
   const waiting = !!(shown as (Debrief & { waiting?: boolean }) | null)?.waiting;
   const working = !!shown && !waiting && (shown.status === 'transcribing' || shown.status === 'reviewing' || (shown.status === 'saved' && !shown.review));
 
-  // while the PC works on it, look again every few seconds; slower each time the PC doesn't answer
+  // while the PC works on it and this screen is open, look again every few seconds; slower each time the PC doesn't answer
   const pullError = useRef<string | null>(null);
   useEffect(() => { pullError.current = d.pullError; });
   useEffect(() => {
@@ -83,6 +87,7 @@ export function DebriefScreen({ target, lastTry, onClose }: {
   const outing = target?.outing ?? null;
   const askTry = outing?.primer?.try ?? lastTry; // the thing to try he went out with
   const triedDoc = tried ? { answer: tried, try: askTry ?? null } : null;
+  const done = (id: string) => { setMade(id); onMade?.(id); };
   const startRec = async () => {
     setMicError(null);
     if (!audio || !rec) { setMicError('This build has no microphone for this yet. Tap instead.'); return; }
@@ -121,7 +126,7 @@ export function DebriefScreen({ target, lastTry, onClose }: {
       if (!(e instanceof ApiError) || e.status === 0 || e.status >= 500) queueAudio({ id, uri, type, query: q, at, session: outing?.id ?? null, day, secs: length });
       else { setPhase('idle'); setMicError((e as Error).message); return; }
     }
-    setMade(id);
+    done(id);
     setPhase('idle');
   };
   useEffect(() => { stopRef.current = () => { void stopRec(); }; });
@@ -132,7 +137,7 @@ export function DebriefScreen({ target, lastTry, onClose }: {
       chips: { well, stuck, feel }, text: text.trim() || null, tried: triedDoc, review: null };
     queuePut('debriefs', doc);
     haptic.medium();
-    setMade(id);
+    done(id);
   };
   const retry = async () => {
     if (!shown) return;
@@ -142,37 +147,37 @@ export function DebriefScreen({ target, lastTry, onClose }: {
   const toggle = (list: string[], set: (v: string[]) => void, k: string) => set(list.includes(k) ? list.filter((x) => x !== k) : [...list, k]);
   const context = outing
     ? `${placeName(outing.place)} ${whenIn(outing.day)}, ${outing.reps.length} started`
-    : shown?.session ? null : 'Not tied to one outing';
+    : about ?? (shown?.session ? null : shown ? capital(dayLabel(shown.day)) : 'Not tied to one outing');
 
   return (
     <Screen open={open} onClose={onClose} title="Debrief">
-      {context ? <Text style={[t.small, s.centre]}>{context}</Text> : null}
+      {context ? <Text style={[t.footnote, t.num, s.centre]}>{context}</Text> : null}
 
       {!shown && askTry ? (
-        <Card style={s.gap12}>
+        <Group pad>
           <View style={s.gap4}>
-            <Text style={t.label}>Last time&apos;s thing to try</Text>
-            <Text style={t.body}>{askTry}</Text>
+            <Text style={t.footnote}>Last time&apos;s thing to try</Text>
+            <Text style={t.callout}>{askTry}</Text>
           </View>
-          <Text style={t.small}>Did you try it?</Text>
+          <Text style={t.subhead}>Did you try it?</Text>
           <View style={s.chips}>
             {(Object.keys(TRIED) as TriedAnswer[]).map((k) => <Chip key={k} label={TRIED[k]} selected={tried === k} onPress={() => setTried(tried === k ? null : k)} />)}
           </View>
-        </Card>
+        </Group>
       ) : null}
 
       {shown ? (
         <Result d={shown} working={working} offline={!!d.pullError} onRetry={retry} />
       ) : mode === 'talk' ? (
         <View style={s.talk}>
-          <Text style={[t.lead, s.centre]}>{phase === 'recording' ? PROMPTS[Math.min(PROMPTS.length - 1, Math.floor(secs / 20))] : 'Talk for a minute about how it went.'}</Text>
+          <Text style={[t.title3, s.centre]}>{phase === 'recording' ? PROMPTS[Math.min(PROMPTS.length - 1, Math.floor(secs / 20))] : 'Talk for a minute about how it went.'}</Text>
           <Mic recording={phase === 'recording'} busy={phase === 'sending'} color={a.color} onPress={phase === 'recording' ? () => void stopRec() : () => void startRec()} />
-          <Text style={[t.label, t.num, s.centre]}>
+          <Text style={[t.subhead, t.num, s.centre]}>
             {phase === 'recording' ? `${timer(secs)} of ${timer(CAP)}. Tap to finish.` : phase === 'sending' ? 'Sending to your PC' : 'Tap to start. What happened, what went well, where it stalled.'}
           </Text>
-          {micError ? <Text style={[t.small, s.centre, { color: C.danger }]}>{micError}</Text> : null}
-          {phase === 'idle' ? <Button label="Tap instead" kind="quiet" small onPress={() => setMode('tap')} wrap={s.selfCentre} /> : null}
-          <Text style={[t.caption, s.centre]}>The recording stays on your PC. Nora reads the words and gives back one thing to try.</Text>
+          {micError ? <Text style={[t.subhead, s.centre, { color: C.danger }]}>{micError}</Text> : null}
+          {phase === 'idle' ? <Button label="Tap instead" kind="soft" small onPress={() => setMode('tap')} wrap={s.selfCentre} /> : null}
+          <Text style={[t.footnote, s.centre]}>The recording stays on your PC. Nora reads the words and gives back one thing to try.</Text>
         </View>
       ) : (
         <>
@@ -192,15 +197,15 @@ export function DebriefScreen({ target, lastTry, onClose }: {
 
 function ChipGroup({ title, options, chosen, onToggle }: { title: string; options: Record<string, string>; chosen: string[]; onToggle: (k: string) => void }) {
   return (
-    <Section title={title}>
+    <Block title={title}>
       <View style={s.chips}>
         {Object.entries(options).map(([k, label]) => <Chip key={k} label={label} selected={chosen.includes(k)} onPress={() => onToggle(k)} />)}
       </View>
-    </Section>
+    </Block>
   );
 }
 
-/** The big mic. It breathes while recording (still under Reduce Motion). */
+/** The big mic. A soft halo breathes only while it records (still under Reduce Motion). */
 function Mic({ recording, busy, color, onPress }: { recording: boolean; busy: boolean; color: string; onPress: () => void }) {
   const reduce = useReducedMotion();
   const p = useSharedValue(0);
@@ -223,22 +228,22 @@ function Mic({ recording, busy, color, onPress }: { recording: boolean; busy: bo
 // ── what came back ──────────────────────────────────────────────────────────────────────────────────────────────
 function Result({ d, working, offline, onRetry }: { d: Debrief; working: boolean; offline: boolean; onRetry: () => void }) {
   const waiting = (d as Debrief & { waiting?: boolean }).waiting;
-  if (waiting) return <Card><Text style={t.body}>Saved on this phone. It goes to your PC when it answers, and the reading comes back here.</Text></Card>;
-  if (working && !d.review && offline) return <Card><Text style={t.body}>Your PC has it but isn&apos;t answering right now. The reading shows here once it&apos;s back.</Text></Card>;
+  if (waiting) return <Group pad><Text style={t.subhead}>Saved on this phone. It goes to your PC when it answers, and the reading comes back here.</Text></Group>;
+  if (working && !d.review && offline) return <Group pad><Text style={t.subhead}>Your PC has it but isn&apos;t answering right now. The reading shows here once it&apos;s back.</Text></Group>;
   if (working && !d.review) {
     return <Loading label={d.status === 'transcribing' ? 'Writing down what you said. This takes up to a minute; you can leave and come back.' : 'Nora is reading it. Usually a few seconds; you can leave and come back.'} />;
   }
   return (
-    <View style={s.gap16}>
+    <View style={s.gap24}>
       {d.status === 'failed' ? (
-        <Card style={s.gap8}>
-          <Text style={t.strong}>{d.failed_step === 'transcribe' ? "Your PC couldn't write this one down" : d.failed_step === 'short' ? 'That was too short to read' : "Nora couldn't read this one"}</Text>
-          <Text style={t.small}>{d.review ? 'Your debrief is saved, and a plain reading is below.' : 'Your debrief is saved. Try again in a moment.'}</Text>
-          {d.error ? <Text style={t.caption}>{d.error}</Text> : null}
+        <Group pad>
+          <Text style={t.headline}>{d.failed_step === 'transcribe' ? "Your PC couldn't write this one down" : d.failed_step === 'short' ? 'That was too short to read' : "Nora couldn't read this one"}</Text>
+          <Text style={t.subhead}>{d.review ? 'Your debrief is saved, and a plain reading is below.' : 'Your debrief is saved. Try again in a moment.'}</Text>
+          {d.error ? <Text style={t.footnote}>{d.error}</Text> : null}
           {d.failed_step !== 'short' ? <Button label="Try again" kind="quiet" small onPress={onRetry} wrap={s.selfStart} /> : null}
-        </Card>
+        </Group>
       ) : null}
-      {working ? <Text style={[t.small, s.centre]}>Reading it again…</Text> : null}
+      {working ? <Text style={[t.subhead, s.centre]}>Reading it again</Text> : null}
       {d.review ? <ReviewCard review={d.review} kind={d.kind} /> : null}
       {d.transcript ? <Said text={d.transcript} /> : d.text ? <Said text={d.text} title="What you wrote" /> : null}
     </View>
@@ -249,42 +254,44 @@ export function ReviewCard({ review, kind, compact }: { review: Review; kind?: D
   const a = useAspect();
   return (
     <Animated.View entering={FadeIn.duration(220).reduceMotion(ReduceMotion.System)} style={s.gap16}>
-      <View style={s.gap8}>
-        <Text style={t.label}>What you did well</Text>
-        {review.well.map((w) => <Text key={w} style={t.body}>{w}</Text>)}
-      </View>
-      <View style={[s.next, compact && s.nextInner, { borderColor: tint(a.color, 0.4), backgroundColor: tint(a.color, 0.08) }]}>
-        <Text style={[t.label, { color: a.color }]}>One thing to try next time</Text>
-        <Text style={t.lead}>{review.try.text}</Text>
-        {review.try.why && !compact ? <Text style={t.small}>{review.try.why}</Text> : null}
-        {!compact ? <Text style={t.caption}>It is your primer for the next outing.</Text> : null}
-      </View>
+      <Block title="What you did well">
+        <Group pad>
+          {review.well.map((w) => <Text key={w} style={t.subhead}>{w}</Text>)}
+        </Group>
+      </Block>
+      <Group pad tone={a.color}>
+        <Text style={[t.footnote, { color: a.color }]}>One thing to try next time</Text>
+        <Text style={t.headline}>{review.try.text}</Text>
+        {review.try.why && !compact ? <Text style={t.subhead}>{review.try.why}</Text> : null}
+        {!compact ? <Text style={t.footnote}>It is your primer for the next outing.</Text> : null}
+      </Group>
       {review.pattern ? (
-        <View style={s.gap8}>
-          <Text style={t.label}>A pattern</Text>
-          <Text style={t.body}>{review.pattern}</Text>
-        </View>
+        <Block title="A pattern">
+          <Group pad><Text style={t.subhead}>{review.pattern}</Text></Group>
+        </Block>
       ) : null}
-      <Text style={t.caption}>{review.by === 'ai' ? `Read by Nora ${whenIn(dayOf(review.at))}` : kind === 'voice' ? 'A plain reading, made without Nora' : 'A plain reading from what you tapped, made without Nora'}</Text>
+      <Text style={t.footnote}>{review.by === 'ai' ? `Read by Nora ${whenIn(dayOf(review.at))}` : kind === 'voice' ? 'A plain reading, made without Nora' : 'A plain reading from what you tapped, made without Nora'}</Text>
     </Animated.View>
   );
 }
 
+/** What he said or wrote, folded until he opens it. */
 function Said({ text, title = 'What you said' }: { text: string; title?: string }) {
   const [open, setOpen] = useState(false);
   return (
     <View style={s.gap8}>
       <Press label={`${open ? 'Hide' : 'Show'} ${title.toLowerCase()}`} onPress={() => setOpen(!open)} style={s.fold}>
-        <Text style={t.label}>{title}</Text>
+        <Text style={t.subhead}>{title}</Text>
         <Icon name={open ? 'up' : 'down'} size={16} color={C.muted} />
       </Press>
-      {open ? <Text selectable style={t.body}>{text}</Text> : null}
+      {open ? <Group pad><Text selectable style={t.subhead}>{text}</Text></Group> : null}
     </View>
   );
 }
 
 // ── every debrief ───────────────────────────────────────────────────────────────────────────────────────────────
-export function DebriefsScreen({ open, onClose }: { open: boolean; onClose: () => void }) {
+/** Every debrief by day; one opens in place with its reading, what was said, and delete. */
+export function DebriefsScreen({ open, onClose, about }: { open: boolean; onClose: () => void; about: (d: Debrief) => string }) {
   const a = useAspect();
   const d = useDebriefs();
   const [openId, setOpenId] = useState<string | null>(null);
@@ -293,44 +300,39 @@ export function DebriefsScreen({ open, onClose }: { open: boolean; onClose: () =
   return (
     <Screen open={open} onClose={onClose} title="Debriefs">
       {items == null ? (
-        d.error ? <Failed message={d.error} onRetry={d.refresh} /> : <View style={s.gap12}>{[0, 1, 2].map((i) => <Skeleton key={i} height={72} radius={16} />)}</View>
+        d.error ? <Group><Failed message={d.error} onRetry={d.refresh} /></Group> : <View style={s.gap12}>{[0, 1, 2].map((i) => <Skeleton key={i} height={64} radius={22} />)}</View>
       ) : items.length === 0 ? (
-        <Empty title="No debriefs yet" body="After an outing, talk for a minute or tap a few chips. Each one shows here with what went well and one thing to try." />
+        <Empty title="No debriefs yet" body="After an outing or a plan, talk for a minute or tap a few chips. Each one shows here with what went well and one thing to try." />
       ) : (
-        <View style={s.gap12}>
+        <Group inset={16}>
           {items.map((x) => {
             const isOpen = openId === x.id;
             return (
-              <Card key={x.id} style={s.gap12}>
-                <Press label={`Debrief, ${dayLabel(x.day)}`} onPress={() => setOpenId(isOpen ? null : x.id)} style={s.fold}>
-                  <View style={s.flex}>
-                    <Text style={t.strong}>{dayLabel(x.day)}</Text>
-                    <Text style={t.small} numberOfLines={isOpen ? undefined : 2}>{x.review?.try.text ?? statusWords(x)}</Text>
-                  </View>
-                  <Icon name={isOpen ? 'up' : 'down'} size={16} color={C.muted} />
-                </Press>
+              <View key={x.id}>
+                <Item title={capital(dayLabel(x.day))} sub={isOpen ? null : statusWords(x) || about(x)} label={`Debrief, ${dayLabel(x.day)}. ${isOpen ? 'Close' : 'Open'}`}
+                  right={<Icon name={isOpen ? 'up' : 'down'} size={16} color={C.muted} />} onPress={() => { setOpenId(isOpen ? null : x.id); setConfirm(null); }} />
                 {isOpen ? (
-                  <View style={s.gap16}>
-                    <Divider />
-                    {x.review ? <ReviewCard review={x.review} kind={x.kind} compact /> : <Text style={t.small}>{statusWords(x)}</Text>}
+                  <View style={s.opened}>
+                    <Text style={t.footnote}>{about(x)}</Text>
+                    {x.review ? <ReviewCard review={x.review} kind={x.kind} compact /> : <Text style={t.subhead}>{statusWords(x)}</Text>}
                     {x.transcript ? <Said text={x.transcript} /> : x.text ? <Said text={x.text} title="What you wrote" /> : null}
                     {confirm === x.id ? (
                       <View style={s.gap8}>
-                        <Text style={t.small}>Delete this debrief{x.kind === 'voice' ? ' and its recording' : ''}? This can&apos;t be undone.</Text>
+                        <Text style={t.subhead}>{`Delete this debrief${x.kind === 'voice' ? ' and its recording' : ''}? This can't be undone.`}</Text>
                         <View style={s.row}>
                           <Button label="Keep" kind="quiet" small onPress={() => setConfirm(null)} wrap={s.flex} />
                           <Button label="Delete" kind="danger" small wrap={s.flex} onPress={() => { setConfirm(null); setOpenId(null); d.remove(x.id).catch((e) => a.notice((e as Error).message)); }} />
                         </View>
                       </View>
                     ) : (
-                      <IconButton label="Delete debrief" size={36} onPress={() => setConfirm(x.id)} wrap={s.selfEnd}><Icon name="trash" size={16} color={C.muted} /></IconButton>
+                      <Button label="Delete" kind="quiet" small icon={<Icon name="trash" size={14} color={C.muted} />} onPress={() => setConfirm(x.id)} wrap={s.selfEnd} />
                     )}
                   </View>
                 ) : null}
-              </Card>
+              </View>
             );
           })}
-        </View>
+        </Group>
       )}
     </Screen>
   );
@@ -350,6 +352,7 @@ const s = StyleSheet.create({
   gap8: { gap: 8 },
   gap12: { gap: 12 },
   gap16: { gap: 16 },
+  gap24: { gap: 24 },
   centre: { textAlign: 'center' },
   selfCentre: { alignSelf: 'center' },
   selfStart: { alignSelf: 'flex-start' },
@@ -361,8 +364,6 @@ const s = StyleSheet.create({
   halo: { position: 'absolute', width: 160, height: 160, borderRadius: 80 },
   mic: { width: 112, height: 112, borderRadius: 56, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
   stopSquare: { width: 28, height: 28, borderRadius: 6, backgroundColor: '#14161C' },
-  next: { gap: 8, padding: 16, borderRadius: 16, borderCurve: 'continuous', borderWidth: StyleSheet.hairlineWidth },
-  nextInner: { borderRadius: R.inner, padding: 12 },
   fold: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 44 },
-  pill: { backgroundColor: SURF.card },
+  opened: { gap: 16, paddingHorizontal: 16, paddingBottom: 16 },
 });

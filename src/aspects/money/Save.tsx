@@ -2,11 +2,13 @@ import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useGet } from '@/lib/mod';
 import {
-  Bar, Button, Chip, Empty, Field, haptic, Icon, IconButton, myDay, Row, rupees, Screen, Sheet, shortDay, SP, t, undoable, useAspect,
+  Bar, Block, Button, Chip, Field, Group, haptic, Icon, IconButton, Item, Metric, Metrics, myDay, rupees, Sheet, shortDay, t, Tag, undoable, useAspect,
 } from '@/aspects/kit';
 import { act, amountOf, useAccounts, useFunds, useTx } from './data';
+import { useNav } from './nav';
+import { AmountSheet } from './pad';
 import type { Account, Home, Jar } from './types';
-import { AmountInput, ChipRow, Group, Head, s as ui } from './ui';
+import { AmountInput, ChipRow, ChipWrap, s as u } from './ui';
 
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const monthLabel = (ym: string) => `${MON[Number(ym.slice(5, 7)) - 1]} ${ym.slice(0, 4)}`;
@@ -27,20 +29,6 @@ export function putInAmount(j: Jar) {
   return v > 100 ? Math.ceil(v / 100) * 100 : Math.round(v);
 }
 
-/** A jar on the home screen: its name, how far along, the amount. */
-export function JarMini({ jar }: { jar: Jar }) {
-  return (
-    <View style={s.mini} accessible accessibilityLabel={`${jar.name}, ${rupees(jar.saved)}${jar.target ? ` of ${rupees(jar.target)}` : ''}`}>
-      <View style={s.row}>
-        <Text style={t.strong} numberOfLines={1}>{jar.name}</Text>
-        <View style={ui.fill} />
-        <Text style={[t.label, t.num]}>{rupees(jar.saved)}{jar.target ? ` of ${rupees(jar.target)}` : ''}</Text>
-      </View>
-      {jar.pct != null ? <Bar progress={jar.pct} height={6} /> : null}
-    </View>
-  );
-}
-
 function paceText(j: Jar) {
   if (j.done) return `Reached, ${rupees(j.saved)} in it.`;
   if (j.late) return `Its date has passed. ${rupees(j.left ?? 0)} to go.`;
@@ -52,11 +40,25 @@ function paceText(j: Jar) {
   return j.target ? `${rupees(j.left ?? 0)} to go. Give it a date to see the pace.` : `${rupees(j.saved)} in it so far.`;
 }
 
-/** Save: a jar for each thing he is saving for, and what he has (balances with the day each was true). */
-export function SaveScreen({ open, onClose, home, onNewJar }: { open: boolean; onClose: () => void; home: Home; onNewJar: () => void }) {
+/** Quick amounts for a jar: what this month needs, the last put in, what would finish it. Each once. */
+function presetsFor(j: Jar) {
+  const out: { label: string; amount: number }[] = [];
+  const add = (amount: number | null | undefined, label: (v: string) => string) => {
+    if (!amount || amount <= 0 || out.some((p) => p.amount === Math.round(amount))) return;
+    out.push({ label: label(rupees(Math.round(amount))), amount: Math.round(amount) });
+  };
+  add(j.dueThisMonth, (v) => `${v} this month`);
+  add(j.last, (v) => `${v} like last time`);
+  add(j.left, (v) => `${v} to finish`);
+  return out;
+}
+
+/** Save: a jar for each thing he is saving for (one tap puts this month's share in), and what he has. */
+export function SaveTab({ home }: { home: Home }) {
   const a = useAspect();
+  const nav = useNav();
   const tx = useTx();
-  const goals = useGet<{ goals: Goal[] }>(open ? '/goals' : null);
+  const goals = useGet<{ goals: Goal[] }>(a.open && nav.tab === 'save' ? '/goals' : null);
   const [putting, setPutting] = useState<Jar | null>(null);
   const [editing, setEditing] = useState<Jar | null>(null);
   const [acct, setAcct] = useState<Account | 'new' | null>(null);
@@ -66,64 +68,83 @@ export function SaveScreen({ open, onClose, home, onNewJar }: { open: boolean; o
     const r = await act(tx.put({ kind: 'move', amount, fund: j.id, merchant: j.name, at: new Date().toISOString(), source: 'app' }), a.notice);
     if (r) { haptic.success(); undoable(`Put ${rupees(amount)} in ${j.name}`, () => void act(tx.remove(r.id), a.notice, "Couldn't undo that")); }
   };
+  const net = save.net != null && save.net < 0 ? `${rupees(-save.net)} owed` : rupees(save.net ?? 0);
   return (
-    <Screen open={open} onClose={onClose} title="Save">
-      <View style={s.part}>
-        <Head title="Jars" right={save.jars.length ? `${rupees(save.total.saved)} put aside` : null} action={save.jars.length ? 'New jar' : undefined} onAction={onNewJar} />
-        {save.jars.length ? (
-          <Group>
-            {save.jars.map((j) => {
-              const one = putInAmount(j);
-              const goal = goalTitle(j.goal);
-              return (
-                <View key={j.id} style={s.jar}>
-                  <View style={s.row}>
-                    <Text style={t.lead} numberOfLines={1}>{j.name}</Text>
-                    <View style={ui.fill} />
-                    <IconButton label={`Change ${j.name}`} size={36} plain onPress={() => setEditing(j)}><Icon name="more" size={18} /></IconButton>
-                  </View>
-                  <View style={s.row}>
-                    <Text style={[t.title2, t.num]}>{rupees(j.saved)}</Text>
-                    {j.target ? <Text style={[t.label, t.num]}>of {rupees(j.target)}</Text> : null}
-                  </View>
-                  {j.pct != null ? <Bar progress={j.pct} /> : null}
-                  <Text style={t.small}>{paceText(j)}</Text>
-                  {goal ? <Text style={t.caption} numberOfLines={1}>For the goal: {goal}</Text> : null}
-                  {!j.done ? (
-                    <View style={s.actions}>
-                      {one ? <Button label={`Put in ${rupees(one)}`} kind="soft" small onPress={() => void putIn(j, one)} /> : null}
-                      <Button label={one ? 'Other amount' : 'Put in'} kind="quiet" small onPress={() => setPutting(j)} />
-                    </View>
-                  ) : null}
-                </View>
-              );
-            })}
-          </Group>
-        ) : <Empty title="Saving for something?" body="A jar holds what you put aside for one thing, with a target and a date. It shows what each month needs." action="Make a jar" onAction={onNewJar} />}
-      </View>
+    <>
+      {save.jars.length ? (
+        <Group pad>
+          <Metrics>
+            <Metric size="m" label="Put aside" value={rupees(save.total.saved)} sub={save.total.target ? `of ${rupees(save.total.target)}` : null} />
+            <Metric size="m" label={`In ${home.month.name}`} value={rupees(save.total.month)} sub={save.total.month > 0 ? 'put in this month' : 'nothing in yet'} />
+          </Metrics>
+        </Group>
+      ) : null}
 
-      <View style={s.part}>
-        <Head title="What I have" action={save.accounts.length ? 'Add' : undefined} onAction={() => setAcct('new')} />
+      <Block title="Jars" action={save.jars.length ? 'New jar' : undefined} onAction={() => nav.openSheet({ kind: 'jar' })}
+        sub={save.jars.length ? 'One tap puts in what this month needs. It only records; no money moves.' : null}>
+        {save.jars.length ? save.jars.map((j) => {
+          const one = putInAmount(j);
+          const goal = goalTitle(j.goal);
+          return (
+            <Group key={j.id} pad>
+              <View style={u.between}>
+                <Text style={[t.headline, u.fill]} numberOfLines={1}>{j.name}</Text>
+                {j.done ? <Tag label="Reached" tone="aspect" /> : null}
+                <IconButton label={`Change ${j.name}`} size={36} plain onPress={() => setEditing(j)}><Icon name="more" size={18} /></IconButton>
+              </View>
+              <View style={s.amountLine}>
+                <Text style={[t.title3, t.num]}>{rupees(j.saved)}</Text>
+                {j.target ? <Text style={[t.subhead, t.num]}>{`of ${rupees(j.target)}`}</Text> : null}
+              </View>
+              {j.pct != null ? <Bar progress={j.pct} height={6} /> : null}
+              <Text style={[t.footnote, t.num]}>{paceText(j)}</Text>
+              {goal ? <Text style={t.footnote} numberOfLines={1}>{`For the goal: ${goal}`}</Text> : null}
+              {!j.done ? (
+                <View style={s.actions}>
+                  {one ? <Button label={`Put in ${rupees(one)}`} kind="soft" small onPress={() => void putIn(j, one)} /> : null}
+                  <Button label={one ? 'Other amount' : 'Put in'} kind="quiet" small onPress={() => setPutting(j)} />
+                </View>
+              ) : null}
+            </Group>
+          );
+        }) : (
+          <Group pad>
+            <Text style={t.callout}>Saving for something?</Text>
+            <Text style={t.footnote}>A jar holds what you put aside for one thing, with a target and a date. It shows what each month needs.</Text>
+            <View style={s.left}><Button label="Make a jar" kind="soft" small onPress={() => nav.openSheet({ kind: 'jar' })} /></View>
+          </Group>
+        )}
+      </Block>
+
+      <Block title="What I have" action={save.accounts.length ? 'Add' : undefined} onAction={() => setAcct('new')}>
         {save.accounts.length ? (
           <>
-            <View style={s.net}>
-              <Text style={[t.title2, t.num]}>{save.net != null && save.net < 0 ? `${rupees(-save.net)} owed` : rupees(save.net ?? 0)}</Text>
-              <Text style={t.small}>{netNote(home)}</Text>
-            </View>
+            <Group pad>
+              <Metric size="l" label="All your balances together" value={net} sub={netNote(home)} />
+            </Group>
             <Group>
               {save.accounts.map((x) => (
-                <Row key={x.id} title={x.name} sub={`${kindLabel(x.kind)}, ${age(x).toLowerCase()}`} right={x.liability ? `owe ${rupees(x.balance)}` : rupees(x.balance)}
-                  onPress={() => setAcct(x)} chevron label={`${x.name}, ${rupees(x.balance)}, ${age(x)}`} />
+                <Item key={x.id} title={x.name} sub={`${kindLabel(x.kind)}, ${age(x).toLowerCase()}`} onPress={() => setAcct(x)} chevron
+                  right={<Text style={[t.callout, t.num]}>{x.liability ? `owe ${rupees(x.balance)}` : rupees(x.balance)}</Text>}
+                  label={`${x.name}, ${x.liability ? `owe ${rupees(x.balance)}` : rupees(x.balance)}, ${age(x).toLowerCase()}. Change`} />
               ))}
             </Group>
           </>
-        ) : <Empty title="What's in your accounts" body="Type a balance and the day it was true. Nothing connects to your bank; this page only records." action="Add a balance" onAction={() => setAcct('new')} />}
-      </View>
+        ) : (
+          <Group pad>
+            <Text style={t.callout}>What is in your accounts</Text>
+            <Text style={t.footnote}>Type a balance and the day it was true. Nothing connects to your bank; this page only records.</Text>
+            <View style={s.left}><Button label="Add a balance" kind="soft" small onPress={() => setAcct('new')} /></View>
+          </Group>
+        )}
+      </Block>
 
-      <PutInSheet jar={putting} onClose={() => setPutting(null)} onPut={(j, n) => void putIn(j, n)} />
+      <AmountSheet open={!!putting} onClose={() => setPutting(null)} title={putting ? `Put in ${putting.name}` : 'Put in'}
+        sub="This records that you set it aside. No money moves anywhere." presets={putting ? presetsFor(putting) : undefined}
+        done="Put in" withAmount onDone={(n) => { const j = putting; setPutting(null); if (j) void putIn(j, n); }} />
       <JarSheet open={!!editing} jar={editing} onClose={() => setEditing(null)} />
       <AccountSheet item={acct} onClose={() => setAcct(null)} />
-    </Screen>
+    </>
   );
 }
 
@@ -132,22 +153,6 @@ export function netNote(home: Home) {
   if (!o) return 'From the balances below';
   if (o.ageDays <= 1) return 'From balances true today';
   return `Last known. The oldest balance is from ${shortDay(o.date)}, ${o.ageDays} days ago.`;
-}
-
-function PutInSheet({ jar, onClose, onPut }: { jar: Jar | null; onClose: () => void; onPut: (j: Jar, n: number) => void }) {
-  const [shown, setShown] = useState<Jar | null>(jar);
-  const [v, setV] = useState('');
-  if (jar && jar !== shown) { setShown(jar); setV(''); }
-  const j = jar ?? shown;
-  const n = amountOf(v);
-  const go = () => { if (j && n) { onClose(); onPut(j, n); } };
-  return (
-    <Sheet open={!!jar} onClose={onClose} title={j ? `Put in ${j.name}` : ''}>
-      <AmountInput value={v} onChange={setV} label="Amount in rupees" autoFocus={!!jar} onSubmit={go} />
-      <Text style={t.small}>This records that you set it aside. No money moves anywhere.</Text>
-      <Button label={n ? `Put in ${rupees(n)}` : 'Put in'} onPress={go} disabled={!n} />
-    </Sheet>
-  );
 }
 
 /** A new jar, or a change to one: name, target, by when, the Mission goal it serves. */
@@ -197,16 +202,16 @@ export function JarSheet({ open, jar, onClose }: { open: boolean; jar: Jar | nul
   return (
     <Sheet open={open} onClose={onClose} title={jar ? jar.name : 'New jar'}>
       <Field label="Saving for" value={name} onChangeText={setName} placeholder="A laptop, a trip, a cushion" maxLength={60} autoFocus={open && !jar} />
-      <Text style={t.label}>Target</Text>
+      <Text style={t.footnote}>Target</Text>
       <AmountInput value={target} onChange={setTarget} label="Target in rupees" autoFocus={false} />
-      <Text style={t.label}>{due ? `By ${monthLabel(due)}` : 'By when'}</Text>
+      <Text style={t.footnote}>{due ? `By ${monthLabel(due)}` : 'By when'}</Text>
       <ChipRow>
         <Chip label="No date" selected={due == null} onPress={() => setDue(null)} />
         {months.map((m) => <Chip key={m} label={monthLabel(m)} selected={due === m} onPress={() => setDue(m)} />)}
       </ChipRow>
       {live.length ? (
         <>
-          <Text style={t.label}>For a Mission goal</Text>
+          <Text style={t.footnote}>For a Mission goal</Text>
           <ChipRow>
             <Chip label="None" selected={goal == null} onPress={() => setGoal(null)} />
             {[...live].sort((x, y) => Number(y.id === jar?.goal) - Number(x.id === jar?.goal)).map((g) => <Chip key={g.id} label={g.title.length > 36 ? `${g.title.slice(0, 35).trim()}…` : g.title} selected={goal === g.id} onPress={() => setGoal(g.id)} />)}
@@ -254,10 +259,10 @@ function AccountSheet({ item, onClose }: { item: Account | 'new' | null; onClose
       {isNew ? (
         <>
           <Field label="Name" value={name} onChangeText={setName} placeholder="Savings account" maxLength={60} autoFocus={!!item} />
-          <View style={s.wrap}>{KINDS.map((k) => <Chip key={k.key} label={k.label} selected={kind === k.key} onPress={() => setKind(k.key)} />)}</View>
+          <ChipWrap>{KINDS.map((k) => <Chip key={k.key} label={k.label} selected={kind === k.key} onPress={() => setKind(k.key)} />)}</ChipWrap>
         </>
-      ) : <Text style={t.small}>{typeof x === 'object' && x ? `Last set ${age(x).toLowerCase()}. Type what it holds today.` : ''}</Text>}
-      <Text style={t.label}>{['card', 'loan'].includes(kind) ? 'What you owe today' : 'Balance today'}</Text>
+      ) : <Text style={t.subhead}>{typeof x === 'object' && x ? `Last set ${age(x).toLowerCase()}. Type what it holds today.` : ''}</Text>}
+      <Text style={t.footnote}>{['card', 'loan'].includes(kind) ? 'What you owe today' : 'Balance today'}</Text>
       <AmountInput value={bal} onChange={setBal} label="Balance in rupees" autoFocus={!!item && !isNew} />
       <Button label="Save" onPress={() => void save()} disabled={n == null || !name.trim()} />
       {!isNew ? <Button label="Remove" kind="quiet" onPress={() => void remove()} /> : null}
@@ -266,11 +271,7 @@ function AccountSheet({ item, onClose }: { item: Account | 'new' | null; onClose
 }
 
 const s = StyleSheet.create({
-  part: { gap: SP[12] },
-  row: { flexDirection: 'row', alignItems: 'center', gap: SP[8] },
-  mini: { gap: SP[8], paddingVertical: SP[12] },
-  jar: { gap: SP[8], paddingVertical: SP[16] },
-  actions: { flexDirection: 'row', gap: SP[8], marginTop: SP[4] },
-  net: { gap: SP[4] },
-  wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: SP[8] },
+  amountLine: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
+  left: { flexDirection: 'row', marginTop: 4 },
 });

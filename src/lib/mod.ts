@@ -77,6 +77,43 @@ export async function forgetSaved() {
   gets.clear();
 }
 
+// ── the sample-data preview (dev web only, `?demo`) ────────────────────────────────────────────────────────
+// With `?demo` there is no PC. A page's sample records (src/aspects/_demo/<key>.ts, loaded only by the web registry
+// in development) register here: collections start from them, GET routes answer from them, and routes that do
+// something run a small in-memory handler, so the preview can be tapped through. Nothing here runs on the phone.
+type DemoGet = unknown | ((path: string, query: URLSearchParams) => unknown);
+type DemoCall = (body: any, info: { method: string; path: string; query: URLSearchParams }) => unknown;
+export type DemoSource = {
+  /** 'body/workouts' -> the records that collection starts with. */
+  collections?: Record<string, Doc[]>;
+  /** A GET path (without its query) -> its answer, or a function of the path that works it out each time. A key ending in '*' matches by prefix. */
+  gets?: Record<string, DemoGet>;
+  /** A route path (without its query), or a prefix ending in '*' -> what a call or upload to it answers. */
+  calls?: Record<string, DemoCall>;
+};
+const demoSources: DemoSource[] = [];
+/** Dev web only: add sample records for the `?demo` preview. */
+export function demoSource(src: DemoSource) { if (DEMO) demoSources.push(src); }
+function demoFind<T>(pick: (s: DemoSource) => Record<string, T> | undefined, path: string): T | undefined {
+  const bare = path.split('?')[0];
+  for (const src of demoSources) { const m = pick(src); if (m && bare in m) return m[bare]; }
+  let best: T | undefined; let len = -1;
+  for (const src of demoSources) {
+    const m = pick(src); if (!m) continue;
+    for (const k of Object.keys(m)) if (k.endsWith('*') && bare.startsWith(k.slice(0, -1)) && k.length > len) { best = m[k]; len = k.length; }
+  }
+  return best;
+}
+const demoQuery = (path: string) => new URLSearchParams(path.includes('?') ? path.slice(path.indexOf('?') + 1) : '');
+const demoWait = (ms = 240) => new Promise((r) => setTimeout(r, ms));
+async function demoCall<T>(path: string, body: unknown, method: string): Promise<T> {
+  const h = demoFind((s) => s.calls, path);
+  await demoWait();
+  if (!h) throw new ApiError(0, 'Not in the sample preview.');
+  const out = await h(body, { method, path: path.split('?')[0], query: demoQuery(path) });
+  return out as T;
+}
+
 function entryOf(key: string): Entry {
   let e = entries.get(key);
   if (!e) {
@@ -124,8 +161,11 @@ function applyPull(e: Entry, r: { items: Doc[]; cursor: string }, key: string) {
 function pull(mod: string, coll: string): Promise<void> {
   const e = entryOf(`${mod}/${coll}`);
   if (e.inflight) return e.inflight;
-  if (DEMO) { // the sample-data preview has no PC: collections start empty and live in memory
-    if (!e.loaded) { e.loaded = true; e.at = Date.now(); publish(e); }
+  if (DEMO) { // the sample-data preview has no PC: collections start from the sample records and live in memory
+    if (!e.loaded) {
+      for (const src of demoSources) for (const d of src.collections?.[`${mod}/${coll}`] ?? []) e.map.set(d.id, d);
+      e.loaded = true; e.at = Date.now(); publish(e);
+    }
     return Promise.resolve();
   }
   e.busy = true;
@@ -297,7 +337,16 @@ function fetchGet(path: string): Promise<void> {
   const g = getOf(path);
   if (g.inflight) return g.inflight;
   const set = (snap: GetSnap) => { g.snap = snap; for (const fn of g.subs) fn(); };
-  if (DEMO) { set({ data: null, error: 'Not in the sample preview.', busy: false }); return Promise.resolve(); }
+  if (DEMO) {
+    const f = demoFind((s) => s.gets, path);
+    if (f === undefined) { set({ data: null, error: 'Not in the sample preview.', busy: false }); return Promise.resolve(); }
+    try {
+      const data = typeof f === 'function' ? (f as (p: string, q: URLSearchParams) => unknown)(path, demoQuery(path)) : f;
+      g.at = Date.now();
+      set({ data: structuredClone(data), error: null, busy: false });
+    } catch (err) { set({ data: g.snap.data, error: (err as Error).message, busy: false }); }
+    return Promise.resolve();
+  }
   set({ ...g.snap, busy: true });
   g.inflight = (async () => {
     try {
@@ -380,7 +429,18 @@ export function invalidate(prefix: string) {
 
 /** A module route that does something (POST by default): `call<Plan>('/mod/body/plan', { day })`. */
 export function call<T>(path: string, body: unknown = {}, method = 'POST'): Promise<T> {
+  if (DEMO) return demoCall<T>(path, body, method);
   return api<T>(path, { method, body });
+}
+
+/** A module GET read once, outside the shared cache (a lookup, a detail opened for a moment). */
+export function fetchOnce<T>(path: string): Promise<T> {
+  if (DEMO) {
+    const f = demoFind((s) => s.gets, path);
+    if (f === undefined) return Promise.reject(new ApiError(0, 'Not in the sample preview.'));
+    return demoWait(120).then(() => structuredClone(typeof f === 'function' ? (f as (p: string, q: URLSearchParams) => unknown)(path, demoQuery(path)) : f) as T);
+  }
+  return api<T>(path);
 }
 
 /**
@@ -390,7 +450,7 @@ export function call<T>(path: string, body: unknown = {}, method = 'POST'): Prom
  * answers JSON. Put what the route needs to know in the path or its query string.
  */
 export async function upload<T>(path: string, file: string | Blob, type: string): Promise<T> {
-  if (DEMO) throw new ApiError(0, 'The demo has no PC to send this to.');
+  if (DEMO) return demoCall<T>(path, file, 'UPLOAD');
   let bytes: Blob;
   try {
     bytes = typeof file === 'string' ? await (await fetch(file)).blob() : file;

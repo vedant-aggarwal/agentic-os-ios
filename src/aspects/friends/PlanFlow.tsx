@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
-import { addDays, Button, Card, Chip, Field, haptic, Loading, Press, R, Screen, Section, SP, SURF, t, tint, today, useAspect } from '@/aspects/kit';
+import { Block, Button, Chip, DayPicker, Field, Group, haptic, Icon, Item, Lead, Loading, Screen, t, today, useAspect } from '@/aspects/kit';
 import { useGet } from '@/lib/mod';
+import { F } from '@/theme';
 import type { Actions } from './actions';
 import { dayAhead, fillName, firstName, roundSlot, whenAgo, type AiAnswer, type Bank, type Friends, type Person, type Week } from './data';
 import { deepenIdeas, type DeepenIdea, type Model } from './model';
@@ -14,18 +15,13 @@ type Pick = { key: string; title: string; act: string | null; invite: string | n
 
 const TIMES = ['10:00', '13:00', '17:00', '18:00', '19:00', '20:00', '21:00'];
 
-/** One tappable idea. Selected, it takes the page colour. */
-function IdeaRow({ pick, selected, onPress, tag }: { pick: Pick; selected: boolean; onPress: () => void; tag?: string }) {
+/** One idea to pick. Picked, it takes the page colour and a tick. */
+function IdeaRow({ pick, selected, onPress, yours }: { pick: Pick; selected: boolean; onPress: () => void; yours?: boolean }) {
   const { color } = useAspect();
   return (
-    <Press label={pick.title} role="radio" state={{ selected }} onPress={onPress} feel="tick"
-      style={[s.idea, selected && { backgroundColor: tint(color, 0.12), borderColor: tint(color, 0.5) }]}>
-      <View style={s.flex}>
-        <Text style={[t.strong, selected && { color }]}>{pick.title}</Text>
-        {pick.why ? <Text style={t.small}>{pick.why}</Text> : null}
-      </View>
-      {tag ? <Text style={t.caption}>{tag}</Text> : null}
-    </Press>
+    <Item title={pick.title} sub={pick.why ?? (yours ? 'From your ideas' : null)} onPress={onPress} lines={3}
+      label={`${pick.title}${selected ? ', picked' : ''}`} titleStyle={selected ? { color } : undefined}
+      right={selected ? <Icon name="check" size={18} color={color} /> : undefined} />
   );
 }
 
@@ -43,7 +39,7 @@ export function PlanFlow({ open, onClose, preset, m, f, a, week, bank, notice }:
   const [made, setMade] = useState<string | null>(null);
   const [invite, setInvite] = useState('');
   const person: Person | null = m.persons.find((p) => p.id === who) ?? null;
-  const ai = useGet<{ item: AiAnswer | null }>(who ? `/mod/friends/ideas?person=${encodeURIComponent(who)}` : null);
+  const ai = useGet<{ item: AiAnswer | null }>(open && who ? `/mod/friends/ideas?person=${encodeURIComponent(who)}` : null);
   const answer = ai.data?.item && ai.data.item.person === who ? ai.data.item : null;
   const { busy: aiBusy, error: aiError } = useIdeasState(who);
   const ask = (force = false) => { if (who) askIdeas(who, force); };
@@ -60,6 +56,9 @@ export function PlanFlow({ open, onClose, preset, m, f, a, week, bank, notice }:
   })();
   const aiPicks: Pick[] = (answer?.ideas ?? []).map((i) => ({ key: `ai:${i.id}`, title: i.title, act: i.act, invite: i.invite, idea: null, why: i.why }));
   const shown = moreIdeas ? ordered : ordered.slice(0, 4);
+  const presetOnly = !!preset.idea && !!what && !ordered.some((o) => o.key === what.key) && !aiPicks.some((o) => o.key === what.key) && what.key !== 'own';
+  const choose = (p: Pick) => { setWhat(p); setDay(null); };
+  const useOwn = () => { if (own.trim()) { choose({ key: 'own', title: own.trim(), act: null, invite: null, idea: null }); setWriting(false); } };
 
   const create = async (date: string, slot: string | null) => {
     if (!who || !what) return;
@@ -71,107 +70,102 @@ export function PlanFlow({ open, onClose, preset, m, f, a, week, bank, notice }:
     setMade(id);
   };
   const plan = made ? m.plans.find((p) => p.id === made) ?? null : null;
-
   const free = week?.free ?? [];
-  const days = Array.from({ length: 14 }, (_, i) => addDays(today(), i));
 
   return (
     <Screen open={open} onClose={onClose} title={made ? 'Plan made' : 'New plan'}>
       {made ? (
         <Animated.View entering={FadeIn.duration(200)} style={s.gap24}>
-          <Card tone={color} style={s.gap12}>
-            <Text style={[t.label, { color }]}>{plan?.date ? `${dayAhead(plan.date)}${plan.slot ? `, ${plan.slot}` : ''}` : ''}</Text>
-            <Text style={t.title2}>{plan?.title ?? what?.title}</Text>
-            <Text style={t.small}>With {person ? person.name : ''}</Text>
-          </Card>
+          <Lead>
+            <Text style={[t.footnote, { color }]}>{plan?.date ? `${dayAhead(plan.date)}${plan.slot ? `, ${plan.slot}` : ''}` : 'No day set yet'}</Text>
+            <View style={s.gap4}>
+              <Text style={t.title3}>{plan?.title ?? what?.title ?? ''}</Text>
+              <Text style={t.subhead}>{`With ${person ? person.name : ''}`}</Text>
+            </View>
+          </Lead>
           <View style={s.gap8}>
             <Field label="Invite" value={invite} onChangeText={setInvite} multiline maxLength={300} />
-            <Text style={t.caption}>Edit it if you like. Nothing is sent from here.</Text>
+            <Text style={t.footnote}>Edit it if you like. Nothing is sent from here.</Text>
           </View>
-          <Button label="Copy invite" kind="accent" onPress={async () => {
-            a.patchPlan(made, { invite });
-            const ok = await copy(invite);
-            notice(ok ? 'Invite copied. Send it from your messages.' : "Couldn't copy on this device.");
-          }} />
-          <Button label="Done" kind="quiet" onPress={() => { a.patchPlan(made, { invite }); onClose(); }} />
+          <View style={s.gap12}>
+            <Button label="Copy invite" kind="accent" onPress={async () => {
+              a.patchPlan(made, { invite });
+              const ok = await copy(invite);
+              notice(ok ? 'Invite copied. Send it from your messages.' : "Couldn't copy on this device.");
+            }} />
+            <Button label="Done" kind="quiet" onPress={() => { a.patchPlan(made, { invite }); onClose(); }} />
+          </View>
         </Animated.View>
       ) : (
         <>
-          <Section title="Who">
+          <Block title="Who">
             {people.length ? (
               <View style={s.chips}>
                 {people.map((p) => <Chip key={p.id} label={people.filter((x) => firstName(x) === firstName(p)).length > 1 ? p.name : firstName(p)} selected={who === p.id}
                   onPress={() => { setWho(p.id); askIdeas(p.id); if (!preset.idea) setWhat(null); setDay(null); }} />)}
               </View>
-            ) : <Text style={t.small}>Add a friend or someone you met first.</Text>}
-          </Section>
+            ) : <Group pad><Text style={t.footnote}>Add a friend or someone you met first.</Text></Group>}
+          </Block>
 
           {who ? (
-            <Section title="What">
-              <View style={s.gap8}>
-                {nv ? <Text style={t.caption}>Small and close to where you met works best for a first plan.</Text> : null}
-                {preset.idea && what && !ordered.some((o) => o.key === what.key) && !aiPicks.some((o) => o.key === what.key) ? (
-                  <IdeaRow pick={what} selected onPress={() => {}} />
-                ) : null}
-                {!aiBusy && answer ? (
-                  <View style={s.aiNote}>
-                    <Text style={[t.caption, s.flex]}>{answer.date === today() ? 'Ideas from Nora, today' : `Ideas from Nora, ${whenAgo(answer.date)}`}</Text>
-                    <Press label="Ask for fresh ideas" onPress={() => ask(true)} hitSlop={10}><Text style={[t.label, { color }]}>Fresh ideas</Text></Press>
-                  </View>
-                ) : null}
-                {aiPicks.map((p) => <IdeaRow key={p.key} pick={p} selected={what?.key === p.key} onPress={() => { setWhat(p); setDay(null); }} />)}
-                {aiBusy ? <View style={s.aiWait}><Loading /><Text style={[t.small, s.center]}>Nora is thinking of ideas for you two. Pick one below meanwhile.</Text></View> : null}
-                {!aiBusy && aiError && !aiPicks.length ? (
-                  <View style={s.aiNote}>
-                    <Text style={[t.small, s.flex]}>Ideas from Nora are not available right now.</Text>
-                    <Press label="Try again for ideas" onPress={() => ask(true)} hitSlop={10}><Text style={[t.label, { color }]}>Try again</Text></Press>
-                  </View>
-                ) : null}
-                {shown.map((p) => <IdeaRow key={p.key} pick={p} selected={what?.key === p.key} onPress={() => { setWhat(p); setDay(null); }} tag={p.idea == null ? 'Yours' : undefined} />)}
+            <Block title="What" sub={nv ? 'Small and close to where you met works best for a first plan.' : undefined}>
+              <Group>
+                {presetOnly && what ? <IdeaRow pick={what} selected onPress={() => {}} /> : null}
+                {shown.map((p) => <IdeaRow key={p.key} pick={p} selected={what?.key === p.key} onPress={() => choose(p)} yours={p.idea == null} />)}
                 {ordered.length > 4 ? (
-                  <Press label={moreIdeas ? 'Fewer ideas' : 'More ideas'} onPress={() => setMoreIdeas((x) => !x)} feel="tick" style={s.more}>
-                    <Text style={[t.label, { color }]}>{moreIdeas ? 'Fewer ideas' : 'More ideas'}</Text>
-                  </Press>
+                  <Item title={moreIdeas ? 'Fewer ideas' : 'More ideas'} titleStyle={{ color }} onPress={() => setMoreIdeas((x) => !x)} />
                 ) : null}
-                {writing ? (
-                  <View style={s.ownRow}>
-                    <View style={s.flex}><Field value={own} onChangeText={setOwn} placeholder="What do you want to do?" autoFocus maxLength={60}
-                      onSubmit={() => { if (own.trim()) { setWhat({ key: 'own', title: own.trim(), act: null, invite: null, idea: null }); setWriting(false); } }} /></View>
-                    <Button label="Use" kind="quiet" small disabled={!own.trim()} onPress={() => { setWhat({ key: 'own', title: own.trim(), act: null, invite: null, idea: null }); setWriting(false); }} />
-                  </View>
-                ) : what?.key === 'own' ? (
-                  <IdeaRow pick={what} selected onPress={() => setWriting(true)} />
-                ) : (
-                  <Press label="Something else" onPress={() => setWriting(true)} feel="tick" style={s.more}>
-                    <Text style={[t.label, { color }]}>Something else</Text>
-                  </Press>
-                )}
-              </View>
-            </Section>
+                {what?.key === 'own' && !writing ? <IdeaRow pick={what} selected onPress={() => { setOwn(what.title); setWriting(true); }} />
+                  : !writing ? <Item title="Something else" titleStyle={{ color }} onPress={() => setWriting(true)} label="Something else. Write your own" /> : null}
+              </Group>
+              {writing ? (
+                <View style={s.ownRow}>
+                  <View style={s.flex}><Field value={own} onChangeText={setOwn} placeholder="What do you want to do?" autoFocus maxLength={60} onSubmit={useOwn} /></View>
+                  <Button label="Use" kind="quiet" small disabled={!own.trim()} onPress={useOwn} />
+                </View>
+              ) : null}
+            </Block>
+          ) : null}
+
+          {who ? (
+            <Block title="Ideas from Nora"
+              sub={!aiBusy && answer ? `Made ${whenAgo(answer.date)}, for the two of you.` : undefined}
+              action={!aiBusy && (answer || aiError) ? (answer ? 'Fresh ideas' : 'Try again') : undefined} onAction={() => ask(true)}>
+              {aiPicks.length && !aiBusy ? (
+                <Group>{aiPicks.map((p) => <IdeaRow key={p.key} pick={p} selected={what?.key === p.key} onPress={() => choose(p)} />)}</Group>
+              ) : aiBusy ? (
+                <Group pad>
+                  <Loading />
+                  <Text style={[t.footnote, s.center]}>Nora is thinking of ideas for you two. Pick one above meanwhile.</Text>
+                </Group>
+              ) : (
+                <Group pad>
+                  <Text style={t.footnote}>{aiError ? 'Ideas from Nora are not available right now.' : 'No ideas from Nora yet.'}</Text>
+                  {!aiError ? <Button label="Ask Nora" kind="quiet" small onPress={() => ask(false)} wrap={s.start} /> : null}
+                </Group>
+              )}
+            </Block>
           ) : null}
 
           {who && what ? (
-            <Section title="When">
+            <Block title="When" sub={!free.length ? (week ? 'No long free stretch in your calendar this week.' : 'Your calendar did not load. Pick a day.') : 'Free in your calendar'}>
               <View style={s.chips}>
                 {free.slice(0, 6).map((w) => (
                   <Chip key={w.date} label={`${dayAhead(w.date)}, ${roundSlot(w.from)}`} onPress={() => void create(w.date, roundSlot(w.from))} />
                 ))}
                 <Chip label="Another day" selected={day != null} onPress={() => setDay(day ? null : today())} />
               </View>
-              {!free.length ? <Text style={t.caption}>{week ? 'No long free stretch in your calendar this week.' : 'Your calendar did not load. Pick a day.'}</Text> : null}
               {day ? (
                 <Animated.View entering={FadeIn.duration(160)} style={s.gap12}>
-                  <View style={s.chips}>
-                    {days.map((d) => <Chip key={d} label={dayAhead(d)} selected={day === d} onPress={() => setDay(d)} />)}
-                  </View>
-                  <Text style={t.label}>At</Text>
+                  <DayPicker value={day} onChange={setDay} />
+                  <Text style={[t.footnote, s.medium]}>What time?</Text>
                   <View style={s.chips}>
                     {TIMES.map((tm) => <Chip key={tm} label={tm} onPress={() => void create(day, tm)} />)}
                     <Chip label="Time open" onPress={() => void create(day, null)} />
                   </View>
                 </Animated.View>
               ) : null}
-            </Section>
+            </Block>
           ) : null}
         </>
       )}
@@ -182,16 +176,12 @@ export function PlanFlow({ open, onClose, preset, m, f, a, week, bank, notice }:
 const s = StyleSheet.create({
   flex: { flex: 1, minWidth: 0 },
   center: { textAlign: 'center' },
-  gap8: { gap: SP[8] },
-  gap12: { gap: SP[12] },
-  gap24: { gap: SP[24] },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: SP[8] },
-  idea: {
-    flexDirection: 'row', alignItems: 'center', gap: SP[12], minHeight: 56, paddingHorizontal: SP[16], paddingVertical: SP[12],
-    borderRadius: R.row, borderCurve: 'continuous', backgroundColor: SURF.row, borderWidth: 1, borderColor: 'transparent',
-  },
-  aiWait: { alignItems: 'center' },
-  aiNote: { flexDirection: 'row', alignItems: 'center', gap: SP[12], minHeight: 36 },
-  more: { minHeight: 44, justifyContent: 'center' },
-  ownRow: { flexDirection: 'row', alignItems: 'flex-end', gap: SP[8] },
+  start: { alignSelf: 'flex-start' },
+  medium: { fontFamily: F.medium },
+  gap4: { gap: 4 },
+  gap8: { gap: 8 },
+  gap12: { gap: 12 },
+  gap24: { gap: 24 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  ownRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
 });

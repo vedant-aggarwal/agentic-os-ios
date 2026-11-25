@@ -1,4 +1,4 @@
-import { addDays, daysBetween, num, shortDay, today, weekday } from '@/aspects/kit';
+import { addDays, dayLabel, daysBetween, num, shortDay, today, weekday } from '@/aspects/kit';
 import type { AspectKey } from '@/theme';
 import type { RuleSum, Section, Trend } from './types';
 
@@ -16,6 +16,12 @@ export function whenSaid(day: string) {
   if (d === 1) return 'yesterday';
   const ago = d < 14 ? `${d} days ago` : d < 60 ? `${Math.round(d / 7)} weeks ago` : `${Math.round(d / 30)} months ago`;
   return `${shortDay(day)}, ${ago}`;
+}
+
+/** When a day comes, inside a sentence: "today", "tomorrow", "on Sat 28 Nov". */
+export function opensOn(day: string, from: string = today()) {
+  const n = daysBetween(from, day);
+  return n <= 0 ? 'today' : n === 1 ? 'tomorrow' : `on ${dayLabel(day, from)}`;
 }
 
 /** The server's week labels use a dash; copy never does: "16 to 22 Nov". */
@@ -47,10 +53,10 @@ export function feltLine(sec: Section) {
   return { head, data, verdict };
 }
 
-/** "Held 3 of 4 times", "New this week", "Not checked yet". */
+/** "Held 3 of 4 weeks", "New this week", "Not checked yet". */
 export function ruleSub(r: RuleSum, week?: string) {
   if (r.status === 'retired') return r.retired_at ? `Retired ${shortDay(r.retired_at.slice(0, 10))}` : 'Retired';
-  if (r.of) return `Held ${r.held} of ${r.of} ${r.of === 1 ? 'time' : 'times'}`;
+  if (r.of) return `Held ${r.held} of ${r.of} ${r.of === 1 ? 'week' : 'weeks'}`;
   if (week && r.born?.week === week) return 'New this week';
   return 'Not checked yet';
 }

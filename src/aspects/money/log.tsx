@@ -69,12 +69,12 @@ export function LogLine({ home, autoFocus = false }: { home: Home; autoFocus?: b
       </View>
       {last ? (
         <View style={s.done} accessibilityLiveRegion="polite">
-          <Text style={[t.small, s.doneText]} numberOfLines={2}>
-            <Text style={[t.strong, t.num]}>{rupees(last.amount)}</Text>{last.merchant ? ` for ${last.merchant}` : ''}
+          <Text style={[t.footnote, s.doneText]} numberOfLines={2}>
+            <Text style={[t.callout, t.num]}>{rupees(last.amount)}</Text>{last.merchant ? ` for ${last.merchant}` : ''}
           </Text>
           <Chip label={catName(last.category)} selected onPress={() => setPicking(true)} />
           <Press label="Undo the last spend" onPress={undo} hitSlop={12}>
-            <Text style={[t.label, { color: a.color }]}>Undo</Text>
+            <Text style={[t.subhead, { color: a.color }]}>Undo</Text>
           </Press>
         </View>
       ) : null}

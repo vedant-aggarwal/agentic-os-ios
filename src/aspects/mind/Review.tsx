@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import {
-  Button, Card, Chip, Divider, Failed, IconButton, Icon, Screen, Section, Segmented, Skeleton, dayLabel, timer, t, undoable, useAspect,
+  Block, Button, Chip, Failed, Group, IconButton, Icon, Screen, SegTabs, Skeleton, dayLabel, timer, t, undoable, useAspect,
 } from '@/aspects/kit';
 import { call, fileSource, invalidate, useGet } from '@/lib/mod';
 import { C } from '@/theme';
@@ -23,19 +23,17 @@ export function TakeState({ take, onRetry, retrying }: { take: Take; onRetry: ()
   if (take.status === 'reviewed' && take.review) return null;
   if (take.status === 'short') {
     return (
-      <Card>
-        <View style={s.gap8}>
-          <Text style={t.lead}>Too short to review</Text>
-          <Text style={t.small}>{`That was ${take.secs ? `${take.secs} seconds` : 'a few words'}. A review needs a few sentences: aim for a minute.`}</Text>
-          {take.transcript ? <Text style={t.body} selectable>{take.transcript}</Text> : null}
-        </View>
-      </Card>
+      <Group pad>
+        <Text style={t.headline}>Too short to review</Text>
+        <Text style={t.subhead}>{`That was ${take.secs ? `${take.secs} seconds` : 'a few words'}. A review needs a few sentences, so aim for a minute.`}</Text>
+        {take.transcript ? <Text style={[t.callout, s.read]} selectable>{take.transcript}</Text> : null}
+      </Group>
     );
   }
   const failed = take.status === 'failed';
   const heard = !!take.transcript || take.status === 'reviewing' || take.failed_step === 'review';
   return (
-    <Card>
+    <Group pad>
       <View style={s.gap16}>
         <Steps items={[
           { label: 'Saved on your PC', state: 'done' },
@@ -43,9 +41,9 @@ export function TakeState({ take, onRetry, retrying }: { take: Take; onRetry: ()
           { label: 'Reviewing', state: take.failed_step === 'review' ? 'failed' : take.status === 'reviewing' ? 'now' : 'next', note: take.failed_step === 'review' ? take.error : null },
         ]} />
         {failed ? <Button label={take.failed_step === 'review' ? 'Review it again' : 'Write it down again'} kind="quiet" small onPress={onRetry} busy={retrying} wrap={s.start} />
-          : <Text style={t.small}>Usually under a minute. You can leave: the review will be on Mind when it&apos;s ready.</Text>}
+          : <Text style={t.footnote}>Usually under a minute. You can leave, the review will be on Mind when it&apos;s ready.</Text>}
       </View>
-    </Card>
+    </Group>
   );
 }
 
@@ -59,49 +57,50 @@ export function ReviewBody({ take }: { take: Take }) {
   return (
     <View style={s.gap24}>
       <View style={s.overall} accessibilityLabel={`Overall ${r.overall} out of 100`}>
-        <Text style={[t.display, t.num, { color: a.color }]}>{r.overall}</Text>
+        <Text style={[t.hero, t.num, { color: a.color }]}>{r.overall}</Text>
         <View style={s.overallText}>
-          <Text style={t.strong}>Overall</Text>
-          <Text style={t.caption}>{`Out of 100 on rubric ${r.rubric}`}</Text>
+          <Text style={t.headline}>Overall</Text>
+          <Text style={t.footnote}>Out of 100, scored the same way every take</Text>
         </View>
       </View>
 
-      <Section title="Your strongest line">
+      <Group pad tone={a.color}>
+        <Text style={[t.footnote, { color: a.color }]}>Fix next time</Text>
+        <Text style={t.headline}>{r.fix}</Text>
+      </Group>
+
+      <Block title="Your strongest line">
         <Quote>{r.strongest}</Quote>
-      </Section>
+      </Block>
 
-      <Card tone={a.color}>
-        <View style={s.gap8}>
-          <Text style={[t.label, { color: a.color }]}>Fix next time</Text>
-          <Text style={t.lead}>{r.fix}</Text>
-        </View>
-      </Card>
+      <Block title="Said tighter">
+        <SegTabs tabs={[{ key: 'tight', label: 'Tighter' }, { key: 'said', label: 'What you said' }] as const} value={view} onChange={setView} />
+        <Group pad>
+          <Text style={[t.callout, s.read]} selectable>{view === 'tight' ? r.rewrite : take.transcript}</Text>
+          <Text style={t.footnote}>{view === 'tight' ? 'Your ideas, fewer words. Nothing added.' : `${take.words ? `${take.words} words in ` : ''}${take.secs ? secsWords(take.secs) : 'this take'}`}</Text>
+        </Group>
+      </Block>
 
-      <Section title="Said tighter">
-        <Segmented options={[{ key: 'tight', label: 'Tighter' }, { key: 'said', label: 'What you said' }] as const} value={view} onChange={setView} />
-        <Text style={[t.body, s.read]} selectable>{view === 'tight' ? r.rewrite : take.transcript}</Text>
-        <Text style={t.caption}>{view === 'tight' ? 'Your ideas, fewer words. Nothing added.' : `${take.words ? `${take.words} words in ` : ''}${take.secs ? secsWords(take.secs) : 'this take'}`}</Text>
-      </Section>
-
-      <Section title="How it scored">
-        <View style={s.gap16}>
+      <Block title="How it scored">
+        <Group pad>
           {ORDER.map((k) => <ScoreRow key={k} name={DIM_NAME[k]} value={r.scores[k]} note={r.notes[k]} />)}
-        </View>
-      </Section>
+        </Group>
+      </Block>
 
       {extra.length ? (
-        <Section title="Checked against">
-          <View style={s.gap16}>{extra.map((x) => <ScoreRow key={x.name} name={x.name} value={x.c.score} note={x.c.note} />)}</View>
-        </Section>
+        <Block title="Checked against">
+          <Group pad>{extra.map((x) => <ScoreRow key={x.name} name={x.name} value={x.c.score} note={x.c.note} />)}</Group>
+        </Block>
       ) : null}
 
-      <Section title="Fillers">
-        {r.fillers.length ? (
-          <View style={s.chips}>{r.fillers.map((f) => <Chip key={f.word} label={`${f.word} ${f.count}`} />)}</View>
-        ) : <Text style={t.small}>None heard in this take.</Text>}
-        <Text style={[t.small, t.num]}>{`${r.fpm} a minute`}</Text>
-        <Text style={t.caption}>Counted from the written take. Some little sounds are left out when it is written down.</Text>
-      </Section>
+      <Block title="Fillers" sub={`${r.fpm} a minute`}>
+        <Group pad>
+          {r.fillers.length ? (
+            <View style={s.chips}>{r.fillers.map((f) => <Chip key={f.word} label={`${f.word} ${f.count}`} />)}</View>
+          ) : <Text style={t.subhead}>None heard in this take.</Text>}
+          <Text style={t.footnote}>Counted from the written take. Some little sounds are left out when it is written down.</Text>
+        </Group>
+      </Block>
 
       <Player take={take} />
     </View>
@@ -114,15 +113,17 @@ function Player({ take }: { take: Take }) {
   if (!p.available || !src) return null;
   const total = p.duration || take.secs || 0;
   return (
-    <View style={s.player}>
-      <IconButton label={p.playing ? 'Pause the take' : 'Play the take'} onPress={p.toggle}>
-        <Icon name={p.playing ? 'pause' : 'play'} size={18} />
-      </IconButton>
-      <View style={s.flex}>
-        <Text style={t.strong}>Your take</Text>
-        <Text style={[t.caption, t.num]}>{p.playing || p.at > 0 ? `${timer(p.at)} of ${timer(total)}` : timer(total)}</Text>
+    <Group pad>
+      <View style={s.player}>
+        <IconButton label={p.playing ? 'Pause the take' : 'Play the take'} onPress={p.toggle}>
+          <Icon name={p.playing ? 'pause' : 'play'} size={18} />
+        </IconButton>
+        <View style={s.flex}>
+          <Text style={t.callout}>Your take</Text>
+          <Text style={[t.footnote, t.num]}>{p.playing || p.at > 0 ? `${timer(p.at)} of ${timer(total)}` : timer(total)}</Text>
+        </View>
       </View>
-    </View>
+    </Group>
   );
 }
 
@@ -158,16 +159,15 @@ export function ReviewScreen({ id, onClose, onAgain }: { id: string | null; onCl
     <Screen open={!!id} onClose={onClose} title="Review">
       {!take ? (g.error ? <Failed message={g.error} onRetry={g.refresh} /> : <View style={s.gap16}><Skeleton height={28} width="70%" /><Skeleton height={88} /><Skeleton height={160} /></View>) : (
         <>
-          <View style={s.gap8}>
-            <Text style={t.label}>{take.topic_label}</Text>
-            <Text style={t.title2}>{take.topic}</Text>
-            <Text style={t.caption}>{`${dayLabel(take.day)}${take.secs ? `, ${secsWords(take.secs)}` : ''}`}</Text>
+          <View style={s.gap4}>
+            <Text style={[t.footnote, { color: a.color }]}>{take.topic_label}</Text>
+            <Text style={t.title3}>{take.topic}</Text>
+            <Text style={[t.footnote, t.num]}>{`${dayLabel(take.day)}${take.secs ? `, ${secsWords(take.secs)}` : ''}`}</Text>
           </View>
           <TakeState take={take} onRetry={retry} retrying={retrying} />
           {take.status === 'reviewed' && take.review ? <ReviewBody take={take} /> : null}
           <View style={s.gap12}>
-            <Button label="Try this topic again" kind="primary" icon={<Icon name="mic" size={18} color={C.scene} />} onPress={() => onAgain(specOf(take))} />
-            <Divider />
+            <Button label="Try this topic again" kind="accent" icon={<Icon name="mic" size={18} color="#14161C" />} onPress={() => onAgain(specOf(take))} />
             <Button label="Delete this take" kind="danger" small onPress={remove} busy={deleting} icon={<Sym name="trash" size={16} color={C.danger} />} wrap={s.start} />
           </View>
         </>
@@ -178,7 +178,7 @@ export function ReviewScreen({ id, onClose, onAgain }: { id: string | null; onCl
 
 const s = StyleSheet.create({
   flex: { flex: 1 },
-  gap8: { gap: 8 },
+  gap4: { gap: 4 },
   gap12: { gap: 12 },
   gap16: { gap: 16 },
   gap24: { gap: 24 },

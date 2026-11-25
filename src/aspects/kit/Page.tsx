@@ -57,9 +57,11 @@ export function Page({ title, subtitle, right, header = true, children, onRefres
  * `footer` of the Page (or anywhere after the page's content, inside a full-size parent).
  * `immersive` hides the dock while it is open: use it for flows that need the whole screen.
  */
-export function Screen({ open, onClose, title, right, children, scroll = true, immersive = false, contentStyle }: {
+export function Screen({ open, onClose, title, right, children, scroll = true, immersive = false, contentStyle, footer }: {
   open: boolean; onClose: () => void; title?: string; right?: ReactNode; children: ReactNode;
   scroll?: boolean; immersive?: boolean; contentStyle?: StyleProp<ViewStyle>;
+  /** Pinned over the bottom of the screen, outside the scroll: a rest timer, a bar of actions. */
+  footer?: ReactNode;
 }) {
   const a = useAspect();
   const { onBack, setImmersive, width } = a;
@@ -85,7 +87,7 @@ export function Screen({ open, onClose, title, right, children, scroll = true, i
     <Animated.View style={[StyleSheet.absoluteFill, s.screen, slide]} pointerEvents={open ? 'auto' : 'none'}>
       <View style={[s.screenHead, { paddingTop: a.insets.top + 12 }]}>
         <IconButton label="Back" size={36} onPress={onClose}><Icon name="left" size={16} /></IconButton>
-        <Text accessibilityRole="header" numberOfLines={1} style={[t.heading, s.screenTitle]}>{title ?? ''}</Text>
+        <Text accessibilityRole="header" numberOfLines={1} style={[t.headline, s.screenTitle]}>{title ?? ''}</Text>
         {right ?? <View style={s.screenSpacer} />}
       </View>
       {scroll ? (
@@ -95,6 +97,7 @@ export function Screen({ open, onClose, title, right, children, scroll = true, i
       ) : (
         <View style={[s.fill, s.screenBody, pad, contentStyle]}>{children}</View>
       )}
+      {footer}
     </Animated.View>
   );
 }

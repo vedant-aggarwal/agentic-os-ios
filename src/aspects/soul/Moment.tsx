@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { Button, Card, haptic, Press, Screen, Section, t, timer, tint, useAspect } from '@/aspects/kit';
+import { Block, Button, Group, haptic, Press, Screen, SURF, t, timer, tint, useAspect } from '@/aspects/kit';
 import { newId } from '@/lib/mod';
 import { Breath } from './Breath';
 import { istMin, kit, readLocal, send, useForeground, useKeepAwake, useNow, type Plan } from './data';
 import { Choice } from './parts';
+import { planLine } from './Plans';
 import { ACTION_BANK, BEFORE, LEVELS, patternOf } from './words';
 
 const WAIT = 600; // the ten minute decision delay, in seconds
@@ -30,6 +31,7 @@ type Base = { reasons: string[]; actions: string[]; plans: Plan[] };
  * The rough moment. Everything it needs is on the phone (his reasons, his list, his plans), so it works with the
  * PC away. It breathes with him, runs a ten minute "then decide" timer, shows his plan for this hour and his
  * reasons, offers one thing to do, and ends in three choices. Leaving without choosing still logs the urge.
+ * The breath moves only while this screen is open.
  */
 export function Moment({ open, base, onClose, onSlip }: {
   open: boolean; base: Base | null; onClose: () => void; onSlip: (key: string, steps: string[]) => void;
@@ -71,7 +73,7 @@ export function Moment({ open, base, onClose, onSlip }: {
   const pattern = useMemo(() => patternOf(readLocal<string>('pattern')), [run]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const live = open && pageOpen && fg && phase === 'room';
-  useKeepAwake(open && pageOpen && phase === 'room', 'soul-moment'); // auto-lock would stop the clock and the haptics
+  useKeepAwake(open && pageOpen && phase === 'room', 'soul-moment'); // auto lock would stop the clock and the haptics
   const now = useNow(1000, live);
   const left = Math.max(0, WAIT - Math.floor((now - round) / 1000));
   useEffect(() => {
@@ -112,56 +114,58 @@ export function Moment({ open, base, onClose, onSlip }: {
       {phase === 'room' ? (
         <>
           <View style={s.top}>
-            <Text style={[t.lead, s.centre]}>Stand up. Change rooms if you can.</Text>
-            <Text style={[t.small, s.centre]}>Breathe with the circle. Slow and low.</Text>
+            <Text style={[t.title3, s.centre]}>Stand up. Change rooms if you can.</Text>
+            <Text style={[t.subhead, s.centre]}>Breathe with the circle. Slow and low.</Text>
           </View>
           <View style={s.centreBox}>
             <Breath pattern={pattern} running={live} color={color} size={220} />
           </View>
           <View style={s.timerBox} accessible accessibilityLabel={left ? `${timer(left)} left of ten minutes` : 'Ten minutes are up'}>
-            <Text style={[t.big, t.num, s.centre]}>{left ? timer(left) : 'Ten minutes'}</Text>
-            <Text style={[t.small, s.centre]}>{left ? 'Wait ten minutes, then decide. The urge can stay while you wait.' : 'You waited. How is it now?'}</Text>
+            <Text style={[t.large, t.num, s.centre]}>{left ? timer(left) : 'Ten minutes'}</Text>
+            <Text style={[t.subhead, s.centre]}>{left ? 'Wait ten minutes, then decide. The urge can stay while you wait.' : 'You waited. How is it now?'}</Text>
           </View>
 
           {plan ? (
-            <Card tone={color}>
-              <Text style={t.caption}>Your plan for now</Text>
-              <Text style={[t.strong, s.gapTop]}>{plan.if ? `If ${lower(plan.if)}, ` : ''}{plan.if ? lower(plan.then) : plan.then}.</Text>
-            </Card>
+            <Group pad tone={color}>
+              <Text style={[t.footnote, { color }]}>Your plan for now</Text>
+              <Text style={t.headline}>{planLine(plan)}</Text>
+            </Group>
           ) : null}
 
-          <Section title="Why you're doing this">
+          <Block title="Why you're doing this">
             {reasons.length ? (
               <Press label="Next reason" onPress={() => setReason((i) => (i + 1) % reasons.length)} feel="tick" style={[s.reason, { borderColor: tint(color, 0.3) }]}>
-                <Text style={t.lead}>{reasons[reason % reasons.length]}</Text>
-                {reasons.length > 1 ? <Text style={[t.caption, s.gapTop]}>{reason % reasons.length + 1} of {reasons.length} · tap for the next</Text> : null}
+                <Text style={t.title3}>{reasons[reason % reasons.length]}</Text>
+                {reasons.length > 1 ? <Text style={[t.footnote, t.num]}>{`${reason % reasons.length + 1} of ${reasons.length}. Tap for the next.`}</Text> : null}
               </Press>
             ) : (
-              <Text style={t.small}>Your reasons show here. Add them on the Clean screen when it is calm.</Text>
+              <Group pad><Text style={t.subhead}>Your reasons show here. Add them on the Clean tab when it is calm.</Text></Group>
             )}
-          </Section>
+          </Block>
 
-          <Section title="Do one now">
+          <Block title="Do one now">
             <Choice options={k.actions} value={steps} onChange={setSteps} multi />
-          </Section>
+          </Block>
 
           <View style={s.actions}>
             <Button label="It passed" kind="accent" onPress={passed} />
             <Button label="Still here, go again" kind="quiet" onPress={again} />
-            <Press label="It happened" onPress={happened} style={s.link}><Text style={t.label}>It happened</Text></Press>
+            <Press label="It happened" onPress={happened} style={s.link}><Text style={t.subhead}>It happened</Text></Press>
           </View>
           <View style={s.tail} />
         </>
       ) : (
         <View style={s.done}>
-          <Text style={[t.title2, s.centre]}>That one passed.</Text>
-          <Text style={[t.small, s.centre]}>Logged. Two more taps if you want them.</Text>
-          <Section title="How strong was it">
+          <View style={s.top}>
+            <Text style={[t.title2, s.centre]}>That one passed.</Text>
+            <Text style={[t.subhead, s.centre]}>Logged. Two more taps if you want them.</Text>
+          </View>
+          <Block title="How strong was it">
             <Choice options={LEVELS.map((l) => l.label)} value={level} onChange={(v) => tag(v, before)} />
-          </Section>
-          <Section title="What came before">
+          </Block>
+          <Block title="What came before">
             <Choice options={BEFORE} value={before} onChange={(v) => tag(level, v)} multi max={2} />
-          </Section>
+          </Block>
           <Button label="Done" onPress={onClose} />
         </View>
       )}
@@ -169,18 +173,14 @@ export function Moment({ open, base, onClose, onSlip }: {
   );
 }
 
-const lower = (x: string) => (x && !/^I[\s']/.test(x) ? x[0].toLowerCase() + x.slice(1) : x).replace(/\.$/, '');
-
 const s = StyleSheet.create({
-  top: { gap: 4, paddingTop: 8 },
+  top: { gap: 8, paddingTop: 8 },
   centre: { textAlign: 'center' },
   centreBox: { alignItems: 'center' },
   timerBox: { gap: 4, alignItems: 'center' },
-  gapTop: { marginTop: 4 },
-  reason: { padding: 16, borderRadius: 24, borderWidth: 1, borderCurve: 'continuous' },
+  reason: { gap: 8, padding: 16, borderRadius: 22, borderWidth: 1, borderCurve: 'continuous', backgroundColor: SURF.group },
   actions: { gap: 12 },
-  link: { alignSelf: 'center', paddingVertical: 12, paddingHorizontal: 16 },
+  link: { alignSelf: 'center', minHeight: 44, justifyContent: 'center', paddingHorizontal: 16 },
   done: { gap: 24, paddingTop: 24 },
   tail: { height: 48 },
 });
-

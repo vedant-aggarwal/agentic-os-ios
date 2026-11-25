@@ -49,14 +49,20 @@ export function Bar({ progress, color, height = 8, track = SURF.track }: { progr
  * A trend line through `values` (oldest first; null leaves a gap), with a dot on the latest. `goal` draws a dashed
  * line at that value. It scales to its own data, padded so the line never touches the edges.
  */
-export function Spark({ values, width, height = 64, color, goal, stroke = 2 }: {
+export function Spark({ values, width, height = 64, color, goal, stroke = 2, minSpan = 0, range }: {
   values: (number | null)[]; width: number; height?: number; color?: string; goal?: number; stroke?: number;
+  /** The smallest range the line is drawn on (5 for kilos, 20 for a score), so a small change never draws as a cliff. */
+  minSpan?: number;
+  /** A fixed scale, [0, 100] for a score. */
+  range?: [number, number];
 }) {
   const tone = useTone(color);
   const nums = values.filter((v): v is number => v != null && Number.isFinite(v));
   if (nums.length === 0 || width <= 0) return <View style={{ width, height }} />;
   const all = goal != null ? [...nums, goal] : nums;
-  const lo = Math.min(...all), hi = Math.max(...all), span = hi - lo || 1;
+  let lo = range ? range[0] : Math.min(...all), hi = range ? range[1] : Math.max(...all);
+  if (!range && hi - lo < minSpan) { const mid = (hi + lo) / 2; lo = mid - minSpan / 2; hi = mid + minSpan / 2; }
+  const span = hi - lo || 1;
   const pad = 6, w = width - pad * 2, h = height - pad * 2;
   const x = (i: number) => pad + (values.length > 1 ? (i / (values.length - 1)) * w : w / 2);
   const y = (v: number) => pad + (1 - (v - lo) / span) * h;

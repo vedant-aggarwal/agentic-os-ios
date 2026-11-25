@@ -1,13 +1,13 @@
 import { clock, myDay, today, undoable } from '@/aspects/kit';
 import { invalidate, newId, upload } from '@/lib/mod';
-import { actWord, firstName, type Friends, type Kind, type Moment, type Person, type Place, type Plan, type Rhythm, type SeenPlace } from './data';
+import { actWord, dayAhead, firstName, inLine, type Friends, type Kind, type Moment, type Person, type Place, type Plan, type Rhythm, type SeenPlace } from './data';
 import { loggedOn } from './model';
 
 // Every write the page makes. Writes show at once (the data layer keeps them) and reach the PC in order; when the
 // PC refuses, the record goes back and the promise rejects, so each action reports through `notice`.
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-export const momentTitle = (kind: Kind, act?: string | null) => (act ? cap(actWord(act) ?? act) : kind === 'meet' ? 'Met' : kind === 'call' ? 'A call' : 'A chat');
+export const momentTitle = (kind: Kind, act?: string | null) => (act ? cap(actWord(act) ?? act) : kind === 'meet' ? 'Met' : kind === 'call' ? 'A call' : 'A message');
 const why = (e: unknown) => (e instanceof Error ? e.message : "Couldn't save that.");
 
 export function makeActions(f: Friends, notice: (text: string) => void) {
@@ -32,7 +32,7 @@ export function makeActions(f: Friends, notice: (text: string) => void) {
     }
     const id = put(person, kind, extra);
     const what = extra.act ? (actWord(extra.act) ?? extra.act) : null;
-    undoable(`${kind === 'meet' ? 'Met' : 'Talked to'} ${firstName(person)}${what ? `, ${what}` : ''}`, () => undoLog(id));
+    undoable(`${kind === 'meet' ? 'Met' : kind === 'chat' ? 'Messaged' : 'Talked to'} ${firstName(person)}${what ? `, ${what}` : ''}`, () => undoLog(id));
     return id;
   }
   function detail(id: string, change: Partial<Moment>) {
@@ -40,7 +40,7 @@ export function makeActions(f: Friends, notice: (text: string) => void) {
     if (!cur) return;
     const kind = (change.kind ?? cur.kind ?? 'meet') as Kind;
     const act = change.act !== undefined ? change.act : cur.act;
-    const titled = !cur.plan && (cur.title == null || /^(Met|A call|A chat|Talked)$/.test(cur.title) || cur.title === momentTitle(kind, cur.act));
+    const titled = !cur.plan && (cur.title == null || /^(Met|A call|A chat|A message|Talked)$/.test(cur.title) || cur.title === momentTitle(kind, cur.act));
     f.moments.patch(id, { ...change, ...(titled ? { title: momentTitle(kind, act) } : null) }).catch(fail);
   }
   function undoLog(id: string) { f.moments.remove(id).catch(fail); }
@@ -71,11 +71,14 @@ export function makeActions(f: Friends, notice: (text: string) => void) {
   }
   function sawAgain(p: Person) {
     const id = put(p, 'meet', { title: 'Saw again', place: p.place ?? null });
-    notice(`Saw ${p.name.split(' ')[0]} again`);
+    undoable(`Saw ${firstName(p)} again`, () => undoLog(id));
     return id;
   }
   function makeFriend(p: Person) {
-    f.persons.patch(p.id, { rel: 'friend', friend_since: today() }).then(() => notice(`${p.name.split(' ')[0]} is in your circle`)).catch(fail);
+    const back = { rel: p.rel ?? 'new', friend_since: p.friend_since ?? null };
+    f.persons.patch(p.id, { rel: 'friend', friend_since: today() })
+      .then(() => undoable(`${firstName(p)} is in your circle`, () => { f.persons.patch(p.id, back).catch(fail); }))
+      .catch(fail);
   }
   function stillGettingToKnow(p: Person) { f.persons.patch(p.id, { rel: 'new', friend_since: null }).catch(fail); }
   function patchPerson(p: Person, change: Partial<Person>) { f.persons.patch(p.id, change).catch(fail); }
@@ -108,14 +111,26 @@ export function makeActions(f: Friends, notice: (text: string) => void) {
   function patchPlan(id: string, change: Partial<Plan>) { f.plans.patch(id, change).catch(fail); }
   /** Did it happen? Yes: the plan is done and becomes a moment with everyone in it. */
   function happened(plan: Plan) {
+    const mo = newId('mo');
     f.plans.patch(plan.id, { state: 'done' }).catch(fail);
-    f.moments.put({ id: newId('mo'), date: plan.date ?? today(), at: plan.slot ?? null, people: plan.people, aspect: 'friends', kind: 'meet', act: plan.act ?? null,
+    f.moments.put({ id: mo, date: plan.date ?? today(), at: plan.slot ?? null, people: plan.people, aspect: 'friends', kind: 'meet', act: plan.act ?? null,
       title: plan.title, plan: plan.id, by: 'you', source: 'you' }).catch(fail);
-    notice('Kept as a moment');
+    undoable('Kept as a moment', () => { f.plans.patch(plan.id, { state: plan.state }).catch(fail); undoLog(mo); });
   }
-  function movePlan(plan: Plan, date: string, slot: string | null) { f.plans.patch(plan.id, { date, slot, state: 'tentative' }).catch(fail); }
-  function letGo(plan: Plan) { f.plans.patch(plan.id, { state: 'dropped' }).catch(fail); }
-  function removePlan(plan: Plan) { f.plans.remove(plan.id).catch(fail); }
+  /** Another day for a plan. The toast says where it went and can put it back. */
+  function movePlan(plan: Plan, date: string, slot: string | null) {
+    const back = { date: plan.date ?? null, slot: plan.slot ?? null, state: plan.state };
+    f.plans.patch(plan.id, { date, slot, state: 'tentative' }).catch(fail);
+    undoable(`Moved to ${inLine(dayAhead(date))}`, () => { f.plans.patch(plan.id, back).catch(fail); });
+  }
+  function letGo(plan: Plan) {
+    f.plans.patch(plan.id, { state: 'dropped' }).catch(fail);
+    undoable(`Let go: ${plan.title}`, () => { f.plans.patch(plan.id, { state: plan.state }).catch(fail); });
+  }
+  function removePlan(plan: Plan) {
+    f.plans.remove(plan.id).catch(fail);
+    undoable(`Removed: ${plan.title}`, () => { f.plans.put(plan).catch(fail); });
+  }
 
   // ── ideas he saves for a friend ───────────────────────────────────────────────────────────────────────────
   function saveIdea(p: Person, title: string) {

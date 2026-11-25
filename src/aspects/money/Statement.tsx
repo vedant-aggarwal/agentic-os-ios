@@ -80,8 +80,8 @@ function Start({ home, open, error, onRead, onPaste, onUpload, onOpen }: {
   const waiting = home.spend.imports.review;
   return (
     <>
-      <Text style={t.body}>Download last month&apos;s statement from your bank&apos;s website on the PC, as a PDF or CSV, then look in Downloads here. Rows you already logged are matched, so nothing is counted twice.</Text>
-      {error ? <View style={s.error}><Text style={[t.small, { color: C.textSoft }]}>{error}</Text></View> : null}
+      <Text style={t.subhead}>Download last month&apos;s statement from your bank&apos;s website on the PC, as a PDF or CSV, then look in Downloads here. Rows you already logged are matched, so nothing is counted twice.</Text>
+      {error ? <View style={s.error}><Text style={[t.footnote, { color: C.textSoft }]}>{error}</Text></View> : null}
       {waiting.length ? (
         <View style={s.part}>
           <Head title="Waiting for you" />
@@ -89,10 +89,10 @@ function Start({ home, open, error, onRead, onPaste, onUpload, onOpen }: {
             {waiting.map((i) => (
               <Press key={i.id} label={`Review ${i.bank ?? 'statement'}`} onPress={() => onOpen(i.id)} style={s.fileRow}>
                 <View style={ui.fill}>
-                  <Text style={t.strong} numberOfLines={1}>{i.bank ?? i.name ?? 'Statement'}</Text>
-                  <Text style={t.small}>{i.period ? `${shortDay(i.period.from)} to ${shortDay(i.period.to)}` : `Read ${ago(i.at)}`}</Text>
+                  <Text style={t.callout} numberOfLines={1}>{i.bank ?? i.name ?? 'Statement'}</Text>
+                  <Text style={t.footnote}>{i.period ? `${shortDay(i.period.from)} to ${shortDay(i.period.to)}` : `Read ${ago(i.at)}`}</Text>
                 </View>
-                <Text style={t.label}>Review</Text>
+                <Text style={t.footnote}>Review</Text>
               </Press>
             ))}
           </Group>
@@ -104,7 +104,7 @@ function Start({ home, open, error, onRead, onPaste, onUpload, onOpen }: {
           empty="Nothing in Money's folder yet. A statement you send from here is kept there." />
         {lookDl ? (
           <>
-            <Text style={[t.label, s.sub]}>In Downloads</Text>
+            <Text style={[t.footnote, s.sub]}>In Downloads</Text>
             <Files read={dl} onRead={onRead}
               empty="No statement PDF or CSV in Downloads from the last 90 days. A file whose name says statement, account or your bank shows here." />
           </>
@@ -130,16 +130,16 @@ function Files({ read, onRead, empty }: {
   read: { data?: { files: StatementFile[] } | null; error?: string | null; refresh: () => unknown }; onRead: (id: string) => void; empty: string;
 }) {
   if (!read.data) return read.error ? <Failed message={read.error} onRetry={() => void read.refresh()} /> : <Skeleton height={56} radius={R.card} />;
-  if (!read.data.files.length) return <Text style={t.small}>{empty}</Text>;
+  if (!read.data.files.length) return <Text style={t.footnote}>{empty}</Text>;
   return (
     <Group>
       {read.data.files.map((f) => (
         <Press key={f.id} label={`Read ${f.name}`} onPress={() => onRead(f.id)} style={s.fileRow}>
           <View style={ui.fill}>
-            <Text style={t.strong} numberOfLines={1}>{f.name}</Text>
-            <Text style={t.small}>{ago(f.at)}</Text>
+            <Text style={t.callout} numberOfLines={1}>{f.name}</Text>
+            <Text style={t.footnote}>{ago(f.at)}</Text>
           </View>
-          <Text style={t.label}>Read</Text>
+          <Text style={t.footnote}>Read</Text>
         </Press>
       ))}
     </Group>
@@ -163,8 +163,8 @@ function Review({ id, home, onDone }: { id: string; home: Home; onDone: () => vo
   if (done) {
     return (
       <View style={s.part}>
-        <Text style={t.title2}>Filed</Text>
-        <Text style={t.body}>{done.n === 1 ? 'One row' : `${done.n} rows`} went into Money: {rupees(done.out)} out{done.in ? `, ${rupees(done.in)} in` : ''}{done.bills ? `, ${done.bills === 1 ? 'one subscription' : `${done.bills} subscriptions`} added` : ''}.</Text>
+        <Text style={t.title3}>Filed</Text>
+        <Text style={t.subhead}>{done.n === 1 ? 'One row' : `${done.n} rows`} went into Money: {rupees(done.out)} out{done.in ? `, ${rupees(done.in)} in` : ''}{done.bills ? `, ${done.bills === 1 ? 'one subscription' : `${done.bills} subscriptions`} added` : ''}.</Text>
         <Button label="Done" onPress={onDone} />
       </View>
     );
@@ -189,8 +189,8 @@ function Review({ id, home, onDone }: { id: string; home: Home; onDone: () => vo
   return (
     <>
       <View style={s.part}>
-        <Text style={t.title2}>{item.bank ?? item.name ?? 'Statement'}</Text>
-        <Text style={t.small}>
+        <Text style={t.title3}>{item.bank ?? item.name ?? 'Statement'}</Text>
+        <Text style={t.footnote}>
           {item.period ? `${shortDay(item.period.from)} to ${shortDay(item.period.to)}, ` : ''}{rows.length} rows.{matched ? ` ${matched} already in Money.` : ''}{moved ? ` ${moved} moved between your own accounts.` : ''}
         </Text>
       </View>
@@ -245,7 +245,7 @@ function Review({ id, home, onDone }: { id: string; home: Home; onDone: () => vo
       {home.save.accounts.filter((x) => !x.liability).length ? (
         <View style={s.part}>
           <Head title="Whose statement is it" />
-          <Text style={t.small}>Its closing balance becomes that account&apos;s balance, dated the statement&apos;s last day.</Text>
+          <Text style={t.footnote}>Its closing balance becomes that account&apos;s balance, dated the statement&apos;s last day.</Text>
           <ChipWrap>
             <Chip label="Don't set a balance" selected={account == null} onPress={() => setAccount(null)} />
             {home.save.accounts.filter((x) => !x.liability).map((x) => <Chip key={x.id} label={x.name} selected={account === x.id} onPress={() => setAccount(x.id)} />)}
@@ -255,7 +255,7 @@ function Review({ id, home, onDone }: { id: string; home: Home; onDone: () => vo
       {fileable.length ? (
         <Button label={`File ${fileable.length === 1 ? 'one row' : `${fileable.length} rows`}`} onPress={() => void file()} busy={busy} />
       ) : <Empty title="Nothing new in this one" body="Every row is already in Money or skipped." action="Done" onAction={onDone} />}
-      {fileable.length ? <Text style={[t.small, s.centre]}>{rupees(outSum)} out{inSum ? `, ${rupees(inSum)} in` : ''}</Text> : null}
+      {fileable.length ? <Text style={[t.footnote, s.centre]}>{rupees(outSum)} out{inSum ? `, ${rupees(inSum)} in` : ''}</Text> : null}
       <CategorySheet open={!!picking} onClose={() => setPicking(null)} cats={cats} value={picking ? get(picking).category ?? null : null}
         onPick={(c) => { if (picking) set(picking, { action: 'add', category: c }); }} />
     </>
@@ -266,7 +266,7 @@ function Part({ title, hint, children }: { title: string; hint: string; children
   return (
     <View style={s.part}>
       <Head title={title} />
-      <Text style={t.small}>{hint}</Text>
+      <Text style={t.footnote}>{hint}</Text>
       <Group>{children}</Group>
     </View>
   );
@@ -278,10 +278,10 @@ function ReviewRow({ r, on, onToggle, children }: { r: StRow; on?: boolean; onTo
     <>
       {onToggle ? <CheckRing done={!!on} /> : null}
       <View style={ui.fill}>
-        <Text style={[t.strong, on === false && { color: C.faint }]} numberOfLines={1}>{r.merchant}</Text>
-        <Text style={t.small} numberOfLines={2}>{shortDay(r.date)}{r.why ? `, ${r.why.charAt(0).toLowerCase()}${r.why.slice(1)}` : ''}</Text>
+        <Text style={[t.callout, on === false && { color: C.faint }]} numberOfLines={1}>{r.merchant}</Text>
+        <Text style={t.footnote} numberOfLines={2}>{shortDay(r.date)}{r.why ? `, ${r.why.charAt(0).toLowerCase()}${r.why.slice(1)}` : ''}</Text>
       </View>
-      <Text style={[t.label, t.num, on === false && { color: C.faint }]}>{r.dir === 'cr' ? '+' : ''}{rupees(r.amount)}</Text>
+      <Text style={[t.footnote, t.num, on === false && { color: C.faint }]}>{r.dir === 'cr' ? '+' : ''}{rupees(r.amount)}</Text>
     </>
   );
   return (
@@ -299,7 +299,7 @@ function PasswordSheet({ open, onClose, onSubmit }: { open: boolean; onClose: ()
   const [pw, setPw] = useState('');
   return (
     <Sheet open={open} onClose={() => { setPw(''); onClose(); }} title="This PDF has a password">
-      <Text style={t.small}>Banks usually use your customer ID or date of birth. It goes to your PC to open the file and is not kept.</Text>
+      <Text style={t.footnote}>Banks usually use your customer ID or date of birth. It goes to your PC to open the file and is not kept.</Text>
       <TextInput accessibilityLabel="Statement password" value={pw} onChangeText={setPw} secureTextEntry autoFocus={open} autoCapitalize="none" autoCorrect={false}
         keyboardAppearance="dark" selectionColor={a.color} placeholder="Password" placeholderTextColor={C.faint} style={s.pw} onSubmitEditing={() => pw && onSubmit(pw)} />
       <Button label="Open it" onPress={() => { const v = pw; setPw(''); onSubmit(v); }} disabled={!pw} />

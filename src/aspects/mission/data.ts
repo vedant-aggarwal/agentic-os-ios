@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { addDays, daysBetween, num, rupees, shortDay, today, weekStart } from '@/aspects/kit';
+import { addDays, dayLabel, daysBetween, num, rupees, shortDay, today, weekStart } from '@/aspects/kit';
 import { ApiError, call, invalidate, useGet } from '@/lib/mod';
 import type { AspectKey } from '@/theme';
 import type { Goal, GoalRef, Horizon, Outcome, Reading } from './types';
@@ -55,6 +55,8 @@ export function daysLeftLabel(end: string) {
   const d = daysBetween(today(), end);
   return d <= 0 ? 'Last day' : d === 1 ? 'One day left' : cap(`${count(d, 'day')} left`);
 }
+/** A due day inside a sentence: "today", "tomorrow", "Thu 27 Nov". */
+export const dueWords = (d: string) => { const w = dayLabel(d); return w === 'Today' || w === 'Tomorrow' || w === 'Yesterday' ? w.toLowerCase() : w; };
 /** When a reading was true: "today", "yesterday", "on 18 Jul". */
 export const when = (day: string) => {
   const d = daysBetween(day, today());

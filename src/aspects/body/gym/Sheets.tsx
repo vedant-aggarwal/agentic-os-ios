@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { Text, View } from 'react-native';
-import { Button, Chip, num, Segmented, Sheet, shortDay, Stepper, t, useAspect } from '@/aspects/kit';
-import { agoDays, logWeight, quickLog, useHome, yesterday } from '../api';
+import { View } from 'react-native';
+import { Button, Chip, Keypad, myDay, num, Segmented, Sheet, shortDay, Stepper, undoable, useAspect } from '@/aspects/kit';
+import { agoDays, logWeight, quickLog, removeDoc, useHome, yesterday } from '../api';
 import { s as u } from '../ui';
 
 const KINDS = [{ key: 'boxing', label: 'Boxing' }, { key: 'run', label: 'Run' }, { key: 'walk', label: 'Walk' }, { key: 'cycle', label: 'Cycle' }];
@@ -43,35 +43,25 @@ function QuickBody({ quick, last, onClose }: { quick: string; last: { kind: stri
   );
 }
 
-/** A weigh in, starting from the last value so it is a couple of taps. */
+/** A weigh in on big keys, starting from the last value: usually one or two taps on the steps, then Save. */
 export function WeighSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const a = useAspect();
   const home = useHome();
   const w = home.data?.proof.weight;
+  const last = w?.now ?? null;
   return (
-    <Sheet open={open} onClose={onClose} title="Weigh in">
-      {open ? <WeighBody key={String(w?.now)} last={w?.now ?? null} date={w?.date ?? null} days={w?.days ?? null} onClose={onClose} /> : null}
-    </Sheet>
-  );
-}
-function WeighBody({ last, date, days, onClose }: { last: number | null; date: string | null; days: number | null; onClose: () => void }) {
-  const a = useAspect();
-  const [v, setV] = useState(last ?? 70);
-  const [busy, setBusy] = useState(false);
-  const save = async () => {
-    setBusy(true);
-    try { await logWeight(v); a.notice(`${num(v)} kg saved`); onClose(); }
-    catch (e) { a.notice((e as Error).message); }
-    setBusy(false);
-  };
-  return (
-    <>
-      <Text style={t.small}>{last != null && date ? `Last: ${num(last)} kg, ${shortDay(date)}, ${agoDays(days)}. Same time of day each week keeps it comparable.` : 'Same time of day each week keeps it comparable.'}</Text>
-      <Stepper label="Weight" value={v} onChange={setV} step={0.1} min={30} max={300} format={(x) => `${num(x)} kg`} />
-      <View style={u.row}>
-        <Button label="Less 1 kg" kind="quiet" small onPress={() => setV(Math.round((v - 1) * 10) / 10)} wrap={u.flex} />
-        <Button label="More 1 kg" kind="quiet" small onPress={() => setV(Math.round((v + 1) * 10) / 10)} wrap={u.flex} />
-      </View>
-      <Button label="Save" kind="accent" busy={busy} onPress={() => { void save(); }} />
-    </>
+    <Keypad open={open} onClose={onClose} title="Weigh in"
+      sub={last != null && w?.date ? `Last ${num(last)} kg, ${shortDay(w.date)}, ${agoDays(w.days)}. The same time of day keeps it comparable.` : 'The same time of day keeps it comparable.'}
+      fields={[{ key: 'kg', label: 'Weight', unit: 'kg', value: last ?? 70, step: 0.1, decimals: 1, min: 30, max: 300 }]}
+      presets={last != null ? [{ label: `${num(last - 0.5)}`, values: { kg: Math.round((last - 0.5) * 10) / 10 } }, { label: `${num(last + 0.5)}`, values: { kg: Math.round((last + 0.5) * 10) / 10 } }] : undefined}
+      onDone={async (v) => {
+        const kg = v.kg;
+        if (kg == null) return;
+        try {
+          await logWeight(kg);
+          onClose();
+          undoable(`${num(kg)} kg saved`, () => { if (last != null && w?.date === myDay()) void logWeight(last); else void removeDoc('readings', `weight:${myDay()}`); });
+        } catch (e) { a.notice((e as Error).message); }
+      }} />
   );
 }

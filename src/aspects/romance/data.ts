@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { addDays, dayOf, today, weekStart } from '@/aspects/kit';
-import { useCollection, useGet } from '@/lib/mod';
+import { collection, invalidate, useCollection, useGet } from '@/lib/mod';
 import { rememberPrimer, useLocal } from './local';
-import type { Debrief, Follow, Outing, Person, Pref, Primer } from './types';
+import { plansOf } from './model';
+import type { Debrief, Follow, IdeaRec, Moment, Outing, Person, Pref, Primer, SharedPlan } from './types';
 
 // Romance's reads. Outings and debriefs are what the PC has with this phone's unsent writes laid over them, so a
 // count made offline shows at once and stays after the app is closed.
@@ -96,3 +97,37 @@ export function undebriefed(outings: Outing[], debriefs: Debrief[]) {
   return outings.filter((o) => o.place !== 'logged' && o.end && o.day >= since && !done.has(o.id))
     .sort((a, b) => String(b.end).localeCompare(String(a.end)))[0] ?? null;
 }
+
+// ── everything the tabs read, together ──
+/** Every read Romance makes, fetched again: pull to refresh, and coming back to the page. */
+export function reloadAll() {
+  invalidate('/mod/romance/');
+  const all: [string, string][] = [['romance', 'sessions'], ['romance', 'debriefs'], ['romance', 'follow'], ['romance', 'prefs'],
+    ['people', 'persons'], ['people', 'moments'], ['people', 'ideas'], ['people', 'plans']];
+  for (const [m, c] of all) collection(m, c).refresh().catch(() => {});
+}
+
+/**
+ * The page's records and what the tabs work out from them. People's moments (time together that Nora filed), ideas
+ * and plans are shared with Family and Friends; Romance reads only its own people's.
+ */
+export function useRomance() {
+  const outings = useOutings();
+  const debriefs = useDebriefs();
+  const people = usePeople();
+  const prefs = usePrefs();
+  const primer = usePrimer();
+  const moments = useCollection<Moment>('people', 'moments');
+  const ideas = useCollection<IdeaRec>('people', 'ideas');
+  const shared = useCollection<SharedPlan>('people', 'plans');
+  const { live } = useLocal();
+  const list = people.list;
+  const plans = useMemo(() => (list ? plansOf(list, shared.items) : null), [list, shared.items]);
+  const week = useMemo(() => (outings.items ? weekOf(outings.items) : null), [outings.items]);
+  const pending = outings.items && debriefs.items ? undebriefed(outings.items, debriefs.items) : null;
+  const active = list?.filter((e) => !e.follow?.archived) ?? null;
+  const archived = list?.filter((e) => e.follow?.archived) ?? [];
+  const mine = ideas.items?.filter((i) => i.aspect === 'romance') ?? null;
+  return { outings, debriefs, people, prefs, primer, moments, ideas, shared, live, list, active, archived, plans, week, pending, mine };
+}
+export type Romance = ReturnType<typeof useRomance>;

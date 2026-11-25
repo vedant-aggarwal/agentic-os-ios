@@ -3,7 +3,7 @@ import { Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { C } from '@/theme';
 import { fileSource } from '@/lib/mod';
-import { Button, Card, Failed, Icon, Loading, myDay, Press, Row, Screen, Section, Sheet, shortDay, Skeleton, Spark, SP, t, useAspect } from '@/aspects/kit';
+import { Block, Button, Card, Failed, Icon, Loading, myDay, Press, Row, Screen, Sheet, shortDay, Skeleton, Spark, SP, t, useAspect } from '@/aspects/kit';
 import {
   agoDays, dropScan, filePath, readScan, startScan, tick, useFace, usePoll, useProtocols, useRubric, type Face, type FaceFeature, type Pick, type Protocol, type RoutineRow,
 } from '../api';
@@ -13,7 +13,8 @@ import { CHANGE, Delta, EvidenceTag, EVIDENCE, List, Score, ScoreRow, Tag, s as 
 export const FREQ: Record<Protocol['freq'], string> = { daily: 'Every day', '3x': 'Three times a week', '2x': 'Twice a week', weekly: 'Once a week', once: 'Once' };
 export const WHEN: Record<'am' | 'pm' | 'day', string> = { am: 'Morning', day: 'Through the day', pm: 'Night' };
 
-export function FaceScreen({ open, onClose, title }: { open: boolean; onClose: () => void; title: string }) {
+export function FaceTab({ active }: { active: boolean }) {
+  const open = active;
   const read = useFace(useSeen(open));
   const nav = useNav();
   const [feature, setFeature] = useState<string | null>(null);
@@ -23,7 +24,7 @@ export function FaceScreen({ open, onClose, title }: { open: boolean; onClose: (
   usePoll(refresh, open && working, 4000);
   return (
     <>
-      <Screen open={open} onClose={onClose} title={title}>
+      <>
         {!data && error ? <Failed message={error} onRetry={() => { void refresh(); }} /> : null}
         {!data && !error ? <View style={u.gap16}><Skeleton height={200} radius={24} /><Skeleton height={180} radius={24} /><Skeleton height={300} radius={24} /></View> : null}
         {data ? (
@@ -38,7 +39,7 @@ export function FaceScreen({ open, onClose, title }: { open: boolean; onClose: (
             {data.latest ? <About f={data} /> : null}
           </>
         ) : null}
-      </Screen>
+      </>
       <FeatureDetail id={feature} f={data} onClose={() => setFeature(null)} onProto={(p) => setProto({ p })} />
       <ProtocolSheet item={proto} onClose={() => setProto(null)} />
     </>
@@ -49,9 +50,9 @@ function Intro({ onStart }: { onStart: () => void }) {
   const rubric = useRubric();
   return (
     <Card style={u.gap12}>
-      <Text style={t.title2}>Your face, measured</Text>
-      <Text style={t.body}>Six photos from your library: front, smile, both profiles, three quarter and skin up close. The PC checks each for light and focus, then Nora reads them twice against a fixed rubric. You get a score for each feature, what can change and what is structure, and a plan from a library of protocols with honest evidence.</Text>
-      {rubric.data ? <Text style={t.small}>{rubric.data.light}</Text> : null}
+      <Text style={t.title3}>Your face, measured</Text>
+      <Text style={t.subhead}>Six photos from your library: front, smile, both profiles, three quarter and skin up close. The PC checks each for light and focus, then Nora reads them twice against a fixed rubric. You get a score for each feature, what can change and what is structure, and a plan from a library of protocols with honest evidence.</Text>
+      {rubric.data ? <Text style={t.footnote}>{rubric.data.light}</Text> : null}
       <Button label="Start scan" kind="accent" onPress={onStart} />
     </Card>
   );
@@ -70,8 +71,8 @@ function OpenScan({ f }: { f: Face }) {
   const again = async () => { setBusy(true); try { await readScan(o.id); } catch (e) { a.notice((e as Error).message); } setBusy(false); };
   return (
     <Card tone={a.color} style={u.gap12}>
-      <Text style={[t.label, { color: a.color }]}>{o.status === 'shooting' ? 'Scan in progress' : o.status === 'refused' ? 'The scan needs another photo' : 'The reading stopped'}</Text>
-      <Text style={t.body}>{o.status === 'shooting' ? `${n} of 6 photos taken.` : o.refuse ?? o.error ?? ''}</Text>
+      <Text style={[t.footnote, { color: a.color }]}>{o.status === 'shooting' ? 'Scan in progress' : o.status === 'refused' ? 'The scan needs another photo' : 'The reading stopped'}</Text>
+      <Text style={t.subhead}>{o.status === 'shooting' ? `${n} of 6 photos taken.` : o.refuse ?? o.error ?? ''}</Text>
       <View style={u.row}>
         {o.status === 'failed' && n === 6 ? <Button label="Read again" kind="accent" busy={busy} onPress={() => { void again(); }} wrap={u.flex} />
           : <Button label={o.status === 'shooting' ? 'Continue' : 'Retake photos'} kind="accent" onPress={() => nav.openFlow({ kind: 'scan' })} wrap={u.flex} />}
@@ -105,7 +106,7 @@ function Hero({ f }: { f: Face }) {
   const compared = l.delta != null && sc && l.compared != null && l.compared < sc.of ? ` The change compares only the ${l.compared} features measured in both scans.` : '';
   return (
     <Card style={u.gap12}>
-      <Text style={t.label}>Overall</Text>
+      <Text style={t.footnote}>Overall</Text>
       <View style={u.between}>
         <View style={u.row}>
           <Score v={l.overall} margin={l.margin} />
@@ -113,16 +114,16 @@ function Hero({ f }: { f: Face }) {
         </View>
         <Delta d={l.delta} />
       </View>
-      <Text style={t.small}>{`${shortDay(l.date)}, ${agoDays(days)}. Nora's reading of your photos against a fixed rubric${sc && sc.measured < sc.of ? `, the average of the ${sc.measured} features it could see` : ''}. A change inside the margin is not counted.${compared}`}</Text>
+      <Text style={t.footnote}>{`${shortDay(l.date)}, ${agoDays(days)}. Nora's reading of your photos against a fixed rubric${sc && sc.measured < sc.of ? `, the average of the ${sc.measured} features it could see` : ''}. A change inside the margin is not counted.${compared}`}</Text>
       {retake.length && !f.open ? (
         <View style={u.between}>
-          <Text style={[t.small, u.flex]}>{`The ${listOf(retake.map((x) => SHOT_WORD[x] ?? x))} ${retake.length === 1 ? 'photo' : 'photos'} couldn't be read, so those features are left out.`}</Text>
+          <Text style={[t.footnote, u.flex]}>{`The ${listOf(retake.map((x) => SHOT_WORD[x] ?? x))} ${retake.length === 1 ? 'photo' : 'photos'} couldn't be read, so those features are left out.`}</Text>
           <Button label={`Retake ${retake.length} ${retake.length === 1 ? 'photo' : 'photos'}`} kind="soft" small busy={busy} onPress={() => { void again(); }} />
         </View>
       ) : null}
       {due ? (
         <View style={u.between}>
-          <Text style={[t.small, u.flex]}>{due.days <= 0 ? 'Rescan due. Skin turns over in about four weeks; two weeks shows the start.' : due.days === 1 ? 'Next scan tomorrow.' : `Next scan on ${shortDay(due.date)}.`}</Text>
+          <Text style={[t.footnote, u.flex]}>{due.days <= 0 ? 'Rescan due. Skin turns over in about four weeks; two weeks shows the start.' : due.days === 1 ? 'Next scan tomorrow.' : `Next scan on ${shortDay(due.date)}.`}</Text>
           <Button label="Rescan" kind={due.days <= 0 ? 'soft' : 'quiet'} small onPress={() => nav.openFlow({ kind: 'scan' })} />
         </View>
       ) : null}
@@ -143,7 +144,7 @@ function RoutineCard({ f }: { f: Face }) {
   };
   const groups = (['am', 'day', 'pm'] as const).filter((w) => r[w].length);
   return (
-    <Section title="Today's routine">
+    <Block title="Today's routine">
       {groups.map((w) => {
         const rows = r[w];
         const left = rows.filter((x) => !(local[x.id] ?? x.done));
@@ -152,8 +153,8 @@ function RoutineCard({ f }: { f: Face }) {
           <Card key={w} style={u.gap4}>
             <View style={u.between}>
               <View>
-                <Text style={t.strong}>{WHEN[w]}</Text>
-                <Text style={[t.caption, t.num]}>{`${rows.length - left.length} of ${rows.length} done${min ? `, about ${min} min` : ''}`}</Text>
+                <Text style={t.callout}>{WHEN[w]}</Text>
+                <Text style={[t.micro, t.num]}>{`${rows.length - left.length} of ${rows.length} done${min ? `, about ${min} min` : ''}`}</Text>
               </View>
               {left.length && rows.some((x) => x.steps.length) ? <Button label="Guide me" kind="soft" small onPress={() => nav.openFlow({ kind: 'routine', when: w })} /> : null}
             </View>
@@ -163,7 +164,7 @@ function RoutineCard({ f }: { f: Face }) {
           </Card>
         );
       })}
-    </Section>
+    </Block>
   );
 }
 
@@ -174,15 +175,15 @@ function Features({ f, onOpen }: { f: Face; onOpen: (id: string) => void }) {
   const unseen = f.features.filter((x) => x.v == null);
   const shown = all ? seen : seen.slice(0, 6);
   return (
-    <Section title="By feature" action={seen.length > 6 ? (all ? 'Fewer' : `All ${seen.length}`) : undefined} onAction={() => setAll(!all)}>
+    <Block title="By feature" action={seen.length > 6 ? (all ? 'Fewer' : `All ${seen.length}`) : undefined} onAction={() => setAll(!all)}>
       <List>
         {shown.map((x) => (
           <ScoreRow key={x.id} name={x.name} v={x.v} margin={x.margin} faint={x.change === 'no'} note={x.evidence || null} onPress={() => onOpen(x.id)}
             right={x.change === 'no' ? <Tag>Structure</Tag> : x.delta ? <Delta d={x.delta} /> : x.unsure ? <Tag>Unsure</Tag> : undefined} />
         ))}
       </List>
-      {unseen.length ? <Text style={t.small}>{`Not seen this time: ${unseen.map((x) => x.name.toLowerCase()).join(', ')}. ${unseenWhy(f)}`}</Text> : null}
-    </Section>
+      {unseen.length ? <Text style={t.footnote}>{`Not seen this time: ${unseen.map((x) => x.name.toLowerCase()).join(', ')}. ${unseenWhy(f)}`}</Text> : null}
+    </Block>
   );
 }
 const SHOT_WORD: Record<string, string> = { front: 'front', smile: 'smile', left: 'left profile', right: 'right profile', three: 'three quarter', skin: 'skin' };
@@ -204,36 +205,36 @@ function FeatureDetail({ id, f, onClose, onProto }: { id: string | null; f: Face
         <>
           <Card style={u.gap12}>
             <View style={u.between}><Score v={x.v} margin={x.margin} /><Tag>{CHANGE[x.change]}</Tag></View>
-            {x.evidence ? <Text style={t.body}>{x.evidence}</Text> : null}
-            {x.unsure ? <Text style={t.small}>Only one read could judge this, or the two reads disagreed, so the margin is wide.</Text> : null}
+            {x.evidence ? <Text style={t.subhead}>{x.evidence}</Text> : null}
+            {x.unsure ? <Text style={t.footnote}>Only one read could judge this, or the two reads disagreed, so the margin is wide.</Text> : null}
             {x.trend.filter((p) => p.v != null).length > 1 ? <Spark values={x.trend.map((p) => p.v)} width={w} height={56} /> : null}
           </Card>
           {r ? (
             <>
-              <Section title="What can change"><Text style={t.body}>{r.can}</Text></Section>
-              <Section title="What is structure"><Text style={t.body}>{r.fixed}</Text></Section>
-              <Section title="How it is scored">
+              <Block title="What can change"><Text style={t.subhead}>{r.can}</Text></Block>
+              <Block title="What is structure"><Text style={t.subhead}>{r.fixed}</Text></Block>
+              <Block title="How it is scored">
                 <List>
                   {r.anchors.map((an, i) => {
                     const at = (i + 1) * 20;
                     const here = x.v != null && Math.abs(x.v - at) < 10;
                     return (
                       <View key={i} style={[u.row, { paddingVertical: SP[12], alignItems: 'flex-start' }]}>
-                        <Text style={[t.strong, t.num, { width: 28 }, here && { color: a.color }]}>{at}</Text>
-                        <Text style={[t.small, u.flex, here && { color: C.text }]}>{an}</Text>
+                        <Text style={[t.callout, t.num, { width: 28 }, here && { color: a.color }]}>{at}</Text>
+                        <Text style={[t.footnote, u.flex, here && { color: C.text }]}>{an}</Text>
                       </View>
                     );
                   })}
                 </List>
-              </Section>
+              </Block>
             </>
           ) : <Skeleton height={200} radius={24} />}
           {protos.length ? (
-            <Section title="What helps">
+            <Block title="What helps">
               <List>
                 {protos.map((p) => <Row key={p.id} title={p.name} sub={`${EVIDENCE[p.evidence].word}${inPlan.has(p.id) ? ', in your plan' : ''}`} chevron onPress={() => onProto(p)} />)}
               </List>
-            </Section>
+            </Block>
           ) : null}
         </>
       ) : null}
@@ -245,17 +246,17 @@ function FeatureDetail({ id, f, onClose, onProto }: { id: string | null; f: Face
 function PlanCard({ f, onOpen }: { f: Face; onOpen: (p: Protocol, why: string) => void }) {
   const plan = f.plan!;
   return (
-    <Section title="Your plan">
-      {plan.summary ? <Text style={t.body}>{plan.summary}</Text> : null}
+    <Block title="Your plan">
+      {plan.summary ? <Text style={t.subhead}>{plan.summary}</Text> : null}
       <List>{plan.picks.map((p) => <PickRow key={p.id} p={p} onOpen={onOpen} />)}</List>
       {plan.presentation.length ? (
         <>
-          <Text style={t.section}>For structure</Text>
+          <Text style={t.headline}>For structure</Text>
           <List>{plan.presentation.map((p) => <PickRow key={p.id} p={p} onOpen={onOpen} />)}</List>
         </>
       ) : null}
-      <Text style={t.caption}>{`Picked by ${plan.by === 'claude' ? 'Nora' : 'the rules'} from the protocol library, ${shortDay(plan.at.slice(0, 10))}.`}</Text>
-    </Section>
+      <Text style={t.micro}>{`Picked by ${plan.by === 'claude' ? 'Nora' : 'the rules'} from the protocol library, ${shortDay(plan.at.slice(0, 10))}.`}</Text>
+    </Block>
   );
 }
 function PickRow({ p, onOpen }: { p: Pick; onOpen: (p: Protocol, why: string) => void }) {
@@ -264,10 +265,10 @@ function PickRow({ p, onOpen }: { p: Pick; onOpen: (p: Protocol, why: string) =>
     <Press label={`${pr.name}. ${p.why}`} onPress={() => onOpen(pr, p.why)} scale={0.99}>
       <View style={[u.gap8, { paddingVertical: SP[12] }]}>
         <View style={u.between}>
-          <Text numberOfLines={1} style={[t.strong, u.flex]}>{pr.name}</Text>
+          <Text numberOfLines={1} style={[t.callout, u.flex]}>{pr.name}</Text>
           <Icon name="right" size={16} color={C.faint} />
         </View>
-        <Text style={t.small}>{p.why}</Text>
+        <Text style={t.footnote}>{p.why}</Text>
         <View style={u.wrap}>
           <EvidenceTag level={pr.evidence} />
           {pr.kind === 'link' ? <Tag>In Gym and Diet</Tag> : pr.kind === 'refer' ? <Tag>A professional&apos;s call</Tag> : <Tag>{`${FREQ[pr.freq]}${pr.minutes ? `, ${pr.minutes} min` : ''}`}</Tag>}
@@ -285,21 +286,21 @@ export function ProtocolSheet({ item, onClose }: { item: { p: Protocol; why?: st
       {p ? (
         <>
           <View style={u.wrap}><EvidenceTag level={p.evidence} /><Tag>{`${FREQ[p.freq]}${p.minutes ? `, ${p.minutes} min` : ''}`}</Tag></View>
-          <Text style={t.small}>{EVIDENCE[p.evidence].long}</Text>
-          {item?.why ? <Text style={t.strong}>{item.why}</Text> : null}
-          <Text style={t.body}>{p.does}</Text>
+          <Text style={t.footnote}>{EVIDENCE[p.evidence].long}</Text>
+          {item?.why ? <Text style={t.callout}>{item.why}</Text> : null}
+          <Text style={t.subhead}>{p.does}</Text>
           {p.steps.length ? (
-            <Section title="Steps">
+            <Block title="Steps">
               {p.steps.map((s, i) => (
                 <View key={i} style={[u.row, { alignItems: 'flex-start' }]}>
-                  <Text style={[t.label, t.num, { width: 20 }]}>{i + 1}</Text>
-                  <Text style={[t.body, u.flex]}>{s.text}</Text>
-                  {s.sec ? <Text style={[t.caption, t.num]}>{s.sec >= 60 ? `${Math.round(s.sec / 60)} min` : `${s.sec} s`}</Text> : null}
+                  <Text style={[t.footnote, t.num, { width: 20 }]}>{i + 1}</Text>
+                  <Text style={[t.subhead, u.flex]}>{s.text}</Text>
+                  {s.sec ? <Text style={[t.micro, t.num]}>{s.sec >= 60 ? `${Math.round(s.sec / 60)} min` : `${s.sec} s`}</Text> : null}
                 </View>
               ))}
-            </Section>
+            </Block>
           ) : null}
-          {p.cautions?.length ? <Section title="Careful">{p.cautions.map((c, i) => <Text key={i} style={t.small}>{c}</Text>)}</Section> : null}
+          {p.cautions?.length ? <Block title="Careful">{p.cautions.map((c, i) => <Text key={i} style={t.footnote}>{c}</Text>)}</Block> : null}
           {p.kind === 'link' ? <Button label={p.link === 'diet' ? 'Open Diet' : 'Open Gym'} kind="soft" onPress={() => { onClose(); nav.openPart(p.link === 'diet' ? 'diet' : 'gym'); }} /> : null}
         </>
       ) : null}
@@ -313,17 +314,17 @@ function Progress({ f }: { f: Face }) {
   const first = f.first, last = f.latest!;
   const half = (w - SP[12]) / 2;
   return (
-    <Section title="Progress">
+    <Block title="Progress">
       {first ? (
         <Card style={u.gap12}>
           {(['front', 'left', 'right'] as const).filter((k) => first.photos[k] && last.photos[k]).map((k) => (
             <View key={k} style={u.gap8}>
-              <Text style={t.label}>{k === 'front' ? 'Front' : k === 'left' ? 'Left profile' : 'Right profile'}</Text>
+              <Text style={t.footnote}>{k === 'front' ? 'Front' : k === 'left' ? 'Left profile' : 'Right profile'}</Text>
               <View style={u.row}>
                 {[first, last].map((s) => (
                   <View key={s.id} style={u.gap4}>
                     <Image source={fileSource(filePath(s.photos[k], true))} style={[u.thumb, { width: half, height: half * 1.25 }]} contentFit="cover" accessibilityLabel={`${k} photo, ${shortDay(s.date)}`} />
-                    <Text style={t.caption}>{shortDay(s.date)}</Text>
+                    <Text style={t.micro}>{shortDay(s.date)}</Text>
                   </View>
                 ))}
               </View>
@@ -334,11 +335,11 @@ function Progress({ f }: { f: Face }) {
       ) : (
         <Card style={u.row}>
           {last.photos.front ? <Image source={fileSource(filePath(last.photos.front, true))} style={[u.thumb, { width: 72, height: 90 }]} contentFit="cover" accessibilityLabel="Front photo" /> : null}
-          <Text style={[t.small, u.flex]}>Your first scan. The next one shows here side by side with this, angle by angle.</Text>
+          <Text style={[t.footnote, u.flex]}>Your first scan. The next one shows here side by side with this, angle by angle.</Text>
         </Card>
       )}
       {f.scans.length > 1 ? <List>{f.scans.map((s) => <Row key={s.id} title={shortDay(s.date)} right={s.overall != null ? `${s.overall}${s.margin ? ` ± ${s.margin}` : ''}` : ''} />)}</List> : null}
-    </Section>
+    </Block>
   );
 }
 
@@ -347,18 +348,18 @@ function LeftOut() {
   const [open, setOpen] = useState(false);
   if (!lib.data) return null;
   return (
-    <Section title="Left out on purpose" action={open ? 'Hide' : 'Why'} onAction={() => setOpen(!open)}>
+    <Block title="Left out on purpose" action={open ? 'Hide' : 'Why'} onAction={() => setOpen(!open)}>
       {open ? <List>{lib.data.never.map((n) => <Row key={n.name} title={n.name} sub={n.why} />)}</List>
-        : <Text style={t.small}>Bone smashing, hard chewing, needling, drugs and crash diets are never in a plan.</Text>}
-    </Section>
+        : <Text style={t.footnote}>Bone smashing, hard chewing, needling, drugs and crash diets are never in a plan.</Text>}
+    </Block>
   );
 }
 
 function About({ f }: { f: Face }) {
   const rubric = useRubric();
   return (
-    <Section title="About the score">
-      <Text style={t.small}>{`Rubric ${f.rubric.replace('face-rubric-', 'version ')}. Each feature is read twice from the photos; the score is the average and the margin is how far the two reads differ, at least ${rubric.data?.margin ?? 4}. Skin tone, ethnicity and gender are never scored. Anything medical goes to a dermatologist or your orthodontist.`}</Text>
-    </Section>
+    <Block title="About the score">
+      <Text style={t.footnote}>{`Rubric ${f.rubric.replace('face-rubric-', 'version ')}. Each feature is read twice from the photos; the score is the average and the margin is how far the two reads differ, at least ${rubric.data?.margin ?? 4}. Skin tone, ethnicity and gender are never scored. Anything medical goes to a dermatologist or your orthodontist.`}</Text>
+    </Block>
   );
 }

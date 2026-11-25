@@ -55,7 +55,7 @@ export function Dictate({ onText, what }: { onText: (text: string) => void; what
   if (state === 'rec') {
     return (
       <View style={s.rec}>
-        <Text style={[t.label, t.num, { color: a.color }]}>{timer(secs)}</Text>
+        <Text style={[t.footnote, t.num, { color: a.color }]}>{timer(secs)}</Text>
         <IconButton label={`Stop and write down ${what}`} onPress={stop}>
           <Sym name="stop" size={16} color={a.color} filled />
         </IconButton>

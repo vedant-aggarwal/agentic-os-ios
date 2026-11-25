@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { fileSource, invalidate, upload } from '@/lib/mod';
-import { Button, Card, Chip, Field, myDay, Section, Sheet, Skeleton, Stepper, t, undoable, useAspect } from '@/aspects/kit';
+import { Block, Button, Field, Group, Icon, Item, Keypad, myDay, Sheet, Skeleton, Stepper, t, tint, undoable, useAspect } from '@/aspects/kit';
 import { addMeal, B, estimate, filePath, putDoc, removeDoc, setTargets, useDiet, useGym, type Estimate, type MealRow, type Recent } from '../api';
 import { canPick, pickPhoto } from '../pick';
 import { s as u, useSeen } from '../ui';
@@ -22,16 +22,18 @@ function LogBody({ recent, error, onClose }: { recent: Recent[] | null; error: s
   const [text, setText] = useState('');
   const [est, setEst] = useState<Estimate | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const done = (msg: string) => { a.notice(msg); onClose(); };
+  const [keys, setKeys] = useState(false);
+  // every way in ends the same: the sheet closes and Undo takes the meal back out for a few seconds
+  const logged = (name: string, id: string) => {
+    onClose();
+    undoable(`${name} logged`, async () => { await removeDoc('meals', id); });
+  };
   const again = async (r: Recent) => {
     setBusy(r.name);
-    // one tap logs a recent meal; Undo takes it back out for a few seconds
     try {
       const m = await addMeal({ name: r.name, kcal: r.kcal, protein: r.protein, carbs: r.carbs, fat: r.fat, items: r.items });
-      onClose();
-      undoable(`${r.name} logged`, async () => { await removeDoc('meals', m.item.id); });
-    }
-    catch (e) { a.notice((e as Error).message); setBusy(null); }
+      logged(r.name, m.item.id);
+    } catch (e) { a.notice((e as Error).message); setBusy(null); }
   };
   const check = async () => {
     if (!text.trim()) return;
@@ -42,8 +44,19 @@ function LogBody({ recent, error, onClose }: { recent: Recent[] | null; error: s
   const logText = async () => {
     if (!est) return;
     setBusy('log');
-    try { await addMeal({ name: est.name ?? text.trim(), kcal: est.kcal, protein: est.protein, carbs: est.carbs ?? null, fat: est.fat ?? null, items: est.items }); done(`${est.name ?? text.trim()} logged`); }
-    catch (e) { a.notice((e as Error).message); setBusy(null); }
+    const name = est.name ?? text.trim();
+    try {
+      const m = await addMeal({ name, kcal: est.kcal, protein: est.protein, carbs: est.carbs ?? null, fat: est.fat ?? null, items: est.items });
+      logged(name, m.item.id);
+    } catch (e) { a.notice((e as Error).message); setBusy(null); }
+  };
+  const logNumbers = async (v: Record<string, number | null>) => {
+    const name = text.trim() || 'Meal';
+    setKeys(false);
+    try {
+      const m = await addMeal({ name, protein: v.protein ?? 0, kcal: v.kcal ?? 0 });
+      logged(name, m.item.id);
+    } catch (e) { a.notice((e as Error).message); }
   };
   const photo = async () => {
     try {
@@ -52,32 +65,41 @@ function LogBody({ recent, error, onClose }: { recent: Recent[] | null; error: s
       setBusy('photo');
       await upload(`${B}/meal-photo`, p.uri, p.type);
       invalidate(`${B}/`);
-      done('Reading the photo. It waits in Diet when it is ready.');
+      a.notice('Reading the photo. It waits in Diet when it is ready.');
+      onClose();
     } catch (e) { a.notice((e as Error).message); setBusy(null); }
   };
   return (
     <>
-      <Section title="Again">
-        {recent == null ? (error ? <Text style={t.small}>{error}</Text> : <Skeleton height={36} />) : recent.length ? (
-          <View style={u.wrap}>
-            {recent.map((r) => <Chip key={r.name} label={busy === r.name ? 'Logging' : `${r.name}, ${r.protein} g`} onPress={() => { void again(r); }} />)}
-          </View>
-        ) : <Text style={t.small}>Meals you log show here for one tap next time.</Text>}
-      </Section>
-      <Field label="What did you eat" value={text} onChangeText={(v) => { setText(v); setEst(null); }} placeholder="2 roti, dal and a bowl of curd" onSubmit={() => { void check(); }} />
-      {est ? (
-        <Card style={u.gap8}>
-          {(est.items ?? []).map((it, i) => (
-            <View key={i} style={u.between}><Text numberOfLines={1} style={[t.body, u.flex]}>{it.name}</Text><Text style={[t.label, t.num]}>{`${it.protein} g, ${it.kcal} kcal`}</Text></View>
-          ))}
-          <View style={u.between}><Text style={t.strong}>Total</Text><Text style={[t.strong, t.num]}>{`${est.protein} g protein, ${est.kcal} kcal`}</Text></View>
-          {est.unknown?.length ? <Text style={t.caption}>{`Not in the food list, counted as zero: ${est.unknown.join(', ')}. Change the numbers after logging.`}</Text> : null}
-          <Button label="Log it" kind="accent" busy={busy === 'log'} onPress={() => { void logText(); }} />
-        </Card>
-      ) : (
-        <Button label="Estimate" kind="soft" busy={busy === 'estimate'} disabled={!text.trim()} onPress={() => { void check(); }} />
-      )}
-      {canPick ? <Button label="Send a photo instead" kind="quiet" busy={busy === 'photo'} onPress={() => { void photo(); }} /> : null}
+      {recent == null ? (error ? <Text style={t.footnote}>{error}</Text> : <Skeleton height={156} radius={22} />) : recent.length ? (
+        <Block title="Again" sub="One tap logs it.">
+          <Group>
+            {recent.slice(0, 5).map((r) => (
+              <Item key={r.name} title={r.name} sub={`${r.protein} g protein, ${r.kcal} kcal`} label={`Log ${r.name}`} onPress={() => { void again(r); }}
+                right={busy === r.name ? <ActivityIndicator color={a.color} /> : <View style={[st.plus, { backgroundColor: tint(a.color, 0.16) }]}><Icon name="plus" size={16} color={a.color} /></View>} />
+            ))}
+          </Group>
+        </Block>
+      ) : <Text style={t.footnote}>Meals you log show here, one tap each next time.</Text>}
+      <Block title="Something else">
+        <Field label="What did you eat" value={text} onChangeText={(v) => { setText(v); setEst(null); }} placeholder="2 roti, dal and a bowl of curd" onSubmit={() => { void check(); }} />
+        {est ? (
+          <Group>
+            {(est.items ?? []).map((it, i) => <Item key={i} title={it.name} sub={it.portion ?? null} value={`${it.protein} g, ${it.kcal} kcal`} />)}
+            <Item title="Total" value={`${est.protein} g protein, ${est.kcal} kcal`} titleStyle={st.total} />
+          </Group>
+        ) : null}
+        {est?.unknown?.length ? <Text style={t.footnote}>{`Not in the food list, counted as zero: ${est.unknown.join(', ')}. Change the numbers after logging.`}</Text> : null}
+        {est ? <Button label="Log it" kind="accent" busy={busy === 'log'} onPress={() => { void logText(); }} />
+          : <Button label="Estimate" kind="soft" busy={busy === 'estimate'} disabled={!text.trim()} onPress={() => { void check(); }} />}
+        <View style={st.ways}>
+          {canPick ? <Button label="Send a photo" kind="quiet" small icon={<Icon name="camera" size={16} />} busy={busy === 'photo'} onPress={() => { void photo(); }} wrap={st.way} /> : null}
+          <Button label="Enter numbers" kind="quiet" small onPress={() => setKeys(true)} wrap={st.way} />
+        </View>
+      </Block>
+      <Keypad open={keys} onClose={() => setKeys(false)} title={text.trim() || 'Enter numbers'} sub="From a label or a menu. Name it above first if you like." done="Log it"
+        fields={[{ key: 'protein', label: 'Protein', unit: 'g', value: null, step: 5, max: 300 }, { key: 'kcal', label: 'Calories', unit: 'kcal', value: null, step: 50, max: 5000 }]}
+        onDone={(v) => { void logNumbers(v); }} />
     </>
   );
 }
@@ -154,3 +176,10 @@ function TargetsBody({ p, k, w, days, onClose }: { p: number; k: number; w: numb
     </>
   );
 }
+
+const st = StyleSheet.create({
+  plus: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  total: { fontFamily: 'Geist_600SemiBold' },
+  ways: { flexDirection: 'row', gap: 8 },
+  way: { flex: 1 },
+});

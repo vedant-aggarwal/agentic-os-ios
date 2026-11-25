@@ -113,8 +113,8 @@ function Flow({ spec, steps, open, onClose }: { spec: TakeSpec; steps?: string[]
 
   const topic = (
     <View style={s.topic}>
-      <Text style={phase === 'think' ? t.title : t.heading} accessibilityRole="header">{spec.topic}</Text>
-      {spec.source ? <Text style={t.small}>{spec.source.kind === 'lesson' ? `From the lesson ${spec.source.title}` : `From ${spec.source.title}`}</Text> : null}
+      <Text style={phase === 'think' ? t.title : t.title3} accessibilityRole="header">{spec.topic}</Text>
+      {spec.source ? <Text style={t.footnote}>{spec.source.kind === 'lesson' ? `From the lesson ${spec.source.title}` : `From ${spec.source.title}`}</Text> : null}
       {steps?.length ? <View style={s.chips}>{steps.map((st, i) => <Chip key={`${st}${i}`} label={`${i + 1} ${st}`} />)}</View> : null}
     </View>
   );
@@ -125,9 +125,9 @@ function Flow({ spec, steps, open, onClose }: { spec: TakeSpec; steps?: string[]
         {topic}
         <View style={s.centre}>
           <Ring size={168} progress={thinkLeft / THINK} stroke={6}>
-            <Text style={[t.big, t.num]} accessibilityLabel={`${Math.ceil(thinkLeft)} seconds to think`}>{Math.ceil(thinkLeft)}</Text>
+            <Text style={[t.large, t.num]} accessibilityLabel={`${Math.ceil(thinkLeft)} seconds to think`}>{Math.ceil(thinkLeft)}</Text>
           </Ring>
-          <Text style={[t.body, s.centred]}>Think it through. The recording starts on its own.</Text>
+          <Text style={[t.subhead, s.centred]}>Think it through. The recording starts on its own.</Text>
         </View>
         <View style={s.actions}>
           <Button label="Start now" kind="accent" onPress={begin} icon={<Sym name="wave" size={18} color="#14161C" />} />
@@ -147,12 +147,12 @@ function Flow({ spec, steps, open, onClose }: { spec: TakeSpec; steps?: string[]
           <View>
             <Ring size={220} progress={recSecs / LIMIT} stroke={6}>
               <Text style={[t.display, t.num]} accessibilityLabel={`Recording, ${Math.floor(recSecs)} seconds`}>{timer(recSecs)}</Text>
-              <Text style={t.caption}>of 2:00</Text>
+              <Text style={t.footnote}>of 2:00</Text>
             </Ring>
             <View style={[s.minuteMark, { backgroundColor: recSecs >= 60 ? a.color : C.faint }]} />
           </View>
           <View style={s.level}><View style={[s.levelFill, { width: `${Math.round(mic.level * 100)}%`, backgroundColor: a.color }]} /></View>
-          <Text style={[t.body, s.centred]}>{hint}</Text>
+          <Text style={[t.subhead, s.centred]}>{hint}</Text>
         </View>
         <View style={s.actions}>
           <Press label="Stop and send" onPress={finish} feel="none" wrap={s.selfCentre} style={s.stop}>
@@ -169,10 +169,10 @@ function Flow({ spec, steps, open, onClose }: { spec: TakeSpec; steps?: string[]
       <View style={s.fill}>
         {topic}
         <View style={s.centre}>
-          <Text style={[t.lead, s.centred]}>{mic.error ?? "The microphone didn't start."}</Text>
+          <Text style={[t.headline, s.centred]}>{mic.error ?? "The microphone didn't start."}</Text>
         </View>
         <View style={s.actions}>
-          <Button label="Try again" kind="primary" onPress={() => { mic.setError(null); void begin(); }} />
+          <Button label="Try again" kind="accent" onPress={() => { mic.setError(null); void begin(); }} />
           {canPickFile ? <Button label="Use a file" kind="quiet" small onPress={useFile} wrap={s.selfCentre} /> : null}
           <Button label="Close" kind="quiet" small onPress={onClose} wrap={s.selfCentre} />
         </View>
@@ -185,11 +185,11 @@ function Flow({ spec, steps, open, onClose }: { spec: TakeSpec; steps?: string[]
       <View style={s.fill}>
         {topic}
         <View style={s.centre}>
-          <Text style={[t.lead, s.centred]}>{phase === 'sending' ? 'Sending your take to your PC' : "Couldn't send it"}</Text>
-          {phase === 'unsent' ? <Text style={[t.small, s.centred]}>{`${sendError ?? ''} Your take is still on this phone.`.trim()}</Text> : null}
+          <Text style={[t.headline, s.centred]}>{phase === 'sending' ? 'Sending your take to your PC' : "Couldn't send it"}</Text>
+          {phase === 'unsent' ? <Text style={[t.footnote, s.centred]}>{`${sendError ?? ''} Your take is still on this phone.`.trim()}</Text> : null}
         </View>
         <View style={s.actions}>
-          {phase === 'unsent' && made ? <Button label="Send again" kind="primary" onPress={() => send(made)} /> : <Button label="Sending" kind="quiet" busy onPress={() => {}} />}
+          {phase === 'unsent' && made ? <Button label="Send again" kind="accent" onPress={() => send(made)} /> : <Button label="Sending" kind="quiet" busy onPress={() => {}} />}
           {phase === 'unsent' ? <Button label="Discard" kind="quiet" small onPress={onClose} wrap={s.selfCentre} /> : null}
         </View>
       </View>
@@ -204,7 +204,7 @@ function Flow({ spec, steps, open, onClose }: { spec: TakeSpec; steps?: string[]
         <TakeState take={{ id, status: 'transcribing', transcript: null, failed_step: null, error: null } as unknown as Take} onRetry={retry} />
       )}
       {take?.status === 'reviewed' && take.review ? <ReviewBody take={take} /> : null}
-      <Button label={settled ? 'Done' : 'Leave it running'} kind={settled ? 'primary' : 'quiet'} onPress={onClose} />
+      <Button label={settled ? 'Done' : 'Leave it running'} kind={settled ? 'accent' : 'quiet'} onPress={onClose} />
     </ScrollView>
   );
 }

@@ -2,8 +2,8 @@ import { requireOptionalNativeModule } from 'expo';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { AppState, Platform } from 'react-native';
 import { dayLabel, daysBetween, myDay } from '@/aspects/kit';
-import { api, ApiError } from '@/lib/api';
-import { collection, invalidate, useCollection, useGet, type Doc } from '@/lib/mod';
+import { ApiError } from '@/lib/api';
+import { call, collection, invalidate, useCollection, useGet, type Doc } from '@/lib/mod';
 
 // Soul's data: the shapes the server answers (server/modules/soul.ts, soul-clean.ts, soul-journal.ts), the reads the
 // page shares, what the phone keeps on its own disk so a rough moment works with the PC away, and the outbox that
@@ -48,8 +48,15 @@ export type Entry = Doc & {
 };
 export type Sit = Doc & { date: string; at: string; secs: number; mins: number; pattern: string };
 export type Settings = Doc & { remind?: string | null };
+/** A mood in Soul's moods: 1 rough to 5 great. The phone's mood logger writes the long form; Soul's check in writes v and the word. */
+export type Mood = Doc & { date: string; at: string; v: number; word?: string | null; line?: string | null; source?: string | null };
 
 export const useCleanNow = () => useGet<CleanNow>('/mod/soul/clean/now');
+export const useMoods = () => useCollection<Mood>('soul', 'moods');
+/** The last mood logged on a day, by the time it was logged. */
+export const moodOn = (moods: Mood[] | null, day: string) => (moods ?? []).filter((m) => !m.deleted_at && m.date === day).sort((a, b) => String(b.at).localeCompare(String(a.at)))[0] ?? null;
+/** Soul's own check in for today: one record a day, so a second tap changes it rather than adding another. */
+export const checkInId = (day: string) => `md_soul_${day}`;
 export const useJournalDay = () => useGet<JournalDay>('/mod/soul/journal');
 export const refreshClean = () => invalidate('/mod/soul/clean');
 export const refreshJournal = () => invalidate('/mod/soul/journal');
@@ -124,7 +131,7 @@ export async function flush() {
   try {
     for (const j of [...jobs]) {
       try {
-        await api(j.path, { method: j.method, body: j.body });
+        await call(j.path, j.body, j.method);
       } catch (e) {
         if (!refused(e)) break; // the PC is away: keep this and everything after it, in order
       }
@@ -160,15 +167,16 @@ export function useEntries() {
   return { ...journal, items };
 }
 
-/** How many logs are waiting for the PC. Flushes when the app comes back to the front. */
-export function useOutbox() {
+/** How many logs are waiting for the PC. Flushes when the app comes back to the front, and every half minute while the page is open. */
+export function useOutbox(on = true) {
   const n = useSyncExternalStore((fn) => { subs.add(fn); return () => { subs.delete(fn); }; }, () => jobs.length, () => jobs.length);
   useEffect(() => {
+    if (!on) return;
     void flush();
     const sub = AppState.addEventListener('change', (s) => { if (s === 'active') void flush(); });
-    const id = setInterval(() => { void flush(); }, 30_000);
+    const id = setInterval(() => { if (jobs.length) void flush(); }, 30_000);
     return () => { sub.remove(); clearInterval(id); };
-  }, []);
+  }, [on]);
   return n;
 }
 

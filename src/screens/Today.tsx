@@ -33,6 +33,7 @@ import { type NoraKeys, useWispr } from '@/lib/wispr';
 import { noraUi } from '@/nora/state';
 import { MoodLogger } from '@/mood/MoodLogger';
 import { useKeyboardMic } from '@/lib/kbmic';
+import { flush as flushOutbox, onQueued, useOutbox } from '@/lib/outbox';
 import { Hero, HERO_H } from '@/hero/Hero';
 import { AspectHost, dockClearance, initialAspect, initialLink, type HostEntry } from '@/aspects/AspectHost';
 import { LifeContext } from '@/aspects/_linked/life';
@@ -140,6 +141,9 @@ function PhoneToday() {
   const notBuilt = useCallback((what: string) => setLocal(`${what}: not built yet`), []);
   const { clearNotice } = t;
   const clear = useCallback(() => { setLocal(null); clearNotice(); }, [clearNotice]);
+  // writes kept on the phone while the PC is out of reach (lib/outbox.ts): said as each is kept, counted on the pill
+  const unsent = useOutbox();
+  useEffect(() => onQueued(() => setLocal('Saved on phone, sends when your PC is back')), []);
   const { reload: reloadBody } = b;
   // Ticking a task here moves the goal it serves: Mission and Growth read it again.
   const { toggle: toggleTask, cancel: cancelTask, restore: restoreTask } = t;
@@ -218,8 +222,9 @@ function PhoneToday() {
       {native || !noraOpen ? <TopBar top={insets.top} width={width} live={live} petActive={focused && !aspect} onMic={() => { setClosedLive(false); setMicOpen(true); }}
         onRemote={() => setRemoteOpen(true)} onRemoteHold={() => setPcTab('media')}
         onVoices={() => setVoicesOpen(true)} onFiles={() => setFilesOpen(true)} onAccount={() => setAccountOpen(true)} onMood={setMoodFrom} /> : null}
-      {day && (day.from || t.offline) ? (
-        <SavedCopy top={insets.top + TOP_GAP + TOP_H + 10} from={day.from} offline={t.offline} busy={t.retrying} onRetry={() => { void t.retry(); }} />
+      {day && (day.from || t.offline || unsent) ? (
+        <SavedCopy top={insets.top + TOP_GAP + TOP_H + 10} from={day.from} offline={t.offline} unsent={unsent} busy={t.retrying}
+          onRetry={() => { void flushOutbox(); void t.retry(); }} />
       ) : null}
       {/* an aspect page grows out of the orb, over Today and its top bar; the dock stays above it */}
       {/* the pages read today's rows and tick them through Today, so a tick shows on both at once; with no day drawn
@@ -255,21 +260,24 @@ function PhoneToday() {
 
 /** Says the day on screen isn't the PC's latest: the copy saved on the phone (an earlier day's while the PC is asked,
  *  or the last one with the PC out of reach). A tap asks the PC again. */
-function SavedCopy({ top, from, offline, busy, onRetry }: {
-  top: number; from?: string; offline: Offline | null; busy: boolean; onRetry: () => void;
+function SavedCopy({ top, from, offline, unsent, busy, onRetry }: {
+  top: number; from?: string; offline: Offline | null; unsent: number; busy: boolean; onRetry: () => void;
 }) {
   const when = from ? dayLabel(from) : 'Today';
   const copy = when === 'Today' ? 'Saved copy' : when === 'Yesterday' ? 'Yesterday\'s copy' : `Copy from ${when}`;
   const why = !offline ? 'updating' : `${offline.unreachable ? 'PC offline' : 'not updated'} since ${clock(offline.since)}`;
+  // writes waiting on the phone: on their own (the day is current) the pill says only that
+  const parts = [...(from || offline ? [copy, why] : []), ...(unsent ? [`${unsent} waiting to sync`] : [])];
+  const updating = !offline && (!!from || !unsent);
   return (
     // an earlier day's copy is usually replaced within a second: the pill comes in only if it is still up after that
-    <Animated.View entering={offline ? FadeIn.duration(160) : FadeIn.delay(900).duration(160)} exiting={FadeOut.duration(160)}
+    <Animated.View entering={offline || unsent ? FadeIn.duration(160) : FadeIn.delay(900).duration(160)} exiting={FadeOut.duration(160)}
       pointerEvents="box-none" style={[s.savedWrap, { top }]}>
-      <Pressable accessibilityRole="button" accessibilityLabel={`${copy}, ${why}. Try again.`} accessibilityState={{ busy }}
+      <Pressable accessibilityRole="button" accessibilityLabel={`${parts.join(', ')}. Try again.`} accessibilityState={{ busy }}
         disabled={busy} onPress={onRetry} hitSlop={8} style={s.saved}>
-        <View style={[s.savedDot, { backgroundColor: offline ? '#F5A524' : C.muted }]} />
-        <Text style={s.savedText}>{copy} · {why}</Text>
-        {busy || !offline ? <ActivityIndicator size="small" color={C.muted} style={s.savedSpin} /> : (
+        <View style={[s.savedDot, { backgroundColor: offline || unsent ? '#F5A524' : C.muted }]} />
+        <Text style={s.savedText}>{parts.join(' · ')}</Text>
+        {busy || updating ? <ActivityIndicator size="small" color={C.muted} style={s.savedSpin} /> : (
           <Svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke={C.textSoft} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
             <Path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" /><Path d="M21 3v5h-5" />
           </Svg>

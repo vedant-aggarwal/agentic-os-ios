@@ -4,6 +4,7 @@ import { DEMO, demoData } from '@/lib/demo';
 import { collection, fileSource, invalidate, newId, upload, useCollection, useGet, type Doc } from '@/lib/mod';
 import { aspectFields, ASPECT_KEYS, ASPECT_NAME } from '@/lib/aspects';
 import { nora } from '@/lib/nora';
+import { send as sendOrKeep } from '@/lib/outbox';
 import type { LifePayload } from '@/lib/today';
 import { tasksChanged } from '@/lib/useToday';
 import { homeTasksChanged } from '@/home/data';
@@ -232,9 +233,10 @@ export function useCapture() {
   const tickHabit = (match: RegExp, done: boolean) => {
     const h = (habits.items ?? []).find((x) => !x.archived && match.test(x.title));
     if (!h || DEMO) return;
-    void api(`/mod/soul/checks/${encodeURIComponent(`${h.id}:${day}`)}`, {
-      method: 'PUT', body: { id: `${h.id}:${day}`, habit: h.id, date: day, at: stamp(), updated_at: stamp(), done, source: 'capture' },
-    }).then(() => invalidate('/mod/soul/')).catch(() => {});
+    void sendOrKeep({
+      id: `habit:${h.id}:${day}`, method: 'PUT', path: `/mod/soul/checks/${encodeURIComponent(`${h.id}:${day}`)}`,
+      body: { id: `${h.id}:${day}`, habit: h.id, date: day, at: stamp(), updated_at: stamp(), done, source: 'capture' },
+    }).then((r) => { if (!r.queued) invalidate('/mod/soul/'); }).catch(() => {});
   };
 
   async function photo(f: Frame, p: Picked, uri: string | undefined) {
@@ -266,8 +268,10 @@ export function useCapture() {
     setGlass({ base: baseWater, v });
     if (DEMO) { setDemoDiet((d) => (d ? { ...d, water: v } : d)); setGlass(null); return v; }
     try {
-      await api(`/mod/body/readings/water:${day}`, { method: 'PUT', body: { id: `water:${day}`, kind: 'water', date: day, value: v, at: stamp(), updated_at: stamp(), source: 'phone' } });
-      invalidate('/mod/body/');
+      // with the PC out of reach the glass stays counted and the reading waits on the phone (lib/outbox.ts)
+      const r = await sendOrKeep({ id: `water:${day}`, method: 'PUT', path: `/mod/body/readings/water:${day}`,
+        body: { id: `water:${day}`, kind: 'water', date: day, value: v, at: stamp(), updated_at: stamp(), source: 'phone' } });
+      if (!r.queued) invalidate('/mod/body/');
       return v;
     } catch (e) { setGlass(null); throw e; }
   }
@@ -399,7 +403,10 @@ export function useCapture() {
     if (o.aspect) Object.assign(body, aspectFields(life, o.aspect));
     if (o.today) body.due = today();
     if (DEMO) { await fakeWait(400); return o.tagNora ? 'Task added. Nora has it.' : 'Task added'; }
-    const t = await api<{ id: string; title: string }>('/tasks', { method: 'POST', body });
+    const idem = newId('tk'); // the same task if it has to wait on the phone and go twice
+    const r = await sendOrKeep<{ id: string; title: string }>({ id: `task-new:${idem}`, method: 'POST', path: '/tasks', body, idem });
+    if (r.queued) return o.tagNora ? "Saved on phone. It goes to your PC when it's back; tag Nora then." : "Saved on phone. It goes to your PC when it's back.";
+    const t = r.data;
     tasksChanged(); homeTasksChanged();
     if (o.tagNora) {
       const where = o.aspect ? ` (${ASPECT_NAME[o.aspect]})` : '';

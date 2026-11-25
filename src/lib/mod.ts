@@ -2,6 +2,7 @@ import { useEffect, useSyncExternalStore } from 'react';
 import { API, api, ApiError, currentToken, onAuth, refusal, STAGE, unreachable } from './api';
 import { kv } from '@/work/kv';
 import { DEMO } from './demo';
+import { onSettled, outOfReach, queue, waiting } from './outbox';
 
 // The phone's side of the server's module store (server/modules/_collection.ts). Every aspect module keeps its
 // records in collections with one contract:
@@ -11,7 +12,8 @@ import { DEMO } from './demo';
 // The PC keeps whichever write has the later `updated_at`; one that is equal or older is dropped without an error.
 // This file handles that, so pages only call put / patch / remove:
 //   - a collection is fetched once and shared by every component that uses it; later pulls ask only for changes
-//   - writes show at once and go to the PC in order; if the PC refuses, the record goes back and the call rejects
+//   - writes show at once and go to the PC in order; if the PC refuses, the record goes back and the call rejects;
+//     if it can't be reached, the write stays and waits on the phone (lib/outbox.ts), and the call resolves
 //   - ids are made here, so a write that is sent twice is the same write
 //   - the last copy of every collection and read is kept on the device (kv: SQLite on the phone, localStorage on
 //     web). A page draws it at once, then asks the PC only for what changed. Every request crosses the tunnel, which
@@ -109,9 +111,11 @@ export function newId(prefix = 'p') {
 const pathOf = (mod: string, coll: string, id?: string) => `/mod/${mod}/${coll}${id ? `/${encodeURIComponent(id)}` : ''}`;
 
 const pullPath = (e: Entry, mod: string, coll: string) => pathOf(mod, coll) + (e.cursor != null ? `?since=${e.cursor}` : '');
-function applyPull(e: Entry, r: { items: Doc[]; cursor: string }) {
+/** The outbox id of a record's waiting write. */
+const jobId = (key: string, id: string) => `mod:${key}/${id}`;
+function applyPull(e: Entry, r: { items: Doc[]; cursor: string }, key: string) {
   for (const d of r.items) {
-    if (e.writing.has(d.id)) continue;
+    if (e.writing.has(d.id) || waiting(jobId(key, d.id))) continue; // a write of ours the PC doesn't have yet
     if (d.deleted_at) e.map.delete(d.id); else e.map.set(d.id, d);
   }
   e.cursor = r.cursor; e.loaded = true; e.error = null; e.at = Date.now();
@@ -129,7 +133,7 @@ function pull(mod: string, coll: string): Promise<void> {
   e.inflight = (async () => {
     try {
       await e.hydrated; // a pull with the saved cursor asks only for what changed
-      applyPull(e, await api<{ items: Doc[]; cursor: string }>(pullPath(e, mod, coll)));
+      applyPull(e, await api<{ items: Doc[]; cursor: string }>(pullPath(e, mod, coll)), `${mod}/${coll}`);
     } catch (err) {
       e.error = (err as Error).message; // what was loaded before stays on screen
     } finally {
@@ -174,6 +178,8 @@ async function putDoc<T extends Doc>(mod: string, coll: string, input: Draft<T>)
       if (e.map.get(id) === doc) { e.map.set(id, r.item); publish(e, `${mod}/${coll}`); } // unless a newer local write is already showing
       return r.item;
     } catch (err) {
+      // out of reach: it stays on screen and waits on the phone (a whole record with its stamp is safe to send late)
+      if (outOfReach(err)) { await queue({ id: jobId(`${mod}/${coll}`, id), method: 'PUT', path: pathOf(mod, coll, id), body: doc }); publish(e, `${mod}/${coll}`); return doc; }
       if (e.map.get(id) === doc) { if (prev) e.map.set(id, prev); else e.map.delete(id); publish(e, `${mod}/${coll}`); }
       throw err;
     }
@@ -191,11 +197,29 @@ async function removeDoc(mod: string, coll: string, id: string): Promise<void> {
       await api(pathOf(mod, coll, id), { method: 'DELETE' });
       publish(e, `${mod}/${coll}`); // saved only once the PC has it, so the device never keeps a write the PC refused
     } catch (err) {
+      if (outOfReach(err)) { await queue({ id: jobId(`${mod}/${coll}`, id), method: 'DELETE', path: pathOf(mod, coll, id) }); publish(e, `${mod}/${coll}`); return; }
       if (prev && !e.map.has(id)) { e.map.set(id, prev); publish(e, `${mod}/${coll}`); }
       throw err;
     }
   });
 }
+
+// A write that waited on the phone has gone: take the PC's copy of the record (unless a newer local write shows), or,
+// if the PC refused it, read the collection again from the start so the phone shows what the PC has.
+onSettled((job, r) => {
+  const hit = /^mod:([^/]+)\/([^/]+)\/(.+)$/.exec(job.id);
+  const e = hit && entries.get(`${hit[1]}/${hit[2]}`);
+  if (!hit || !e) return;
+  const [, mod, coll, id] = hit, key = `${mod}/${coll}`;
+  if (r.ok) {
+    const item = (r.data as { item?: Doc } | null)?.item;
+    if (job.method === 'PUT' && item && e.map.get(id)?.updated_at === (job.body as Doc).updated_at) { e.map.set(id, item); publish(e, key); }
+    return;
+  }
+  e.map.delete(id); e.cursor = null; e.at = 0;
+  publish(e, key);
+  void pull(mod, coll);
+});
 
 export type Collection<T extends Doc> = {
   /** Every live record, in the order the PC keeps them (oldest write first). `null` until the first load answers. */
@@ -309,7 +333,7 @@ export async function warm(list: { collections: [string, string][]; gets: string
   for (const c of want) {
     const r = res[c.path];
     if (r?.status !== 200 || !r.body || c.e.inflight || c.e.writing.size) continue; // a pull of its own got there first
-    applyPull(c.e, r.body as { items: Doc[]; cursor: string });
+    applyPull(c.e, r.body as { items: Doc[]; cursor: string }, `${c.mod}/${c.coll}`);
     publish(c.e, `${c.mod}/${c.coll}`);
   }
   for (const { path, g } of reads) {

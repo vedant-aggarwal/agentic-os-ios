@@ -10,6 +10,7 @@ import { startAlarms } from '@/lib/alarms';
 import { startCalls } from '@/lib/calls';
 import '@/lib/log'; // sends phone-side errors to the PC log
 import { missingNative } from '@/lib/native';
+import { startOutbox } from '@/lib/outbox';
 import { startPush } from '@/lib/push';
 import { startWidgets } from '@/lib/widgets';
 import { C } from '@/theme';
@@ -27,9 +28,9 @@ export default function RootLayout() {
   const [loaded, error] = useFonts({ Geist_400Regular, Geist_500Medium, Geist_600SemiBold });
   useEffect(() => { if (loaded || error) SplashScreen.hideAsync().catch(() => {}); }, [loaded, error]);
   // Notification taps, Nora's calls on the system call screen, alarms' Open button and the home screen widgets.
-  // Each is a no-op on the web and on a build without its native module.
+  // Each is a no-op on the web and on a build without its native module. The outbox sends writes kept on the phone.
   useEffect(() => {
-    const stops = [startPush(), startCalls(), startAlarms(), startWidgets()];
+    const stops = [startPush(), startCalls(), startAlarms(), startWidgets(), startOutbox()];
     return () => stops.forEach((stop) => stop());
   }, []);
   if (!loaded && !error) return null;

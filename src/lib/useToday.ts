@@ -3,6 +3,7 @@ import { AppState } from 'react-native';
 import { api, ApiError, loadToken, setToken, WEB } from './api';
 import { keep, kept } from './mod';
 import { DEMO, demoData } from './demo';
+import { onSettled, send as sendOrKeep, waiting, waitingWith } from './outbox';
 import { deriveToday, type Area, type LifePayload, type Task, type TodayPayload, type TodayView } from './today';
 
 type State =
@@ -37,11 +38,17 @@ export function tasksChanged() { for (const f of changed) f(); }
 
 /** GET /today's `cancelled` (what he cancelled on Today today, status dropped) rides with the day's tasks, so Today can
  *  draw it struck through and bring it back; whatever counts the day passes over that status. Writes still on their
- *  way are laid over the top, so a read that lands before the PC has them doesn't undo a tap. */
+ *  way are laid over the top, so a read that lands before the PC has them doesn't undo a tap: this launch's, and ticks
+ *  still waiting on the phone from before (lib/outbox.ts). */
 function fold(t: TodayPayload, pending: Map<string, Partial<Task>>): TodayPayload {
+  const over = new Map(pending);
+  for (const j of waitingWith('task:')) {
+    const id = j.id.slice(5), status = (j.body as { status?: Task['status'] } | undefined)?.status;
+    if (status && !over.has(id)) over.set(id, { status, completedAt: status === 'done' ? j.at : null });
+  }
   const extra = (t.cancelled ?? []).filter((c) => !t.tasks.some((x) => x.id === c.id));
-  if (!extra.length && !pending.size) return t;
-  return { ...t, tasks: [...t.tasks, ...extra].map((x) => (pending.has(x.id) ? { ...x, ...pending.get(x.id) } : x)) };
+  if (!extra.length && !over.size) return t;
+  return { ...t, tasks: [...t.tasks, ...extra].map((x) => (over.has(x.id) ? { ...x, ...over.get(x.id) } : x)) };
 }
 
 /** How long a tick waits before it is sent: a second tap inside this makes it a cancel (Tick's DOUBLE_MS is shorter). */
@@ -117,8 +124,16 @@ export function useToday() {
     const sub = AppState.addEventListener('change', (s) => { if (s === 'active') load(); });
     const tick = setInterval(() => { void load(); }, 60_000); // keeps Now / Next current
     const again = () => { void load(); };
+    // a tick that waited on the phone has reached the PC (or the PC said no): read the day again
+    const sent = onSettled((job, r) => {
+      if (!job.id.startsWith('task:')) return;
+      const id = job.id.slice(5);
+      if (!waiting(job.id) && !held.current.has(id) && !tails.current.has(id)) pending.current.delete(id);
+      if (!r.ok) setNotice(r.error.message);
+      again();
+    });
     changed.add(again);
-    return () => { sub.remove(); clearInterval(tick); changed.delete(again); };
+    return () => { sub.remove(); clearInterval(tick); changed.delete(again); sent(); };
   }, [load]);
 
   const refresh = useCallback(async () => { setRefreshing(true); await load(true); setRefreshing(false); }, [load]);
@@ -135,11 +150,17 @@ export function useToday() {
     pending.current.set(id, { ...pending.current.get(id), ...patch });
     patchTask(id, patch);
   }, [patchTask]);
-  /** A task's PATCHes reach the PC in the order they were made. */
+  /** A task's PATCHes reach the PC in the order they were made. With the PC out of reach one waits on the phone
+   *  (lib/outbox.ts, which Today mentions) and the tick stays on screen until it has gone. */
   const send = useCallback((id: string, body: Record<string, unknown>) => {
-    const run = (tails.current.get(id) ?? Promise.resolve()).catch(() => {}).then(() => api(`/tasks/${id}`, { method: 'PATCH', body }));
+    const run = (tails.current.get(id) ?? Promise.resolve()).catch(() => {})
+      .then(() => sendOrKeep({ id: `task:${id}`, method: 'PATCH', path: `/tasks/${id}`, body }));
     tails.current.set(id, run);
-    const settle = () => { if (tails.current.get(id) === run) { tails.current.delete(id); if (!held.current.has(id)) pending.current.delete(id); } };
+    const settle = () => {
+      if (tails.current.get(id) !== run) return;
+      tails.current.delete(id);
+      if (!held.current.has(id) && !waiting(`task:${id}`)) pending.current.delete(id);
+    };
     run.then(settle, settle);
     return run;
   }, []);

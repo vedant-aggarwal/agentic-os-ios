@@ -2,8 +2,8 @@ import { requireOptionalNativeModule } from 'expo';
 import type { ReactNode } from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
-import { C, F } from '@/theme';
-import { Icon, Press, SURF, t, tint, useAspect } from '@/aspects/kit';
+import { C } from '@/theme';
+import { Avatar as Face, CheckRing, Icon, Press, SURF, t, tint, useAspect } from '@/aspects/kit';
 import { firstName, initial, type Person, type Stage } from './data';
 
 type Clip = typeof import('expo-clipboard');
@@ -33,37 +33,30 @@ export async function pickPhoto(): Promise<{ uri: string; type: string } | null>
 }
 export const canPickPhoto = !!picker;
 
-/** A person's initial in a circle. Friends carry the page's colour; people he is getting to know stay neutral. */
+/** A person's initials in a circle. Friends carry the page's colour; people he is getting to know stay neutral. */
 export function Avatar({ person, stage, size = 40, ring }: { person: Person; stage: Stage; size?: number; ring?: string }) {
-  const { color } = useAspect();
-  const friend = stage === 'friend';
+  const face = <Face name={person.name || initial(person)} size={size} color={stage === 'friend' ? undefined : C.textSoft} />;
+  if (!ring) return face;
+  return <View style={[s.ring, { borderRadius: size / 2 + 2, borderColor: ring }]}>{face}</View>;
+}
+
+/** A whole row that ticks: an idea done, a step ready. */
+export function CheckRow({ title, sub, done, onPress, label }: { title: string; sub?: string | null; done: boolean; onPress: () => void; label?: string }) {
   return (
-    <View style={[s.avatar, { width: size, height: size, borderRadius: size / 2, backgroundColor: friend ? tint(color, 0.2) : SURF.raised },
-      ring ? { borderWidth: 2, borderColor: ring } : null]}>
-      <Text style={[s.initial, { fontSize: size * 0.4, lineHeight: size * 0.5, color: friend ? color : C.textSoft }]}>{initial(person)}</Text>
-    </View>
+    <Press label={label ?? `${title}. ${done ? 'Done, tap to undo' : 'Tap when done'}`} onPress={onPress} role="checkbox" state={{ checked: done }}
+      feel={done ? 'light' : 'medium'} style={s.check} scale={0.99}>
+      <CheckRing done={done} />
+      <View style={s.checkText}>
+        <Text numberOfLines={2} style={[t.callout, done && { color: C.muted }]}>{title}</Text>
+        {sub ? <Text numberOfLines={2} style={t.footnote}>{sub}</Text> : null}
+      </View>
+    </Press>
   );
 }
 
-/**
- * A row that opens something, with its one action beside it rather than inside it. The kit's Row puts `right`
- * inside its pressable, which hides a button there from VoiceOver and nests buttons on web.
- */
-export function ActRow({ title, sub, left, action, onPress, label }: {
-  title: string; sub?: string | null; left?: ReactNode; action?: ReactNode; onPress: () => void; label?: string;
-}) {
-  return (
-    <View style={s.actRow}>
-      <Press label={label ?? title} onPress={onPress} scale={0.99} wrap={s.actWrap} style={s.actBody}>
-        {left}
-        <View style={s.actMid}>
-          <Text numberOfLines={2} style={s.actTitle}>{title}</Text>
-          {sub ? <Text numberOfLines={2} style={t.small}>{sub}</Text> : null}
-        </View>
-      </Press>
-      {action}
-    </View>
-  );
+/** A row's small round icon. */
+export function Ico({ children }: { children: ReactNode }) {
+  return <View style={s.ico}>{children}</View>;
 }
 
 const STOPS: { key: Stage; label: string }[] = [
@@ -77,7 +70,7 @@ const STOPS: { key: Stage; label: string }[] = [
  * "is my circle growing?" reads as people moving right. A person's own tap opens them; a stop's label opens the list.
  */
 export function PathTrack({ groups, onPerson, onAdd, onStop }: {
-  groups: Record<Stage, Person[]>; onPerson: (p: Person) => void; onAdd: () => void; onStop: (stage: Stage) => void;
+  groups: Record<Stage, Person[]>; onPerson: (p: Person) => void; onAdd: () => void; onStop?: (stage: Stage) => void;
 }) {
   const { color } = useAspect();
   return (
@@ -98,10 +91,12 @@ export function PathTrack({ groups, onPerson, onAdd, onStop }: {
                   <Avatar person={p} stage={stop.key} size={36} ring={C.scene} />
                 </Press>
               ))}
-              {more > 0 ? (
+              {more > 0 && onStop ? (
                 <Press label={`${more} more, ${stop.label.toLowerCase()}`} onPress={() => onStop(stop.key)} scale={0.92} wrap={s.overlap}>
-                  <View style={[s.more]}><Text style={[t.label, t.num, { color: C.textSoft }]}>+{more}</Text></View>
+                  <View style={s.more}><Text style={[t.footnote, t.num, { color: C.textSoft }]}>{`+${more}`}</Text></View>
                 </Press>
+              ) : more > 0 ? (
+                <View style={[s.more, s.overlap]} accessibilityLabel={`${more} more`}><Text style={[t.footnote, t.num, { color: C.textSoft }]}>{`+${more}`}</Text></View>
               ) : null}
               {!list.length && stop.key === 'met' ? (
                 <Press label="Add someone you just met" onPress={onAdd} scale={0.92}>
@@ -117,9 +112,13 @@ export function PathTrack({ groups, onPerson, onAdd, onStop }: {
               ) : null}
             </View>
             <View style={[s.node, friend ? { backgroundColor: color, borderColor: color } : null]} />
-            <Press label={`${stop.label}, see everyone`} onPress={() => onStop(stop.key)} feel="tick" hitSlop={8} style={s.stopLabel}>
-              <Text numberOfLines={1} style={[t.small, friend && { color: C.textSoft }]}>{stop.label}</Text>
-            </Press>
+            {onStop ? (
+              <Press label={`${stop.label}, see everyone`} onPress={() => onStop(stop.key)} feel="tick" hitSlop={8} style={s.stopLabel}>
+                <Text numberOfLines={1} style={[t.footnote, friend && { color: C.textSoft }]}>{stop.label}</Text>
+              </Press>
+            ) : (
+              <View style={s.stopLabel}><Text numberOfLines={1} style={[t.footnote, friend && { color: C.textSoft }]}>{stop.label}</Text></View>
+            )}
           </View>
         );
       })}
@@ -128,14 +127,10 @@ export function PathTrack({ groups, onPerson, onAdd, onStop }: {
 }
 
 const s = StyleSheet.create({
-  avatar: { alignItems: 'center', justifyContent: 'center' },
-  // the same measures as the kit's Row
-  actRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56 },
-  actWrap: { flex: 1, minWidth: 0 },
-  actBody: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56, paddingVertical: 8 },
-  actMid: { flex: 1, minWidth: 0 },
-  actTitle: { fontFamily: F.medium, fontSize: 16, lineHeight: 24, color: C.text },
-  initial: { fontFamily: F.semibold, textAlign: 'center' },
+  ring: { borderWidth: 2 },
+  check: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56, paddingHorizontal: 16, paddingVertical: 10 },
+  checkText: { flex: 1, minWidth: 0, gap: 2 },
+  ico: { width: 36, height: 36, borderRadius: 18, backgroundColor: SURF.raised, alignItems: 'center', justifyContent: 'center' },
   track: { flexDirection: 'row', paddingTop: 4 },
   // the rail runs between the first and last node (the centres of the outer thirds)
   line: { position: 'absolute', left: '16.67%', right: '16.67%', top: 4 + 40 + 12 + 4, height: 1, backgroundColor: SURF.line },

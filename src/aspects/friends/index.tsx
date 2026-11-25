@@ -1,35 +1,50 @@
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { Button, Empty, Failed, Icon, Page, Section, Skeleton, SP, useAspect, useEntry } from '@/aspects/kit';
+import { Failed, Icon, IconButton, Skeleton, TabbedPage, TabPanel, useAspect, useEntry, useOnReturn, type TabDef } from '@/aspects/kit';
 import { invalidate } from '@/lib/mod';
 import { makeActions } from './actions';
-import { DeepenCard, FriendRow, LogDetail, UsualAsk, UsualRow } from './Circle';
-import { useFriends, type Kind, type Person } from './data';
+import { CircleTab } from './Circle';
+import { useFriends, type Person } from './data';
 import { askIdeas } from './ideas';
-import { AskRow, NextCard, NoPlanCard } from './LeadPlan';
-import { buildModel, deepenIdeas, type DeepenIdea } from './model';
-import { AddSomeone, NewPeopleScreen, NudgeRow } from './NewPeople';
-import { PathTrack } from './parts';
+import { buildModel, type DeepenIdea } from './model';
+import { AddSomeone, NewTab } from './NewPeople';
+import { NowTab } from './Now';
 import { PersonScreen } from './Person';
 import { PlanFlow, type Preset } from './PlanFlow';
-import { PlansScreen } from './Plans';
-import { Linked } from '@/aspects/_linked/Linked';
+import { PlansTab } from './Plans';
 
-// Friends: is my circle growing? One screen with the next plan as the lead, the people he is getting to know and
-// the next hello in a place he already goes, and his circle with when he last saw each friend.
+// Friends: keeping friendships alive. Now says who to reach out to (the friend most overdue against how close they
+// are) and logs Messaged or Met in one tap with Undo, or starts a plan. Circle has every friend by closeness with when
+// they last met; Plans has what is ahead and what happened; New has the people he is getting to know. A person and
+// the plan flow open as screens. Nothing here messages anyone: invites are copied and sent from his own phone.
+
+type Tab = 'now' | 'circle' | 'plans' | 'new';
+const TABS: readonly TabDef<Tab>[] = [
+  { key: 'now', label: 'Now' }, { key: 'circle', label: 'Circle' }, { key: 'plans', label: 'Plans' }, { key: 'new', label: 'New' },
+];
+
+function TabSkeleton() {
+  return (
+    <View style={s.skeleton}>
+      <Skeleton height={208} radius={24} />
+      <Skeleton height={20} width="30%" />
+      <Skeleton height={72} radius={22} />
+      <Skeleton height={144} radius={22} />
+    </View>
+  );
+}
+
 export default function Friends() {
   const asp = useAspect();
   const f = useFriends();
   const m = buildModel(f);
   const a = makeActions(f, asp.notice);
 
+  const [tab, setTab] = useState<Tab>('now');
   const [person, setPerson] = useState<string | null>(null);
   const [personOpen, setPersonOpen] = useState(false);
   const [flow, setFlow] = useState<{ open: boolean; key: number; preset: Preset }>({ open: false, key: 0, preset: {} });
-  const [plansOpen, setPlansOpen] = useState(false);
-  const [newOpen, setNewOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
-  const [logged, setLogged] = useState<{ person: string; moment: string } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const openPerson = (p: Person) => { setPerson(p.id); setPersonOpen(true); };
@@ -38,92 +53,72 @@ export default function Friends() {
     setFlow((x) => ({ open: true, key: x.key + 1, preset }));
   };
   const planWith = (id: string, idea?: DeepenIdea | null) => makePlan({ person: id, idea: idea ?? null });
-  const log = (p: Person, kind: Kind, act?: string) => setLogged({ person: p.id, moment: a.log(p, kind, act ? { act } : {}) });
-  // friends/<part>: person/<id>, plans, new (people he is getting to know), plan[?person=<id>] (make a plan), add.
+
+  // friends/<part>: person/<id>, now, circle, plans, new, plan[?person=<id>] (make a plan), add. Plain friends is Now.
   useEntry((e) => {
     const [p, id] = e.parts;
     setPersonOpen(p === 'person' && !!id);
     if (p === 'person' && id) setPerson(id);
-    setPlansOpen(p === 'plans');
-    setNewOpen(p === 'new');
     setAddOpen(p === 'add');
     if (p === 'plan') makePlan(e.query.person ? { person: e.query.person } : {});
     else setFlow((x) => ({ ...x, open: false }));
+    if (p === 'circle' || p === 'plans' || p === 'new' || p === 'now') setTab(p);
+    else if (!p) setTab('now');
   });
-  const refresh = async () => {
-    setRefreshing(true);
+
+  const reload = () => {
     invalidate('/mod/friends/');
-    await Promise.all([f.persons.refresh(), f.moments.refresh(), f.plans.refresh(), f.ideas.refresh(), f.rhythms.refresh(), f.places.refresh(), f.week.refresh()]);
-    setRefreshing(false);
+    return Promise.all([f.persons.refresh(), f.moments.refresh(), f.plans.refresh(), f.ideas.refresh(), f.rhythms.refresh(), f.places.refresh(), f.week.refresh()]);
   };
+  const refresh = async () => { setRefreshing(true); try { await reload(); } finally { setRefreshing(false); } };
+  // back from another app or the lock screen: the day may have moved on, and Family and Romance share the people list
+  useOnReturn(() => { void reload(); });
 
   const failed = (f.persons.items == null && f.persons.error) || (f.moments.items == null && f.moments.error) || (f.plans.items == null && f.plans.error);
   const loading = !failed && (f.persons.items == null || f.moments.items == null || f.plans.items == null);
-  const free = f.week.data?.free ?? [];
-  const loggedMoment = logged ? f.moments.items?.find((x) => x.id === logged.moment) ?? null : null;
-  const steady = m.steady;
+  const waiting = failed
+    ? <Failed message={f.persons.error ?? f.moments.error ?? f.plans.error ?? 'Your PC did not answer.'} onRetry={() => void refresh()} />
+    : <TabSkeleton />;
+  const ready = !loading && !failed;
+
+  const plan = <IconButton label="Make a plan" size={40} onPress={() => makePlan()}><Icon name="plus" size={18} /></IconButton>;
+  const add = <IconButton label="Add someone you met" size={40} onPress={() => setAddOpen(true)}><Icon name="plus" size={18} /></IconButton>;
+  const right = !ready ? undefined : tab === 'circle' || tab === 'new' ? add : plan;
+
+  const footer = (
+    <>
+      <PersonScreen open={personOpen} onClose={() => setPersonOpen(false)} id={person} m={m} f={f} a={a} bank={f.bank.data} onPlan={planWith} notice={asp.notice} />
+      <PlanFlow key={flow.key} open={flow.open} onClose={() => setFlow((x) => ({ ...x, open: false }))} preset={flow.preset}
+        m={m} f={f} a={a} week={f.week.data} bank={f.bank.data} notice={asp.notice} />
+      <AddSomeone open={addOpen} onClose={() => setAddOpen(false)} m={m} week={f.week.data} a={a} notice={asp.notice} />
+    </>
+  );
 
   return (
-    <Page subtitle={loading || failed ? null : m.headline} onRefresh={refresh} refreshing={refreshing}
-      footer={(
-        <>
-          <NewPeopleScreen open={newOpen} onClose={() => setNewOpen(false)} m={m} week={f.week.data} a={a}
-            onPerson={openPerson} onAdd={() => setAddOpen(true)} onPlan={(p) => planWith(p.id)} />
-          <PlansScreen open={plansOpen} onClose={() => setPlansOpen(false)} m={m} a={a} week={f.week.data} onMake={() => makePlan()} notice={asp.notice} />
-          <PersonScreen open={personOpen} onClose={() => setPersonOpen(false)} id={person} m={m} f={f} a={a} bank={f.bank.data} onPlan={planWith} notice={asp.notice} />
-          <PlanFlow key={flow.key} open={flow.open} onClose={() => setFlow((x) => ({ ...x, open: false }))} preset={flow.preset}
-            m={m} f={f} a={a} week={f.week.data} bank={f.bank.data} notice={asp.notice} />
-          <AddSomeone open={addOpen} onClose={() => setAddOpen(false)} m={m} week={f.week.data} a={a} notice={asp.notice} />
-        </>
-      )}>
-      {loading ? (
-        <View style={s.skeleton}>
-          <Skeleton height={20} width="30%" />
-          <Skeleton height={172} radius={24} />
-          <Skeleton height={20} width="30%" />
-          <Skeleton height={96} radius={16} />
-          <Skeleton height={56} radius={16} />
-          <Skeleton height={56} radius={16} />
-        </View>
-      ) : failed ? (
-        <Failed message={f.persons.error ?? f.moments.error ?? f.plans.error ?? 'Your PC did not answer.'} onRetry={() => void refresh()} />
-      ) : (
-        <>
-          <Section title="Plans" action={m.upcoming.length + m.ask.length + m.done.length ? 'All' : undefined} onAction={() => setPlansOpen(true)}>
-            {m.upcoming[0] ? <NextCard plan={m.upcoming[0]} m={m} a={a} more={m.upcoming.length - 1} onOpen={() => setPlansOpen(true)} notice={asp.notice} />
-              : <NoPlanCard free={free} onMake={() => makePlan()} calendarKnown={!!f.week.data} />}
-            {m.askRecent[0] ? <AskRow key={m.askRecent[0].id} plan={m.askRecent[0]} m={m} a={a} free={free} /> : null}
-          </Section>
-
-          <Section title="New people" action="All" onAction={() => setNewOpen(true)}>
-            <PathTrack groups={m.groups} onPerson={openPerson} onAdd={() => setAddOpen(true)} onStop={() => setNewOpen(true)} />
-            {m.nudges.length ? <View>{m.nudges.slice(0, 3).map((n) => <NudgeRow key={n.key} n={n} a={a} onOpen={openPerson} onPlan={(p) => planWith(p.id)} />)}</View> : null}
-            <Button label="I just met someone" kind="soft" onPress={() => setAddOpen(true)} icon={<Icon name="plus" size={18} color={asp.color} />} />
-          </Section>
-
-          <Section title="Circle" gap={0}>
-            {m.friends.length ? m.friends.map((v) => (
-              <View key={v.p.id}>
-                <FriendRow v={v} onLog={(kind) => log(v.p, kind)} onOpen={() => openPerson(v.p)}
-                  onLogged={(mo) => setLogged(logged?.moment === mo.id ? null : { person: v.p.id, moment: mo.id })} />
-                {logged?.person === v.p.id && loggedMoment ? <LogDetail key={loggedMoment.id} moment={loggedMoment} a={a} onClose={() => setLogged(null)} /> : null}
-                {v.usual ? <UsualRow v={v} onLog={() => log(v.p, 'meet', v.usual!.act)} /> : null}
-                {steady?.p.id === v.p.id ? <UsualAsk v={v} a={a} /> : null}
-              </View>
-            )) : (
-              <Empty title="Your friends will be here" body="Someone you meet joins your circle once you have spent time together. A friend you already have can be added too."
-                action="Add someone" onAction={() => setAddOpen(true)} />
-            )}
-          </Section>
-
-          {steady ? <DeepenCard v={steady} ideas={deepenIdeas(steady, f.ideas.items ?? [], f.bank.data?.ideas ?? [])} onPlan={(d) => planWith(steady.p.id, d)} /> : null}
-          <Linked />
-        </>
-      )}
-    </Page>
+    <TabbedPage tabs={TABS} tab={tab} onTab={setTab} right={right} footer={footer} onRefresh={() => void refresh()} refreshing={refreshing}>
+      <TabPanel active={tab === 'now'}>
+        {!ready ? waiting : (
+          <NowTab m={m} a={a} week={f.week.data} onPerson={openPerson} onPlan={() => makePlan()} onPlanWith={(id) => planWith(id)}
+            onPlans={() => setTab('plans')} onAdd={() => setAddOpen(true)} notice={asp.notice} />
+        )}
+      </TabPanel>
+      <TabPanel active={tab === 'circle'}>
+        {!ready ? waiting : <CircleTab m={m} f={f} a={a} onOpen={(v) => openPerson(v.p)} onAdd={() => setAddOpen(true)} />}
+      </TabPanel>
+      <TabPanel active={tab === 'plans'}>
+        {!ready ? waiting : (
+          <PlansTab m={m} f={f} a={a} week={f.week.data} onMake={() => makePlan()} onPlanWith={planWith} notice={asp.notice} />
+        )}
+      </TabPanel>
+      <TabPanel active={tab === 'new'}>
+        {!ready ? waiting : (
+          <NewTab m={m} week={f.week.data} a={a} onPerson={openPerson} onAdd={() => setAddOpen(true)} onPlan={(p) => planWith(p.id)} />
+        )}
+      </TabPanel>
+    </TabbedPage>
   );
 }
 
 const s = StyleSheet.create({
-  skeleton: { gap: SP[16] },
+  skeleton: { gap: 16 },
 });

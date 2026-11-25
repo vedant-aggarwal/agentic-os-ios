@@ -1,4 +1,4 @@
-import { addDays, myDay, today } from '@/aspects/kit';
+import { addDays, daysBetween, myDay, today } from '@/aspects/kit';
 import {
   actWord, count, firstName, standingOf, standingPlan, warmthOf, whenAgo, whenAhead,
   type BankIdea, type Friends, type Idea, type Moment, type Person, type Place, type Plan, type Rhythm, type Stage, type Standing, type Visit,
@@ -134,3 +134,47 @@ export function usualAct(st: Standing, rhythm?: Rhythm | null) {
 
 /** Plans that involve a person, soonest first. */
 export const plansWith = (m: Model, id: string): Plan[] => m.upcoming.filter((p) => p.people?.includes(id));
+/** Everyone with a plan ahead, or a plan from the last week still waiting for "did it happen?". */
+export const plannedIds = (m: Model) => new Set([...m.upcoming, ...m.askRecent].flatMap((p) => p.people ?? []));
+
+// ── who to reach out to ───────────────────────────────────────────────────────────────────────────────────────
+/** How often he wants to see someone when he set no rhythm with them: about once a month. */
+const EVERY_UNSET = 30;
+/** How far past his rhythm with them a friend is: 1 is exactly due, 2 twice as long. Never shown as a number. */
+export function overdue(v: FriendView, ref = today()) {
+  const every = v.rhythm?.every || EVERY_UNSET;
+  const last = v.rhythm?.mode === 'meet' ? v.st.lastMeet : v.st.last;
+  if (!last) return 1.2; // nothing logged yet: a gentle first hello, after anyone well past their rhythm
+  return daysBetween(last.date, ref) / every;
+}
+/**
+ * Friends to reach out to now, the most overdue against how close they are first (a weekly friend unseen for three
+ * weeks comes before a monthly one unseen for five). Anyone already met or talked to today, or with a plan ahead
+ * (`planned`), is left out.
+ */
+export function reachOut(friends: FriendView[], planned: ReadonlySet<string> = new Set(), ref = today()) {
+  return friends.filter((v) => !v.todayMeet && !v.todayTalk && !planned.has(v.p.id))
+    .map((v) => ({ v, r: overdue(v, ref) }))
+    .filter((x) => x.r >= 1)
+    .sort((a, b) => b.r - a.r || (a.v.rhythm?.every ?? 99) - (b.v.rhythm?.every ?? 99))
+    .map((x) => x.v);
+}
+/** The easiest next step with a friend, in words. Plain, never a countdown. */
+export function nextStep(v: FriendView) {
+  const r = overdue(v);
+  if (!v.st.last) return 'A short hello is a good start.';
+  if (r >= 2) return 'A short message is enough.';
+  return v.rhythm?.mode === 'talk' ? 'A good week for a call.' : 'A good week to meet.';
+}
+
+/** The circle by closeness: how often he wants to see each friend, from the rhythm he set. */
+export type Ring = { key: 'week' | 'weeks' | 'month'; title: string; friends: FriendView[] };
+export function rings(friends: FriendView[]): Ring[] {
+  const every = (v: FriendView) => v.rhythm?.every ?? null;
+  const out: Ring[] = [
+    { key: 'week', title: 'Every week', friends: friends.filter((v) => every(v) != null && every(v)! <= 7) },
+    { key: 'weeks', title: 'Every few weeks', friends: friends.filter((v) => every(v) != null && every(v)! > 7 && every(v)! <= 21) },
+    { key: 'month', title: 'Now and then', friends: friends.filter((v) => every(v) == null || every(v)! > 21) },
+  ];
+  return out.filter((r) => r.friends.length);
+}

@@ -1,4 +1,4 @@
-import { use, useState } from 'react';
+import { use, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { C, F } from '@/theme';
 import { Chip, Press } from './controls';
@@ -29,10 +29,25 @@ export function DayPicker({ value, onChange, days = 14, past = 0, color }: {
   const from = myDay();
   const strip = Array.from({ length: days + past }, (_, i) => addDays(from, i - past));
   const [grid, setGrid] = useState(!strip.includes(value));
+  // A day already chosen further out (next Tuesday) opens scrolled into view, centred, once. Taps after that are on
+  // chips the person can already see, so the strip stays where they left it.
+  const scroll = useRef<ScrollView>(null);
+  const box = useRef({ view: 0, x: -1, w: 0, done: false });
+  const reveal = () => {
+    const b = box.current;
+    if (b.done || !b.view || b.x < 0) return;
+    b.done = true;
+    if (b.x + b.w > b.view) scroll.current?.scrollTo({ x: Math.max(0, b.x + b.w / 2 - b.view / 2), animated: false });
+  };
   return (
     <View style={{ gap: 12 }}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.strip}>
-        {strip.map((d) => <Chip key={d} label={label(d, from)} selected={!grid && d === value} color={color} onPress={() => { setGrid(false); onChange(d); }} />)}
+      <ScrollView ref={scroll} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.strip}
+        onLayout={(e) => { box.current.view = e.nativeEvent.layout.width; reveal(); }}>
+        {strip.map((d) => (
+          <View key={d} onLayout={d === value ? (e) => { box.current.x = e.nativeEvent.layout.x; box.current.w = e.nativeEvent.layout.width; reveal(); } : undefined}>
+            <Chip label={label(d, from)} selected={!grid && d === value} color={color} onPress={() => { setGrid(false); onChange(d); }} />
+          </View>
+        ))}
         <Chip label="Other…" selected={grid} color={color} onPress={() => setGrid((g) => !g)} />
       </ScrollView>
       {grid ? <MonthGrid value={value} onChange={onChange} color={color} /> : null}

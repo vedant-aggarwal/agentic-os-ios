@@ -9,11 +9,46 @@ import { C } from '@/theme';
 // A call's recording: play, pause, and a track to scrub with a finger. While the PC is still saving it, or when it
 // didn't save, a line says so instead. The source comes from line.recording(), which asks for the MP4 copy (the
 // phone's player can't open the Ogg file the contract names; see "App deviations" in the contract).
+// On the phone the file is downloaded once into the cache and played from there: streaming it, the player makes
+// several range requests and each costs about a second through the tunnel, so it took many seconds to start.
 
 type Audio = typeof import('expo-audio');
+type FS = typeof import('expo-file-system');
 /* eslint-disable @typescript-eslint/no-require-imports */
 const audio: Audio | null = Platform.OS === 'web' || requireOptionalNativeModule('ExpoAudio') ? require('expo-audio') : null;
+const fs: FS | null = Platform.OS !== 'web' && requireOptionalNativeModule('FileSystem') ? require('expo-file-system') : null;
 /* eslint-enable @typescript-eslint/no-require-imports */
+
+const cached = new Map<string, Promise<string>>();
+/** A local copy of the recording (one download per call and state), or the URL itself on web or if it fails. */
+function localCopy(uri: string, key: string): Promise<string> {
+  if (!fs) return Promise.resolve(uri);
+  const have = cached.get(key);
+  if (have) return have;
+  const job = (async () => {
+    const dir = new fs.Directory(fs.Paths.cache, 'line-recordings');
+    if (!dir.exists) dir.create({ intermediates: true, idempotent: true });
+    const dest = new fs.File(dir, `${key.replace(/[^\w.-]/g, '_')}.m4a`);
+    if (dest.exists && (dest.size ?? 0) > 0) return dest.uri;
+    if (dest.exists) dest.delete();
+    return (await fs.File.downloadFileAsync(uri, dest)).uri;
+  })().catch(() => { cached.delete(key); return uri; });
+  cached.set(key, job);
+  return job;
+}
+function useLocal(src: { uri: string } | null, key: string): { uri: string } | null {
+  const want = src ? `${key}|${src.uri}` : '';
+  const [got, setGot] = useState<{ want: string; uri: string } | null>(null);
+  useEffect(() => {
+    if (!src || !fs) return;
+    let live = true;
+    void localCopy(src.uri, key).then((u) => { if (live) setGot({ want, uri: u }); });
+    return () => { live = false; };
+  }, [want]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!src) return null;
+  if (!fs) return src;
+  return got?.want === want ? { uri: got.uri } : null;
+}
 
 type PlayerLike = { play: () => void; pause: () => void; seekTo: (s: number) => Promise<void> };
 type Status = { playing: boolean; currentTime: number; duration: number; isLoaded: boolean; isBuffering?: boolean };
@@ -30,7 +65,7 @@ export function Recording({ rec, src }: { rec: LineRecording; src: { uri: string
     return <Note text="Saving the recording. It plays here in a minute." busy />; // the call's page only shows calls that ended
   }
   if (rec.status === 'failed') return <Note text="This call's recording didn't save." />;
-  return <Player src={src} seconds={rec.seconds} />;
+  return <Player src={src} seconds={rec.seconds} cacheKey={`${src?.uri.match(/calls\/([^/?]+)/)?.[1] ?? 'call'}-${rec.status}`} />;
 }
 
 function Note({ text, busy }: { text: string; busy?: boolean }) {
@@ -42,7 +77,9 @@ function Note({ text, busy }: { text: string; busy?: boolean }) {
   );
 }
 
-function Player({ src, seconds }: { src: { uri: string } | null; seconds: number }) {
+function Player({ src: remote, seconds, cacheKey }: { src: { uri: string } | null; seconds: number; cacheKey: string }) {
+  const local = useLocal(remote, cacheKey);
+  const src = remote ? local : null;
   const player = usePlayerHook(src);
   const st = useStatusHook(player);
   // a recording that never loads (the PC sent a format this player can't open) says so instead of spinning
@@ -69,7 +106,7 @@ function Player({ src, seconds }: { src: { uri: string } | null; seconds: number
     <View style={s.player}>
       <Press label={st.playing ? 'Pause the recording' : 'Play the recording'} onPress={toggle} disabled={!src || (!!player && !ready)}
         scale={0.92} style={s.play}>
-        {src && !ready ? <ActivityIndicator size="small" color={C.scene} />
+        {remote && !ready ? <ActivityIndicator size="small" color={C.scene} />
           : <Glyph sf={st.playing ? 'pause.fill' : 'play.fill'} d={st.playing ? 'M8 5v14M16 5v14' : 'M8 5.5v13l11-6.5z'} size={18} color={C.scene} filled={!st.playing} />}
       </Press>
       <View style={s.flex}>

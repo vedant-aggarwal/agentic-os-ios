@@ -27,8 +27,10 @@ export type LineAction = {
   id: string;
   text: string;
   options: LineOption[];
-  decided?: { optionId: string; label: string; at: string; note?: string } | null;
+  decided?: { optionId: string; label: string; at: string; note?: string; taskId?: string } | null;
 };
+/** Offered under every decision besides its own options (the server accepts them on any action). */
+export const TASK_OPTIONS: LineOption[] = [{ id: 'task-me', label: 'Add to my tasks' }, { id: 'task-nora', label: 'Give to Nora' }];
 export type LineRecording = { status: 'recording' | 'encoding' | 'ok' | 'compressed' | 'failed' | 'none'; seconds: number };
 export type LineCallSummary = {
   id: string;

@@ -148,7 +148,7 @@ export const lineDemo = {
     await wait(500);
     const c = calls.find((x) => x.id === id);
     const a = c?.actions.find((x) => x.id === actionId);
-    const o = a?.options.find((x) => x.id === optionId);
+    const o = a ? [...a.options, { id: 'task-me', label: 'Add to my tasks' }, { id: 'task-nora', label: 'Give to Nora' }].find((x) => x.id === optionId) : undefined;
     if (!c || !a || !o) throw new Error('That choice is no longer open.');
     const action: LineAction = { ...a, decided: { optionId, label: o.label, at: new Date().toISOString() } };
     calls = calls.map((x) => (x.id !== id ? x : {

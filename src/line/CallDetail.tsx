@@ -4,7 +4,7 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button, dayLabel, dayOf, clock as timeOf, Glyph, haptic, t, tint } from '@/aspects/kit';
 import { clock } from '@/lib/nora';
-import { callerOf, categoryOf, directionOf, formatNumber, line, type LineAction, type LineCall, type LineOption } from '@/lib/line';
+import { callerOf, categoryOf, directionOf, formatNumber, line, TASK_OPTIONS, type LineAction, type LineCall, type LineOption } from '@/lib/line';
 import { C, F } from '@/theme';
 import { Recording } from './Recording';
 import { callerShort, Turns } from './Transcript';
@@ -167,6 +167,16 @@ function Decision({ callId, a, onDecided }: { callId: string; a: LineAction; onD
           <Button key={o.id} label={o.label} kind="quiet" busy={busy === o.id} disabled={!!busy && busy !== o.id} onPress={() => void choose(o)} />
         ))}
       </View>
+      <View style={st.taskRow}>
+        <Text style={[t.caption, st.taskLabel]}>Make it a task</Text>
+        <View style={st.taskButtons}>
+          {TASK_OPTIONS.map((o) => (
+            <View key={o.id} style={st.flex}>
+              <Button label={o.label} kind="quiet" busy={busy === o.id} disabled={!!busy && busy !== o.id} onPress={() => void choose(o)} />
+            </View>
+          ))}
+        </View>
+      </View>
       {err ? <Text style={[t.small, { color: C.danger }]}>{err}</Text> : null}
     </View>
   );
@@ -187,5 +197,8 @@ const st = StyleSheet.create({
   },
   needsText: { fontFamily: F.medium, fontSize: 13, lineHeight: 18, color: NORA_TEXT },
   options: { gap: 8, marginTop: 4 },
+  taskRow: { gap: 8, marginTop: 4, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, borderColor: tint(NORA, 0.2) },
+  taskLabel: { color: NORA_TEXT },
+  taskButtons: { flexDirection: 'row', gap: 8 },
   decided: { borderRadius: 20, borderCurve: 'continuous', backgroundColor: 'rgba(255,255,255,0.07)', gap: 6 },
 });

@@ -1,6 +1,8 @@
 import { Image } from 'expo-image';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+// gesture handler's, so a drag along the cards keeps them and never turns Today's day (DaySwipe)
+import { ScrollView } from 'react-native-gesture-handler';
 import Animated, { LinearTransition, ReduceMotion, useAnimatedProps, useAnimatedStyle, useSharedValue, withRepeat, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 import Svg, { Path } from 'react-native-svg';
 import { Glyph } from '@/aspects/kit/controls';
@@ -10,6 +12,7 @@ import { LOCK } from '@/components/Sealed';
 import { openSealed } from '@/lib/seal';
 import type { Task } from '@/lib/today';
 import { C, F } from '@/theme';
+import { useSwipeBlock } from './DaySwipe';
 import { Ring, type RingPart } from './Ring';
 
 // Today's building blocks: section head with its ring, the grouped rows that settle when done, the tick (the
@@ -247,11 +250,13 @@ type CardActs = {
   /** hold a card: its menu */ onHold?: (x: Task) => void;
   /** tap a card (not its tick): the task's full view */ onOpen?: (x: Task) => void;
 };
-export function CardRow({ tasks, color, today, onTick, more, onMore, steady, ...acts }: {
+export function CardRow({ tasks, color, today, dueWord, onTick, more, onMore, steady, ...acts }: {
   tasks: Task[]; color: string; today: string; onTick: (id: string) => void; more?: number; onMore?: () => void;
   /** ticks tapped just now: the cards keep the order they had until the taps stop */ steady?: Steady;
+  /** what a card due on `today` says, when that isn't today ("Yesterday", "Tue 24 Nov") */ dueWord?: string;
 } & CardActs) {
   const { width } = useWindowDimensions();
+  const block = useSwipeBlock();
   const w = Math.round((width - 32) / 2.7);
   const ids = tasks.map((x) => x.id).join(' ');
   const [shown, setShown] = useState(ids);
@@ -261,8 +266,8 @@ export function CardRow({ tasks, color, today, onTick, more, onMore, steady, ...
   const list = still ? [...tasks].sort((a, b) => (at.get(a.id) ?? 1e6) - (at.get(b.id) ?? 1e6)) : tasks;
   if (!tasks.length) return null;
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.cards} style={s.cardScroll}>
-      {list.map((x) => <Card key={x.id} x={x} w={w} color={color} today={today} onTick={onTick} {...acts} />)}
+    <ScrollView horizontal block={block} showsHorizontalScrollIndicator={false} contentContainerStyle={s.cards} style={s.cardScroll}>
+      {list.map((x) => <Card key={x.id} x={x} w={w} color={color} today={today} dueWord={dueWord} onTick={onTick} {...acts} />)}
       {more ? (
         <Pressable accessibilityRole="button" onPress={onMore} style={[s.card, { width: w, justifyContent: 'center', alignItems: 'center' }]}>
           <Text style={[t.label, { textAlign: 'center' }]}>{`${more} more on Home`}</Text>
@@ -272,11 +277,13 @@ export function CardRow({ tasks, color, today, onTick, more, onMore, steady, ...
   );
 }
 
-function Card({ x, w, color, today, onTick, onCancel, onRestore, onHold, onOpen }: { x: Task; w: number; color: string; today: string; onTick: (id: string) => void } & CardActs) {
+function Card({ x, w, color, today, dueWord = 'Today', onTick, onCancel, onRestore, onHold, onOpen }: {
+  x: Task; w: number; color: string; today: string; dueWord?: string; onTick: (id: string) => void;
+} & CardActs) {
   const done = x.status === 'done', cancelled = x.status === 'dropped'; // Today only holds dropped tasks cancelled today
   // a repeating one was skipped (its next one is filed); a one-off was dropped
   const due = cancelled ? (x.next || x.repeat ? 'Skipped' : 'Cancelled')
-    : !x.due ? 'No date' : x.due === today ? 'Today' : x.due < today ? 'Late' : x.due.slice(5);
+    : !x.due ? 'No date' : x.due === today ? dueWord : x.due < today ? 'Late' : x.due.slice(5);
   const hold = onHold ? () => onHold(x) : undefined;
   return (
     // a tap on the card opens the task, a hold its menu; the tick is its own button (the card stays out of the screen
@@ -284,7 +291,7 @@ function Card({ x, w, color, today, onTick, onCancel, onRestore, onHold, onOpen 
     <Pressable accessible={false} onPress={onOpen ? () => onOpen(x) : undefined} onLongPress={hold} delayLongPress={400} style={({ pressed }) => [s.card, { width: w }, (done || cancelled) && { opacity: 0.5 }, pressed && !!onOpen && { transform: [{ scale: 0.98 }] }]}>
       <Text numberOfLines={3} style={[s.cardTitle, cancelled && s.struck]}>{x.title}</Text>
       <View style={s.cardFoot}>
-        <Text style={[t.caption, t.num, due === 'Today' && { color: C.textSoft }, due === 'Late' && { color: C.danger }]}>{due}</Text>
+        <Text style={[t.caption, t.num, !cancelled && x.due === today && { color: C.textSoft }, due === 'Late' && { color: C.danger }]}>{due}</Text>
         <Tick done={done} cancelled={cancelled} color={color} size={22} label={x.title}
           onPress={() => (cancelled ? onRestore?.(x) : onTick(x.id))} onDouble={onCancel ? () => onCancel(x) : undefined} onLongPress={hold} />
       </View>

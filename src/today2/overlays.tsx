@@ -28,7 +28,12 @@ const D = 264, CX = D / 2, TR = 112;
 const toMin = (hmv: string) => { const [h, m] = hmv.split(':').map(Number); return h * 60 + m; };
 const toHm = (min: number) => { const m = ((Math.round(min) % 1440) + 1440) % 1440; return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; };
 
-type DialProps = { now: number; wakeHm: string | null; onClose: () => void; onSave: (hm: string) => void };
+type DialProps = {
+  now: number; wakeHm: string | null; onClose: () => void; onSave: (hm: string) => void;
+  /** an earlier day's wake time, that day in a sentence ("yesterday", "on Tue 24 Nov"): `now` is its 16:00 and the
+   *  hand starts at 07:00 */
+  day?: string;
+};
 export function WakeDial({ open, ...p }: DialProps & { open: boolean }) {
   return (
     <Modal transparent visible={open} animationType="none" onRequestClose={p.onClose} statusBarTranslucent>
@@ -37,11 +42,12 @@ export function WakeDial({ open, ...p }: DialProps & { open: boolean }) {
   );
 }
 
-function DialBody({ now, wakeHm, onClose, onSave }: DialProps) {
+function DialBody({ now, wakeHm, onClose, onSave, day }: DialProps) {
   const insets = useSafeAreaInsets();
   const n = new Date(now + IST);
   const nowMin = n.getUTCHours() * 60 + n.getUTCMinutes();
-  const [min, setMin] = useState(() => (wakeHm ? toMin(wakeHm) : Math.floor(nowMin / 5) * 5));
+  const [min, setMin] = useState(() => (wakeHm ? toMin(wakeHm) : day ? 7 * 60 : Math.floor(nowMin / 5) * 5));
+  const dayName = day ? day.replace(/^on /, '').replace(/^./, (c) => c.toUpperCase()) : null;
   const lo = nowMin - 12 * 60 + 1;
 
   // one turn of the hand is 12 hours, always the 12 hours up to now; the handler lives as long as the sheet
@@ -80,8 +86,8 @@ function DialBody({ now, wakeHm, onClose, onSave }: DialProps) {
         <View style={st.grab} />
         <View style={st.sheetHead}>
           <View style={{ flex: 1 }}>
-            <Text style={t.title2}>When did you wake up?</Text>
-            <Text style={t.small}>Drag the hand. It starts at now.</Text>
+            <Text style={t.title2}>{day ? `When did you wake up ${day}?` : 'When did you wake up?'}</Text>
+            <Text style={t.small}>{day ? 'Drag the hand.' : 'Drag the hand. It starts at now.'}</Text>
           </View>
           <CloseBtn onPress={onClose} />
         </View>
@@ -102,11 +108,11 @@ function DialBody({ now, wakeHm, onClose, onSave }: DialProps) {
           </Svg>
           <View pointerEvents="none" style={st.readout}>
             <Text style={[t.display, t.num]}>{toHm(min)}</Text>
-            <Text style={t.small}>{agoText}</Text>
+            <Text style={t.small}>{dayName ?? agoText}</Text>
           </View>
         </View>
         <View style={st.chips}>
-          <Chip text={`Now, ${toHm(nowMin)}`} on={min === nowMin} onPress={() => setMin(nowMin)} />
+          {day ? null : <Chip text={`Now, ${toHm(nowMin)}`} on={min === nowMin} onPress={() => setMin(nowMin)} />}
           {wakeHm ? <Chip text={`Logged, ${wakeHm}`} on={toHm(min) === wakeHm} onPress={() => setMin(toMin(wakeHm))} /> : null}
         </View>
         <Pressable accessibilityRole="button" onPress={() => { haptic.medium(); onSave(toHm(min)); }} style={({ pressed }) => [st.primary, pressed && { opacity: 0.85 }]}>
@@ -218,7 +224,10 @@ function Stat({ v, c }: { v: string; c: string }) {
 }
 
 // ── one line: a journal line, a book page ────────────────────────────────────────────────────────────────────────
-type LineProps = { book: string | null; onClose: () => void; onSubmit: (text: string) => void };
+type LineProps = {
+  book: string | null; onClose: () => void; onSubmit: (text: string) => void;
+  /** another day's journal line ("yesterday", "Tue 24 Nov") */ day?: string;
+};
 export function LineSheet({ kind, ...p }: LineProps & { kind: 'journal' | 'page' | null }) {
   return (
     <Modal transparent visible={!!kind} animationType="none" onRequestClose={p.onClose} statusBarTranslucent>
@@ -227,7 +236,7 @@ export function LineSheet({ kind, ...p }: LineProps & { kind: 'journal' | 'page'
   );
 }
 
-function LineBody({ kind, book, onClose, onSubmit }: LineProps & { kind: 'journal' | 'page' }) {
+function LineBody({ kind, book, day, onClose, onSubmit }: LineProps & { kind: 'journal' | 'page' }) {
   const [text, setText] = useState('');
   const insets = useSafeAreaInsets();
   return (
@@ -236,7 +245,7 @@ function LineBody({ kind, book, onClose, onSubmit }: LineProps & { kind: 'journa
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={st.lineWrap} pointerEvents="box-none">
         <Animated.View entering={SlideInDown.springify().duration(380).dampingRatio(1)} style={[st.line, { marginBottom: insets.bottom ? 8 : 16 }]}>
           <Text style={[st.tag, { color: ASPECT_COLOR[kind === 'page' ? 'mind' : 'soul'] }]}>{kind === 'page' ? 'Book' : 'Journal'}</Text>
-          <TextInput autoFocus value={text} onChangeText={setText} placeholder={kind === 'page' ? `Page in ${book ?? 'your book'}` : 'A line for today'}
+          <TextInput autoFocus value={text} onChangeText={setText} placeholder={kind === 'page' ? `Page in ${book ?? 'your book'}` : `A line for ${day ?? 'today'}`}
             placeholderTextColor={C.faint} keyboardType={kind === 'page' ? 'number-pad' : 'default'} returnKeyType="send" style={st.input}
             onSubmitEditing={() => { if (text.trim()) onSubmit(text.trim()); }} />
           <Pressable accessibilityRole="button" accessibilityLabel="Save" disabled={!text.trim()} onPress={() => onSubmit(text.trim())}
@@ -306,7 +315,10 @@ function Pencil() {
 // ── hold a row: cancel it for today, or bring it back ────────────────────────────────────────────────────────────
 /** routine: a step of today's routine (back tomorrow by itself). repeat: a repeating task (its next one is filed).
  *  once: a one-off task (cancelling drops it). */
-export type HoldTarget = { title: string; kind: 'routine' | 'repeat' | 'once'; cancelled: boolean; onCancel: () => void; onRestore: () => void };
+export type HoldTarget = {
+  title: string; kind: 'routine' | 'repeat' | 'once'; cancelled: boolean; onCancel: () => void; onRestore: () => void;
+  /** a routine row of another day than today ("yesterday", "Tue 24 Nov") */ day?: string;
+};
 export function HoldMenu({ target, onClose }: { target: HoldTarget | null; onClose: () => void }) {
   return (
     <Modal transparent visible={!!target} animationType="none" onRequestClose={onClose} statusBarTranslucent>
@@ -317,9 +329,10 @@ export function HoldMenu({ target, onClose }: { target: HoldTarget | null; onClo
 
 function HoldBody({ x, onClose }: { x: HoldTarget; onClose: () => void }) {
   const insets = useSafeAreaInsets();
-  const note = x.cancelled ? 'Cancelled for today. Bring it back to tick it.'
+  const on = x.day ?? 'today';
+  const note = x.cancelled ? `Cancelled for ${on}. Bring it back to tick it.`
     : x.kind === 'once' ? 'A one-off task: cancelling takes it off your list.'
-      : x.kind === 'repeat' ? 'Skips today only. The next one still comes.' : 'Skips today only. It is back tomorrow.';
+      : x.kind === 'repeat' ? 'Skips today only. The next one still comes.' : x.day ? `Skips ${on} only.` : 'Skips today only. It is back tomorrow.';
   const act = () => { haptic.medium(); onClose(); if (x.cancelled) x.onRestore(); else x.onCancel(); };
   return (
     <>
@@ -337,7 +350,7 @@ function HoldBody({ x, onClose }: { x: HoldTarget; onClose: () => void }) {
         </View>
         <Pressable accessibilityRole="button" onPress={act} style={({ pressed }) => [x.cancelled ? st.primary : st.cancelBtn, pressed && { opacity: 0.85 }]}>
           {x.cancelled ? null : <Svg width={16} height={16} viewBox="0 0 24 24"><Path d="M6 6l12 12M18 6L6 18" stroke={C.text} strokeWidth={2.2} strokeLinecap="round" /></Svg>}
-          <Text style={x.cancelled ? st.primaryText : st.cancelText}>{x.cancelled ? 'Bring it back' : x.kind === 'once' ? 'Cancel task' : 'Cancel for today'}</Text>
+          <Text style={x.cancelled ? st.primaryText : st.cancelText}>{x.cancelled ? 'Bring it back' : x.kind === 'once' ? 'Cancel task' : `Cancel for ${on}`}</Text>
         </Pressable>
       </Animated.View>
     </>

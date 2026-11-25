@@ -14,6 +14,7 @@ import { noraUi } from '@/nora/state';
 import { openTask } from '@/work/bus';
 import type { Tag } from '@/home/data';
 import { GymCard } from '@/today/GymCard';
+import { myDay } from '@/aspects/kit/time';
 import { ASPECT_COLOR, C, F, type AspectKey } from '@/theme';
 import { count, MEALS, routineFlags, type CheckId, type Day, type RoutineItem, type SkipId } from './day';
 import { EditActions, RoutineEditor } from './RoutineEdit';
@@ -21,6 +22,7 @@ import { HoldMenu, LineSheet, MealPopup, WakeDial, type HoldTarget } from './ove
 import { CardRow, Dots, Group, Link, NORA, NORA_TEXT, PhotoSlot, Row, Section, Segmented, settleOrder, SubLabel, Tick, type Steady } from './parts';
 import type { RingPart } from './Ring';
 import type { Say } from './TodayPlan';
+import { dayPhrase, dayWord } from './when';
 
 // Today's sections, top to bottom: Core habits, Body, Diet, Mind, Financial (Mission, Money, Growth), Habits to
 // leave, then any other aspect with tasks. A finished section sinks under "Done today", rows kept as quiet lines.
@@ -43,6 +45,12 @@ export function Plan({ d, body, now, onOpen, onToggleTask, onCancelTask, onResto
   onHome: (list: AspectKey | 'none' | null) => void;
 }) {
   const { cap } = d;
+  // Another day than today (swiped or picked to) ticks onto that day. A later one hasn't begun: it shows, nothing
+  // ticks. Photos, Nora's call and the clock are today's.
+  const live = d.live, ahead = !live && d.day > myDay(now);
+  const said = dayWord(d.day, myDay(now)); // "Yesterday", "Tue 24 Nov"
+  const phrase = dayPhrase(d.day, myDay(now)); // "yesterday", "on Tue 24 Nov"
+  const forDay = live ? 'today' : phrase.replace(/^on /, ''); // "cancelled for yesterday"
   const [dial, setDial] = useState(false);
   const [meal, setMeal] = useState<(typeof MEALS)[number] | null>(null);
   const [line, setLine] = useState<'journal' | 'page' | null>(null);
@@ -53,21 +61,24 @@ export function Plan({ d, body, now, onOpen, onToggleTask, onCancelTask, onResto
   /** A toast with Undo for something a tap logged or took off. */
   const undoable = useCallback((text: string, back: () => Promise<unknown>) =>
     say(text, { label: 'Undo', onPress: () => { hide(); back().catch(fail); } }), [say, hide, fail]);
+  const early = useCallback(() => { haptic.warn(); say(`${said} hasn't started yet`); }, [say, said]);
   const tick = useCallback(async (id: Parameters<Day['cap']['toggle']>[0], on: boolean) => {
+    if (ahead) { early(); return; }
     try {
       const r = await cap.toggle(id, on);
       if (typeof r === 'string') say(r);
       else if (r) undoable(r.said, r.undo);
     } catch (e) { fail(e); }
-  }, [cap, say, fail, undoable]);
-  const check = useCallback((id: CheckId) => { d.toggle(id).catch(fail); }, [d, fail]);
+  }, [cap, say, fail, undoable, ahead, early]);
+  const check = useCallback((id: CheckId) => { if (ahead) early(); else d.toggle(id).catch(fail); }, [d, fail, ahead, early]);
   const shoot = useCallback(async (id: FrameId) => {
+    if (!live) { say('Photos go on today only'); return; }
     let picked;
     try { picked = await takePhoto(); } catch (e) { fail(e); return; }
     if (!picked) return;
     const uri = typeof picked.uri === 'string' ? picked.uri : URL.createObjectURL(picked.uri);
     cap.photo(frameOf(id), picked, uri).then(say, fail);
-  }, [cap, say, fail]);
+  }, [cap, say, fail, live]);
 
   // Rows, cards and sections settle 0.7 s after the last tick, not under the finger: a double tap's second tap (cancel
   // for today) has to land on the same tick.
@@ -90,14 +101,14 @@ export function Plan({ d, body, now, onOpen, onToggleTask, onCancelTask, onResto
     const cancelled = !done && d.skipped(item);
     const onCancel = () => {
       hold(item, done || cancelled);
-      undo(`${title} cancelled for today`, () => { set(false).catch(fail); });
+      undo(`${title} cancelled for ${forDay}`, () => { set(false).catch(fail); });
       set(true).catch(fail);
     };
     const onRestore = () => { hold(item, true); say(`${title} is back`); set(false).catch(fail); };
     return {
       done, cancelled, onCancel, onRestore,
-      onTick: () => { hold(item, done || cancelled); onTick(); },
-      onHold: () => { haptic.success(); setMenu({ title, kind: 'routine', cancelled, onCancel, onRestore }); },
+      onTick: () => { if (ahead) { early(); return; } hold(item, done || cancelled); onTick(); },
+      onHold: () => { haptic.success(); setMenu({ title, kind: 'routine', cancelled, onCancel, onRestore, day: live ? undefined : forDay }); },
     };
   };
   const rowActs = (title: string, id: SkipId, done: boolean, onTick: () => void) => routineActs(title, id, done, onTick, (v) => d.skip(id, v));
@@ -113,7 +124,8 @@ export function Plan({ d, body, now, onOpen, onToggleTask, onCancelTask, onResto
 
   const wakeHm = cap.wakeAt;
   const logWake = async () => {
-    if (wakeHm) { setDial(true); return; }
+    if (ahead) { early(); return; }
+    if (wakeHm || !live) { setDial(true); return; } // another day's: its time on the dial
     const n = new Date(now + 5.5 * 3600_000);
     const m = Math.floor(n.getUTCMinutes() / 5) * 5;
     const hmNow = `${String(n.getUTCHours()).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
@@ -121,21 +133,21 @@ export function Plan({ d, body, now, onOpen, onToggleTask, onCancelTask, onResto
   };
 
   const T = d.tasks.by;
-  const rf = routineFlags(d, !!body); // the same ticks fill the hero's crystals
+  const rf = routineFlags(d, d.gymCounted); // the same ticks fill the hero's crystals
   const cards = (k: AspectKey | 'none', color: string) => {
     const list = T.get(k) ?? [];
     if (!list.length) return null;
     return (
-      <CardRow tasks={list.slice(0, SHOWN_CARDS)} color={color} today={d.taskDay} steady={steady}
+      <CardRow tasks={list.slice(0, SHOWN_CARDS)} color={color} today={d.taskDay} dueWord={live ? undefined : said} steady={steady}
         onTick={(id) => { const x = list.find((y) => y.id === id); hold(id, !!x && shut(x)); onToggleTask(id); }}
-        onCancel={cancelTask} onRestore={restoreTask} onOpen={openOf} onHold={holdOf} more={Math.max(0, list.length - SHOWN_CARDS)} onMore={() => onHome(k)} />
+        onCancel={live ? cancelTask : undefined} onRestore={restoreTask} onOpen={openOf} onHold={holdOf} more={Math.max(0, list.length - SHOWN_CARDS)} onMore={() => onHome(k)} />
     );
   };
   const dueOf = (k: AspectKey | 'none') => (T.get(k) ?? []).filter((x) => x.due === d.taskDay);
 
   // ── due now: late and due-today open tasks, any aspect, plus what Nora waits on him for ──
   const tagsRead = useGet<{ tags: Record<string, Tag> }>(DEMO ? null : '/mod/tasknora/tags');
-  const waiting = Object.values(tagsRead.data?.tags ?? {}).filter((g) => g.state === 'ask').length;
+  const waiting = live ? Object.values(tagsRead.data?.tags ?? {}).filter((g) => g.state === 'ask').length : 0;
   const owed = [...T.entries()].flatMap(([k, l]) => l.map((x) => ({ x, k })))
     .filter(({ x }) => !!x.due && x.due <= d.taskDay && (x.status === 'todo' || x.status === 'doing' || (x.id in steady && x.status === 'done')))
     .sort((a, b) => String(a.x.due).localeCompare(String(b.x.due)));
@@ -143,15 +155,15 @@ export function Plan({ d, body, now, onOpen, onToggleTask, onCancelTask, onResto
   const dueNow = owed.length || waiting ? (
     <View style={st.due}>
       <View style={st.dueHead}>
-        <Text style={t.section}>Due now</Text>
+        <Text style={t.section}>{live ? 'Due now' : 'Due'}</Text>
         <View style={{ flex: 1 }} />
         {late ? <Text style={[st.dueCount, { color: C.danger }]}>{`${late} late`}</Text> : null}
-        {owed.length - late ? <Text style={st.dueCount}>{`${owed.length - late} today`}</Text> : null}
+        {owed.length - late ? <Text style={st.dueCount}>{`${owed.length - late} ${live ? 'today' : 'due'}`}</Text> : null}
       </View>
       <Group>
         {owed.slice(0, 4).map(({ x, k }, i) => (
           <Row key={x.id} first={i === 0} title={x.title} done={x.status === 'done'} color={k === 'none' ? C.muted : A[k]}
-            sub={`${x.due! < d.taskDay ? 'Late' : 'Today'}${k === 'none' ? '' : ` · ${ASPECT_NAME[k]}`}`} subColor={x.due! < d.taskDay ? C.danger : undefined}
+            sub={`${x.due! < d.taskDay ? 'Late' : live ? 'Today' : said}${k === 'none' ? '' : ` · ${ASPECT_NAME[k]}`}`} subColor={x.due! < d.taskDay ? C.danger : undefined}
             onPress={() => openOf(x)} onHold={() => holdOf(x)} tickLabel={`${x.title}, done`}
             onTick={() => { hold(x.id, x.status === 'done'); onToggleTask(x.id); }} />
         ))}
@@ -174,7 +186,7 @@ export function Plan({ d, body, now, onOpen, onToggleTask, onCancelTask, onResto
     sections.push({ key: 'core', finished: p.done === p.total, node: (
       <Section key="core" label="Core habits" parts={parts} finished={p.done === p.total} onOpen={() => onOpen('soul')}>
         <View style={st.tiles}>
-          <Habit name="Journaling" big="1" unit="line" done={j} color={A.soul} onTick={() => setLine('journal')} onOpen={() => onOpen('soul/journal')} />
+          <Habit name="Journaling" big="1" unit="line" done={j} color={A.soul} onTick={() => (ahead ? early() : setLine('journal'))} onOpen={() => onOpen('soul/journal')} />
           <Habit name="Day count" big={cap.cleanDay != null ? String(cap.cleanDay) : '–'} unit={cap.cleanDay === 1 ? 'day' : 'days'} done={cl} color={A.soul}
             onTick={() => (cap.cleanReady ? tick('clean', !cl) : say('Start Clean in Soul first.'))}
             foot={<Link text="Reset" onPress={() => onOpen('soul/clean')} />} onOpen={() => onOpen('soul/clean')} />
@@ -203,7 +215,7 @@ export function Plan({ d, body, now, onOpen, onToggleTask, onCancelTask, onResto
       d.saveRoutines({ morning: clean(editing.morning), night: clean(editing.night) }).then(() => say('Routine saved'), fail);
     };
     const p = count(rf.body, dueOf('body'));
-    const evening = new Date(now + 5.5 * 3600_000).getUTCHours() >= 19;
+    const evening = live && new Date(now + 5.5 * 3600_000).getUTCHours() >= 19;
     const nightGroup = (
       <View key="night">
         <SubLabel>Night routine</SubLabel>
@@ -227,14 +239,21 @@ export function Plan({ d, body, now, onOpen, onToggleTask, onCancelTask, onResto
         <Group>
           <Row first title={woke ? `Woke ${wakeHm}` : 'Wake up'} sub={woke ? 'Tap to change' : 'Log the time you got up'} done={woke && !showDrink ? true : false}
             color={A.body} onPress={() => (woke ? setDial(true) : void logWake())}
-            right={<Clock now={now} onPress={() => setDial(true)} />} />
+            right={live ? <Clock now={now} onPress={() => setDial(true)} /> : undefined} />
           {showDrink ? (
             <Row title="Wake-up drink" sub="Hot water, lemon, ginger, chia seeds, honey, raw garlic" color={A.body} lines={1}
-              right={<PhotoSlot st={cap.frames.drink} label="Wake-up drink" onPress={() => void shoot('drink')} />}
+              right={live ? <PhotoSlot st={cap.frames.drink} label="Wake-up drink" onPress={() => void shoot('drink')} /> : undefined}
               {...routineActs('Wake-up drink', 'wake-drink', drink, () => tick('drink', !drink), (v) => cap.skip('drink', v))} />
           ) : null}
         </Group>
-        {body ? <GymCard body={body} onOpen={() => onOpen('body/gym')} /> : null}
+        {body && live ? <GymCard body={body} onOpen={() => onOpen('body/gym')} /> : null}
+        {/* another day's gym: a workout finished that day, or not; Body has the sessions */}
+        {live ? null : (
+          <Group>
+            <Row first title="Gym" sub={d.gymDone ? null : ahead ? 'The plan is in Body' : 'No workout logged'} done={d.gymDone} color={A.body}
+              onPress={() => onOpen('body/gym')} right={<Tick done={d.gymDone} color={A.body} size={d.gymDone ? 22 : 26} label="Gym" onPress={() => onOpen('body/gym')} passive />} />
+          </Group>
+        )}
         <SubLabel>Morning routine</SubLabel>
         <Group>
           {settleOrder(morning.map((m) => ({ ...m, done: d.on(m.id), cancelled: d.skipped(m.id) })), steady).map((m, i) => (
@@ -242,14 +261,14 @@ export function Plan({ d, body, now, onOpen, onToggleTask, onCancelTask, onResto
               right={(
                 <View style={st.rightRow}>
                   {m.id === 'cold-shower' && !m.done ? <Segmented value={shower} options={[{ key: 'cold', label: 'Cold' }, { key: 'hot', label: 'Hot' }]} onChange={(k) => { d.setShower(k as 'cold' | 'hot').catch(fail); }} /> : null}
-                  {m.photo ? <PhotoSlot st={cap.frames[m.photo]} label={m.title} blur small={m.done} onPress={() => void shoot(m.photo!)} /> : null}
+                  {m.photo && live ? <PhotoSlot st={cap.frames[m.photo]} label={m.title} blur small={m.done} onPress={() => void shoot(m.photo!)} /> : null}
                 </View>
               )} />
           ))}
         </Group>
         <Group>
           <Row first title="Voice training" sub="Practice on a call" color={A.body} {...rowActs('Voice training', 'voice', d.on('voice'), () => check('voice'))}
-            right={d.on('voice') ? null : <NoraButton text="Call Nora for this" onPress={() => noraUi.call({ reason: 'voice training' })} />} />
+            right={d.on('voice') || !live ? null : <NoraButton text="Call Nora for this" onPress={() => noraUi.call({ reason: 'voice training' })} />} />
         </Group>
         {evening ? null : nightGroup}
         {cards('body', A.body)}
@@ -267,7 +286,8 @@ export function Plan({ d, body, now, onOpen, onToggleTask, onCancelTask, onResto
         <Group>
           <View style={st.water}>
             <WaterRow glasses={cap.water} target={cap.waterTarget}
-              onAdd={() => { cap.addWater(1).catch(fail); }} onTakeBack={() => { cap.addWater(-1).then(() => say('One glass taken back'), fail); }} />
+              onAdd={() => { if (ahead) early(); else cap.addWater(1).catch(fail); }}
+              onTakeBack={() => { if (ahead) early(); else cap.addWater(-1).then(() => say('One glass taken back'), fail); }} />
           </View>
           <Row title="No sugar" sub="Habit" color={A.body} {...routineActs('No sugar', 'no-sugar', ns, () => tick('nosugar', !ns), (v) => cap.skip('nosugar', v))} />
         </Group>
@@ -278,8 +298,8 @@ export function Plan({ d, body, now, onOpen, onToggleTask, onCancelTask, onResto
             const note = fs?.status === 'ready' ? 'Confirm in Diet' : fs?.status === 'logged' ? fs.note : fs?.status === 'failed' ? 'Didn’t send. Tap the photo to try again.' : fs?.note && fs.status !== 'empty' ? fs.note : m.plan;
             return (
               <Row key={m.id} first={i === 0} title={m.title} sub={note} subColor={fs?.status === 'ready' ? A.body : fs?.status === 'failed' ? C.danger : undefined}
-                done={m.done} color={A.body} onPress={() => setMeal(m)}
-                right={<PhotoSlot st={fs} label={m.title} small={m.done} onPress={() => void shoot(m.id)} />} />
+                done={m.done} color={A.body} onPress={() => (live ? setMeal(m) : ahead ? early() : onTypeMeal(m.id))}
+                right={live ? <PhotoSlot st={fs} label={m.title} small={m.done} onPress={() => void shoot(m.id)} /> : undefined} />
             );
           })}
         </Group>
@@ -421,15 +441,15 @@ export function Plan({ d, body, now, onOpen, onToggleTask, onCancelTask, onResto
       {dueNow}
       {open.map((x) => x.node)}
       {done.length ? (
-        <View style={st.doneHead}><Text style={[t.section, { color: C.faint }]}>Done today</Text><View style={st.doneRule} /></View>
+        <View style={st.doneHead}><Text style={[t.section, { color: C.faint }]}>{live ? 'Done today' : 'Done'}</Text><View style={st.doneRule} /></View>
       ) : null}
       {done.map((x) => x.node)}
-      <WakeDial open={dial} now={now} wakeHm={wakeHm} onClose={() => setDial(false)}
+      <WakeDial open={dial} now={live ? now : Date.parse(`${d.day}T16:00:00+05:30`)} wakeHm={wakeHm} day={live ? undefined : phrase} onClose={() => setDial(false)}
         onSave={async (hmv) => { setDial(false); try { undoable(`Woke at ${hmv}`, await cap.wake(hmv)); } catch (e) { fail(e); } }} />
       <MealPopup meal={meal} st={meal ? cap.frames[meal.id] : undefined} onClose={() => setMeal(null)} onPhoto={() => { const m = meal; setMeal(null); if (m) void shoot(m.id); }}
         onType={() => { const m = meal; setMeal(null); if (m) onTypeMeal(m.id); }} />
       <HoldMenu target={menu} onClose={() => setMenu(null)} />
-      <LineSheet kind={line} book={cap.book?.title ?? null} onClose={() => setLine(null)}
+      <LineSheet kind={line} book={cap.book?.title ?? null} day={live ? undefined : forDay} onClose={() => setLine(null)}
         onSubmit={async (text) => {
           const k = line; setLine(null);
           try {

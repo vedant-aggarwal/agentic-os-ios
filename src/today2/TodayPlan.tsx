@@ -62,7 +62,7 @@ export function TodayPlan({ today, life, areas, body, say, hide, onOpen, onToggl
 }) {
   const d = useDay({ today, life, areas, body });
   const { cap } = d;
-  const routine = routineReach(routineFlags(d, !!body));
+  const routine = routineReach(routineFlags(d, d.gymCounted));
   const routineKey = JSON.stringify(routine);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { onRoutine?.(routine); }, [routineKey, onRoutine]);
@@ -163,7 +163,8 @@ export function TodayPlan({ today, life, areas, body, say, hide, onOpen, onToggl
 
   return (
     <>
-      <NowStrip items={items} night={night} now={now} day0={day0} onCamera={() => { void smart(); }} onType={() => setTyping(mealNow())} onPick={pick} />
+      {/* the strip is about now: on another day the plan stands alone */}
+      {d.live ? <NowStrip items={items} night={night} now={now} day0={day0} onCamera={() => { void smart(); }} onType={() => setTyping(mealNow())} onPick={pick} /> : null}
       <Plan d={d} body={body} now={now} onOpen={onOpen} onToggleTask={onToggleTask} onCancelTask={onCancelTask} onRestoreTask={onRestoreTask}
         onTypeMeal={setTyping} say={say} hide={hide} onHome={onHome} />
       <MealText meal={typing} onClose={() => setTyping(null)} onSubmit={(m, text) => { void typeMeal(m, text); }} />

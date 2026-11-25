@@ -67,7 +67,11 @@ const clock12 = (d: Date) => {
   return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'am' : 'pm'}`;
 };
 
-export function MoodLogger({ from, onClose }: { from: { x: number; y: number }; onClose: () => void }) {
+export function MoodLogger({ from, day, onClose }: {
+  from: { x: number; y: number }; onClose: () => void;
+  /** an earlier day's mood (Today swiped back to it): saved on that day; `when` names it ("yesterday", "on Mon 23 Nov") */
+  day?: { date: string; when: string };
+}) {
   const L = useLayout();
   const reduce = useReducedMotion();
   const sad = useSadness();
@@ -296,12 +300,13 @@ export function MoodLogger({ from, onClose }: { from: { x: number; y: number }; 
 
   // ── saving ───────────────────────────────────────────────────────────────────────────────────────────────
   const savedKey = useRef('');
+  const onDay = day?.date;
   const save = useCallback(async (rs: Round[], line: string) => {
     const d = draft();
     const key = JSON.stringify([d, rs, line]);
     if (key === savedKey.current) return true;
-    try { await saveMood(id, d, rs, line); savedKey.current = key; return true; } catch { return false; }
-  }, [draft, id]);
+    try { await saveMood(id, d, rs, line, onDay); savedKey.current = key; return true; } catch { return false; }
+  }, [draft, id, onDay]);
 
   // ── the words on the water ───────────────────────────────────────────────────────────────────────────────
   const centers = useRef<Record<string, Pt>>({});
@@ -526,14 +531,14 @@ export function MoodLogger({ from, onClose }: { from: { x: number; y: number }; 
             onToggle={toggle} onSurface={plink} onSink={under} onCenter={onCenter} />
         ) : null}
         {stage === 'done' && final ? (
-          <Summary rect={L.pool} line={final.line} label={`${word} · ${clock12(final.at)}${saveFailed ? ' · not saved yet' : ''}`} font={display} reduce={reduce} />
+          <Summary rect={L.pool} line={final.line} label={`${word} · ${day ? day.when.replace(/^on /, '') : clock12(final.at)}${saveFailed ? ' · not saved yet' : ''}`} font={display} reduce={reduce} />
         ) : null}
 
         {/* the bar under the pool */}
         <Animated.View pointerEvents="box-none" style={[s.bar, { top: L.barTop, height: L.barH, left: L.side + 2, right: L.side + 2 }, barStyle]}>
           {stage === 'field' && !touched && !touching && hint ? (
             <Animated.View key="hint" entering={FadeIn.duration(600)} exiting={leaving ? undefined : FadeOut.duration(160)} pointerEvents="none" style={s.center}>
-              <Text style={s.hint}>Touch the water where you are</Text>
+              <Text style={s.hint}>{day ? `Touch the water where you were ${day.when}` : 'Touch the water where you are'}</Text>
             </Animated.View>
           ) : null}
           {stage === 'field' && touched ? (

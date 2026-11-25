@@ -55,8 +55,10 @@ function mixHex(a: string, b: string, k: number) {
 /** The app background (Backdrop) at a height on screen: bgTop to bgMid over the top 48%. */
 const backdropAt = (y: number, screenH: number) => mixHex(C.bgTop, C.bgMid, Math.min(1, y / (0.48 * screenH)));
 
-export function Hero({ view, reach: reachIn, top, topBar, active, width: fixedW }: {
+export function Hero({ view, reach: reachIn, top, topBar, active, width: fixedW, when = 'today', ahead = false }: {
   view: TodayView; top: number; topBar: number; active: boolean;
+  /** the day the count is for, as its line says it ("yesterday", "on Mon 23 Nov"); `ahead`, a day not begun */
+  when?: string; ahead?: boolean;
   /** Per aspect, what fills the crystals. Today passes its tasks plus its routine ticks; without it, tasks only. */
   reach?: AspectProgress;
   /** The desktop web layout draws the hero as a card narrower than the window. */
@@ -182,13 +184,18 @@ export function Hero({ view, reach: reachIn, top, topBar, active, width: fixedW 
         </View>
       ) : null}
       <View pointerEvents="none" style={s.total}>
-        {dayTotal > 0 ? (
+        {dayTotal > 0 && ahead ? (
+          <>
+            <Text style={s.totalNum}>{dayTotal}</Text>
+            <Text style={s.totalOf}>planned {when}</Text>
+          </>
+        ) : dayTotal > 0 ? (
           <>
             <Text style={s.totalNum}>{dayDone}</Text>
-            <Text style={s.totalOf}>of {dayTotal} done today</Text>
+            <Text style={s.totalOf}>of {dayTotal} done {when}</Text>
           </>
         ) : (
-          <Text style={s.totalOf}>Nothing due today</Text>
+          <Text style={s.totalOf}>Nothing due {when}</Text>
         )}
       </View>
     </View>

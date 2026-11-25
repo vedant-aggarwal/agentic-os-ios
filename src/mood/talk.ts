@@ -54,11 +54,12 @@ function localRound(d: MoodDraft, rounds: Round[]): Ask {
 /** The 1-5 score the rest of the app reads, from how pleasant. */
 export const moodV = (pleasant: number) => Math.max(1, Math.min(5, Math.round(3 + pleasant * 2)));
 
-/** Save (or update) this check-in. The same id each time, so finishing after a quick save just fills it in. */
-export async function saveMood(id: string, d: MoodDraft, rounds: Round[], line: string) {
+/** Save (or update) this check-in. The same id each time, so finishing after a quick save just fills it in. An
+ *  earlier day's (logged from Today swiped back to it) lands on that day, at 21:00 there. */
+export async function saveMood(id: string, d: MoodDraft, rounds: Round[], line: string, day?: string) {
   const now = new Date();
   const doc = {
-    id, date: myDay(now), at: now.toISOString(), // his day: a mood at 01:30 is the evening's
+    id, date: day ?? myDay(now), at: day ? new Date(`${day}T21:00:00+05:30`).toISOString() : now.toISOString(), // his day: a mood at 01:30 is the evening's
     v: moodV(d.pleasant), energy: Math.round(d.energy * 100) / 100, pleasant: Math.round(d.pleasant * 100) / 100,
     word: d.word, tags: d.tags, note: d.note.trim(), rounds: rounds.filter((r) => r.picked.length || r.text).map(({ q, picked, text }) => ({ q, picked, text })),
     line, source: 'logger',

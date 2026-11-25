@@ -161,7 +161,7 @@ export type Day = ReturnType<typeof useDay>;
 export type SkipId = CheckId | 'practice-speak' | 'practice-course' | 'book';
 
 /** What routineFlags reads of a day: `Day` for the day on screen, or the same shape built from the collections for
- *  any day of the week (today2/week.ts). */
+ *  any day of the week (today2/tally.ts). */
 export type FlagSrc = {
   cap: { doneTicks: Set<TickId>; wakeAt: string | null; water: number; waterTarget: number };
   skipped: (item: string) => boolean;

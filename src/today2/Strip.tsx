@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Pressable, type ScrollView as RNScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+// gesture handler's, so a drag along the cards keeps them and never turns Today's day (DaySwipe)
+import { ScrollView } from 'react-native-gesture-handler';
 import Animated, { Easing, FadeInRight, ReduceMotion, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
 import Svg, { Circle, Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 import { Check } from '@/components/Icons';
 import { haptic, SURF, t, tint } from '@/aspects/kit/tokens';
 import { Pictogram } from '@/today/Pictogram';
+import { useSwipeBlock } from './DaySwipe';
 import { C, F, type AspectKey } from '@/theme';
 
 // The day under the hero, in two lines.
@@ -90,7 +93,8 @@ export function NowStrip({ items, night = [], now, day0, onCamera, onType, onPic
   }, [cards, cur, curW]);
 
   // ── the cards row: stays on now; after a drag or a rail tap it comes back three seconds later ──
-  const ref = useRef<ComponentRef<typeof ScrollView>>(null);
+  const ref = useRef<ComponentRef<typeof RNScrollView>>(null);
+  const block = useSwipeBlock();
   const idle = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [touched, setTouched] = useState(false);
   const [focus, setFocus] = useState(cur); // the card at the row's left edge, outlined on the rail
@@ -202,7 +206,7 @@ export function NowStrip({ items, night = [], now, day0, onCamera, onType, onPic
       </View>
 
       <View style={s.rowWrap}>
-        <ScrollView ref={ref} horizontal showsHorizontalScrollIndicator={false} decelerationRate="fast"
+        <ScrollView ref={ref} horizontal block={block} showsHorizontalScrollIndicator={false} decelerationRate="fast"
           snapToOffsets={xs} snapToEnd={false} disableIntervalMomentum
           onLayout={() => goTo(cur, false)} scrollEventThrottle={32}
           onScroll={(e) => onScroll(e.nativeEvent.contentOffset.x)}

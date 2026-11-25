@@ -38,6 +38,11 @@ export function dayWord(day: string, live: string) {
   if (n === 1) return 'Tomorrow';
   return `${WD[weekday(day)]} ${shortDay(day)}`;
 }
+/** The day inside a sentence: "today", "yesterday", "tomorrow", "on Mon 23 Nov". */
+export function dayPhrase(day: string, live: string) {
+  const w = dayWord(day, live);
+  return w === 'Today' || w === 'Yesterday' || w === 'Tomorrow' ? w.toLowerCase() : `on ${w}`;
+}
 const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const WD_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 /** "Wednesday 25 Nov". */

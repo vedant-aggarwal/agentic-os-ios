@@ -14,8 +14,10 @@ import type { Diet } from '@/aspects/body/api';
 import type { Picked } from '@/aspects/body/pick';
 import type { ReadView } from '@/aspects/mind/types';
 import type { CleanNow } from '@/aspects/soul/data';
+import { previewSealed } from '@/lib/seal';
 import type { AspectKey } from '@/theme';
 import { FRAMES, MEAL_SLOT, type Frame, type FrameId, type TickId } from './moments';
+import { takePhoto } from './shoot';
 
 // Where every capture goes. Nothing here is new storage on the PC; each action writes the record its own page writes:
 //   meal photo     POST /mod/body/meal-photo (raw image): read by the PC, it waits in Body > Diet to be confirmed
@@ -127,7 +129,10 @@ export type FrameState = {
   src: { uri: string; headers?: Record<string, string> } | null;
   status: 'empty' | 'sending' | 'reading' | 'ready' | 'logged' | 'kept' | 'failed';
   /** under the label */ note: string | null;
+  /** a body or face photo: drawn as a lock, shown only after Face ID (src/lib/seal.ts) */ sealed?: boolean;
 };
+/** The photos that are sealed once taken: shown once as a preview, then only behind Face ID. */
+export const SEALED: ReadonlySet<FrameId> = new Set<FrameId>(['body', 'face']);
 
 // ── demo: sample data for the web preview (?demo), nobody's real numbers ───────────────────────────────────────────
 function demoDiet(): Diet {
@@ -221,6 +226,7 @@ export function useCapture() {
       }
       out[f.id] = { src: null, status: 'empty', note: null };
     }
+    for (const id of SEALED) out[id] = { ...out[id], sealed: true };
     return out;
   }, [shots, dietData, todayChecks, day]);
 
@@ -241,6 +247,8 @@ export function useCapture() {
 
   async function photo(f: Frame, p: Picked, uri: string | undefined) {
     putShot(f.id, { uri, state: 'sending', at: stamp() });
+    // a body or face photo shows once, now, while it sends; after that it is sealed behind Face ID
+    if (SEALED.has(f.id) && uri) previewSealed({ title: f.long, photos: [{ source: { uri }, label: `${f.long} photo` }], action: { label: 'Take again', run: () => { void again(f); } } });
     try {
       if (f.kind === 'meal') {
         let id = `demo_${f.id}`;
@@ -261,6 +269,13 @@ export function useCapture() {
       putShot(f.id, { uri, state: 'failed', error: (e as Error).message, at: stamp() });
       throw e;
     }
+  }
+
+  /** A sealed photo taken again from its preview or viewer: the camera, then the same write. A failed send shows on its tile. */
+  async function again(f: Frame) {
+    const p = await takePhoto().catch(() => null);
+    if (!p) return;
+    await photo(f, p, typeof p.uri === 'string' ? p.uri : URL.createObjectURL(p.uri)).catch(() => {});
   }
 
   async function addWater(delta = 1) {

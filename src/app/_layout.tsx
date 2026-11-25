@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { FileViewer } from '@/components/FileViewer';
+import { SealHost } from '@/components/Sealed';
 import { DeskFrame } from '@/desk/DeskFrame';
 import { startAlarms } from '@/lib/alarms';
 import { startCalls } from '@/lib/calls';
@@ -44,6 +45,8 @@ export default function RootLayout() {
       </DeskFrame>
       {WorkSheets ? <WorkSheets /> : null}
       <FileViewer />
+      {/* sealed body and face photos: the look right after one is taken, and after Face ID */}
+      <SealHost />
     </GestureHandlerRootView>
   );
 }

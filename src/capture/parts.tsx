@@ -6,8 +6,10 @@ import Animated, {
 } from 'react-native-reanimated';
 import Svg, { Circle, Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 import { useScale } from '@/components/Glass';
+import { LOCK } from '@/components/Sealed';
 import { Glyph, Icon } from '@/aspects/kit/controls';
 import { haptic, SURF, tint } from '@/aspects/kit/tokens';
+import { openSealed } from '@/lib/seal';
 import { ASPECT_COLOR, C, F } from '@/theme';
 import type { FrameState } from './data';
 import type { Frame } from './moments';
@@ -77,30 +79,36 @@ export const PhotoTile = forwardRef<ComponentRef<typeof View>, {
   }, [landed, pop, reduce]);
   const popStyle = useAnimatedStyle(() => ({ transform: [{ scale: pop.value }] }));
   const filled = !!st.src && !hidden;
+  // a body or face photo: a lock where the picture would be; a tap asks for Face ID and opens it, Take again from there
+  const sealed = !!st.sealed && !hidden && (filled || st.status === 'kept');
   const logged = st.status === 'logged' && !filled && !hidden;
   const failed = st.status === 'failed';
-  const words = `${frame.long} photo${st.status === 'empty' ? '' : `, ${st.note ?? st.status}`}`;
+  const words = `${frame.long} photo${st.status === 'empty' ? '' : `, ${st.note ?? st.status}`}${sealed ? ', sealed' : ''}`;
   const note = hidden ? null : st.note;
+  const press = sealed && st.status === 'kept'
+    ? () => { void openSealed({ title: frame.long, photos: [{ source: st.src, label: `${frame.long} photo` }], action: { label: 'Take again', run: onPress } }); }
+    : onPress;
   return (
     // Tap puts its style on the view inside its Pressable, so the share of the row is taken by this outer view.
     <View style={s.tileWrap}>
-      <Tap label={words} onPress={onPress} feel="light">
+      <Tap label={words} hint={sealed && st.status === 'kept' ? 'Opens with Face ID' : undefined} onPress={press} feel="light">
         <Animated.View ref={ref} collapsable={false}
-          style={[s.tile, focus && !filled && !logged && { borderColor: tint(BODY, 0.55), backgroundColor: tint(BODY, 0.07) }, logged && s.loggedFill, popStyle]}>
-          {filled ? (
+          style={[s.tile, focus && !filled && !logged && !sealed && { borderColor: tint(BODY, 0.55), backgroundColor: tint(BODY, 0.07) }, logged && s.loggedFill, sealed && s.sealedFill, popStyle]}>
+          {filled && !sealed ? (
             <Animated.View entering={reduce ? FadeIn.duration(200) : undefined} style={StyleSheet.absoluteFill}>
               <Image source={st.src} style={[StyleSheet.absoluteFill, { opacity: st.status === 'sending' || failed ? 0.5 : 1 }]} contentFit="cover" transition={0} accessibilityIgnoresInvertColors />
               <Shade />
             </Animated.View>
           ) : (
             <View style={s.tileMark}>
-              {logged ? <Icon name="check" size={16} color={BODY} />
+              {sealed ? <Glyph sf="lock.fill" d={LOCK} size={16} color={C.muted} />
+                : logged ? <Icon name="check" size={16} color={BODY} />
                 : <Glyph sf="camera" d={CAMERA} size={16} color={focus ? BODY : 'rgba(255,255,255,0.24)'} />}
             </View>
           )}
           <View style={s.tileText}>
-            <Text numberOfLines={1} style={[s.tileLabel, (focus || filled || logged) && { color: C.text }]}>{frame.label}</Text>
-            {note ? <Text numberOfLines={1} style={[s.tileNote, filled && { color: 'rgba(255,255,255,0.78)' }, failed && { color: C.danger }, st.status === 'ready' && { color: BODY }]}>{note}</Text> : null}
+            <Text numberOfLines={1} style={[s.tileLabel, (focus || filled || logged || sealed) && { color: C.text }]}>{frame.label}</Text>
+            {note ? <Text numberOfLines={1} style={[s.tileNote, filled && !sealed && { color: 'rgba(255,255,255,0.78)' }, failed && { color: C.danger }, st.status === 'ready' && { color: BODY }]}>{note}</Text> : null}
           </View>
           {st.status === 'sending' && !hidden ? <View style={s.sendBar}><Sweep /></View> : null}
         </Animated.View>
@@ -365,6 +373,7 @@ export const s = StyleSheet.create({
   tileLabel: { fontFamily: F.medium, fontSize: 12, lineHeight: 15, color: C.muted },
   tileNote: { fontFamily: F.regular, fontSize: 10, lineHeight: 12, color: C.faint },
   loggedFill: { backgroundColor: tint(BODY, 0.1), borderColor: tint(BODY, 0.22) },
+  sealedFill: { backgroundColor: 'rgba(255,255,255,0.08)' },
   smart: {
     flexDirection: 'row', alignItems: 'center', gap: 6, height: 28, paddingLeft: 10, paddingRight: 12, borderRadius: 14,
     backgroundColor: tint(BODY, 0.14),

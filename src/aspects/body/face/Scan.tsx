@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
-import { Image } from 'expo-image';
 import { C } from '@/theme';
+import { SealedTile } from '@/components/Sealed';
 import { call, fileSource, invalidate, upload } from '@/lib/mod';
+import { openSealed, previewSealed } from '@/lib/seal';
 import { Button, Card, CheckRing, Failed, Icon, Screen, Skeleton, SP, t, useAspect } from '@/aspects/kit';
 import { B, dropScan, filePath, readScan, startScan, useRubric, type ScanSummary, type Shot } from '../api';
 import { canPick, pickPhoto } from '../pick';
@@ -49,6 +50,12 @@ export function ScanFlow({ open, onClose }: { open: boolean; onClose: () => void
       setScan(res.scan);
       setFocus(null);
       invalidate(`${B}/`);
+      // the PC took it: one look now, then it is sealed behind Face ID like every face photo
+      const name = shots.find((x) => x.id === slot)?.name ?? 'Face photo';
+      previewSealed({
+        title: name, photos: [{ source: { uri: typeof p.uri === 'string' ? p.uri : URL.createObjectURL(p.uri) }, label: `${name} photo` }],
+        action: { label: 'Choose another', run: () => { void choose(slot); } },
+      });
     } catch (e) {
       setRefused((r) => ({ ...r, [slot]: (e as Error).message }));
     }
@@ -110,10 +117,13 @@ function ShotCard({ n, shot, file, refused, busy, open, onOpen, onChoose, onRemo
 }) {
   const a = useAspect();
   const done = !!file;
+  const view = () => {
+    if (file) void openSealed({ title: shot.name, photos: [{ source: fileSource(filePath(file)), label: `${shot.name} photo` }], action: { label: 'Choose another', run: onChoose } });
+  };
   return (
     <Card tone={open && !done ? a.color : undefined} onPress={open ? undefined : onOpen} label={`${shot.name}, ${done ? 'taken' : 'not taken'}`} style={u.gap12}>
       <View style={u.row}>
-        {done ? <Image source={fileSource(filePath(file, true))} style={[u.thumb, { width: 48, height: 60 }]} contentFit="cover" accessibilityLabel={`${shot.name} photo`} />
+        {done ? <SealedTile width={48} height={60} label={`${shot.name} photo`} onPress={view} />
           : <View style={[u.thumb, { width: 48, height: 60, alignItems: 'center', justifyContent: 'center' }]}><Text style={[t.label, t.num]}>{n}</Text></View>}
         <View style={[u.flex, u.gap4]}>
           <Text style={t.strong}>{shot.name}</Text>

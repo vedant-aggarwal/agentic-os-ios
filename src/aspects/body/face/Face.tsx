@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Text, View } from 'react-native';
-import { Image } from 'expo-image';
 import { C } from '@/theme';
+import { SealedTile } from '@/components/Sealed';
 import { fileSource } from '@/lib/mod';
+import { openSealed } from '@/lib/seal';
 import { Block, Button, Card, Failed, Icon, Loading, myDay, Press, Row, Screen, Sheet, shortDay, Skeleton, Spark, SP, t, useAspect } from '@/aspects/kit';
 import {
   agoDays, dropScan, filePath, readScan, startScan, tick, useFace, usePoll, useProtocols, useRubric, type Face, type FaceFeature, type Pick, type Protocol, type RoutineRow,
@@ -308,33 +309,46 @@ export function ProtocolSheet({ item, onClose }: { item: { p: Protocol; why?: st
   );
 }
 
-// ── progress: before and after ──
+// ── progress: before and after, sealed like every face photo: one Face ID shows each angle side by side ──
+const ANGLE = { front: 'Front', left: 'Left profile', right: 'Right profile' } as const;
+type Angle = keyof typeof ANGLE;
+const anglesWords = (ks: Angle[]) => {
+  const n = ks.map((k, i) => (i ? ANGLE[k].toLowerCase() : ANGLE[k]));
+  return n.length > 1 ? `${n.slice(0, -1).join(', ')} and ${n[n.length - 1]}` : n[0];
+};
+
 function Progress({ f }: { f: Face }) {
   const w = useInnerWidth();
   const first = f.first, last = f.latest!;
-  const half = (w - SP[12]) / 2;
+  const angles = first ? (Object.keys(ANGLE) as Angle[]).filter((k) => first.photos[k] && last.photos[k]) : [];
+  const days = first ? `${shortDay(first.date)} and ${shortDay(last.date)}` : '';
+  const compare = () => {
+    if (!first) return;
+    void openSealed({
+      title: 'Progress photos', pairs: true,
+      photos: angles.flatMap((k) => [first, last].map((s) => ({ source: fileSource(filePath(s.photos[k])), caption: `${ANGLE[k]}, ${shortDay(s.date)}` }))),
+    });
+  };
+  const firstScan = () => void openSealed({ title: 'Your first scan', photos: [{ source: fileSource(filePath(last.photos.front)), caption: `Front, ${shortDay(last.date)}` }] });
   return (
     <Block title="Progress">
       {first ? (
         <Card style={u.gap12}>
-          {(['front', 'left', 'right'] as const).filter((k) => first.photos[k] && last.photos[k]).map((k) => (
-            <View key={k} style={u.gap8}>
-              <Text style={t.footnote}>{k === 'front' ? 'Front' : k === 'left' ? 'Left profile' : 'Right profile'}</Text>
-              <View style={u.row}>
-                {[first, last].map((s) => (
-                  <View key={s.id} style={u.gap4}>
-                    <Image source={fileSource(filePath(s.photos[k], true))} style={[u.thumb, { width: half, height: half * 1.25 }]} contentFit="cover" accessibilityLabel={`${k} photo, ${shortDay(s.date)}`} />
-                    <Text style={t.micro}>{shortDay(s.date)}</Text>
-                  </View>
-                ))}
+          {angles.length ? (
+            <Press label={`Progress photos, ${days}, sealed. Opens with Face ID`} onPress={compare} style={u.row}>
+              <View style={[u.row, { gap: SP[4] }]}><SealedTile width={44} height={55} /><SealedTile width={44} height={55} /></View>
+              <View style={[u.flex, u.gap4]}>
+                <Text style={t.strong}>{days}</Text>
+                <Text style={t.small}>{`${anglesWords(angles)}, side by side. Opens with Face ID.`}</Text>
               </View>
-            </View>
-          ))}
+              <Icon name="right" size={16} color={C.faint} />
+            </Press>
+          ) : null}
           {f.scans.length > 1 ? <Spark values={[...f.scans].reverse().map((s) => s.overall)} width={w} height={56} /> : null}
         </Card>
       ) : (
         <Card style={u.row}>
-          {last.photos.front ? <Image source={fileSource(filePath(last.photos.front, true))} style={[u.thumb, { width: 72, height: 90 }]} contentFit="cover" accessibilityLabel="Front photo" /> : null}
+          {last.photos.front ? <SealedTile width={72} height={90} label="Front photo of your first scan" onPress={firstScan} /> : null}
           <Text style={[t.footnote, u.flex]}>Your first scan. The next one shows here side by side with this, angle by angle.</Text>
         </Card>
       )}

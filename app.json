@@ -114,6 +114,12 @@
         {
           "initialOrientation": "PORTRAIT_UP"
         }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Agentic OS uses Face ID to open your sealed body and face photos."
+        }
       ]
     ],
     "experiments": {

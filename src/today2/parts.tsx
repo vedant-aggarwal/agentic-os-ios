@@ -3,8 +3,11 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Animated, { LinearTransition, ReduceMotion, useAnimatedProps, useAnimatedStyle, useSharedValue, withRepeat, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 import Svg, { Path } from 'react-native-svg';
+import { Glyph } from '@/aspects/kit/controls';
 import { haptic, MOTION, SURF, t, tint } from '@/aspects/kit/tokens';
 import type { FrameState } from '@/capture/data';
+import { LOCK } from '@/components/Sealed';
+import { openSealed } from '@/lib/seal';
 import type { Task } from '@/lib/today';
 import { C, F } from '@/theme';
 import { Ring, type RingPart } from './Ring';
@@ -160,6 +163,19 @@ export function settleOrder<T extends { done: boolean; cancelled?: boolean; id?:
 // ── photo slot ───────────────────────────────────────────────────────────────────────────────────────────────────
 export function PhotoSlot({ st, label, blur, small, onPress }: { st: FrameState | undefined; label: string; blur?: boolean; small?: boolean; onPress: () => void }) {
   const [clear, setClear] = useState(false);
+  // a body or face photo: a lock where the picture would be; a tap asks for Face ID and opens it, Take again from there
+  if (st?.sealed && (st.src || st.status === 'kept')) {
+    const kept = st.status === 'kept';
+    return (
+      <Pressable accessibilityRole="button" accessibilityLabel={`${label} photo, ${st.note ?? st.status}, sealed`} accessibilityHint={kept ? 'Opens with Face ID' : undefined}
+        hitSlop={6} disabled={st.status === 'sending'}
+        onPress={() => { if (kept) void openSealed({ title: label, photos: [{ source: st.src, label: `${label} photo` }], action: { label: 'Take again', run: onPress } }); else onPress(); }}>
+        <View style={[s.frame, small && s.frameSmall, s.sealed, !kept && { opacity: 0.5 }]}>
+          <Glyph sf="lock.fill" d={LOCK} size={small ? 11 : 13} color={C.muted} />
+        </View>
+      </Pressable>
+    );
+  }
   if (!st || !st.src) {
     if (st?.status === 'logged') {
       return <View style={[s.frame, small && s.frameSmall, { backgroundColor: 'rgba(255,138,91,0.14)', alignItems: 'center', justifyContent: 'center' }]}><CheckMark color="#FF8A5B" /></View>;
@@ -310,6 +326,7 @@ export const s = StyleSheet.create({
   camBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.07)', alignItems: 'center', justifyContent: 'center' },
   frame: { width: 30, height: 40, borderRadius: 8, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.10)' },
   frameSmall: { width: 24, height: 32, borderRadius: 6 },
+  sealed: { alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.07)' },
   link: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 24 },
   linkText: { fontFamily: F.medium, fontSize: 13, lineHeight: 18, color: C.muted },
   cardScroll: { marginBottom: 12 },

@@ -15,7 +15,7 @@ import { haptic, tint } from '@/aspects/kit/tokens';
 import { useDictate } from '@/nora/useDictate';
 import { ASPECT_COLOR, C, F, type AspectKey } from '@/theme';
 import { openTask } from '@/work/bus';
-import { DESCRIBE_KINDS, useCapture, type Described, type DescribeKind, type SmartItem } from './data';
+import { DESCRIBE_KINDS, SEALED, useCapture, type Described, type DescribeKind, type SmartItem } from './data';
 import {
   COLUMNS, dayMinute, focusFrame, FRAMES, frameOf, nowItems, tickOf, waterBehind, type FrameId, type NowItem, type TickId,
 } from './moments';
@@ -235,11 +235,12 @@ function Surface({ p: pv, open, from, floor, onClose }: {
     try { picked = await takePhoto(); } catch (e) { fail(e); return; }
     if (!picked) return;
     const uri = typeof picked.uri === 'string' ? picked.uri : URL.createObjectURL(picked.uri);
-    if (!reduce) {
+    // a body or face photo doesn't fly to its slot: its one look is the sealed preview
+    if (!reduce && !SEALED.has(id)) {
       const to = await measure(id);
       if (to) setFlight({ key: ++flights.current, uri, frame: id, to });
     }
-    d.photo(f, picked, uri).then((msg) => { say(msg); if (reduce) haptic.success(); }, fail);
+    d.photo(f, picked, uri).then((msg) => { say(msg); if (reduce || SEALED.has(id)) haptic.success(); }, fail);
   };
   const onLand = useCallback((id: FrameId) => {
     setFlight(null);
@@ -263,7 +264,7 @@ function Surface({ p: pv, open, from, floor, onClose }: {
       if (it.status === 'reading') { say('Still reading it. It files itself; check back in a minute.'); return; }
       if (it.status !== 'filed') { haptic.warn(); say(it.said ?? "Couldn't place that photo."); return; }
       const frame = it.frame && FRAMES.some((f) => f.id === it.frame) ? (it.frame as FrameId) : null;
-      const from = frame && !reduce ? await rectOf(smartRef.current) : null;
+      const from = frame && !reduce && !SEALED.has(frame) ? await rectOf(smartRef.current) : null;
       const to = frame && !reduce ? await measure(frame) : null;
       d.smartFiled(it, uri);
       if (frame && from && to) setFlight({ key: ++flights.current, uri, frame, to, from });

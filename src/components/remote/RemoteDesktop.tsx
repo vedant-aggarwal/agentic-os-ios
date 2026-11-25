@@ -75,6 +75,8 @@ export function RemoteDesktop({ open, onClose }: { open: boolean; onClose: () =>
   const [menu, setMenu] = useState(false);
   const [sheet, setSheet] = useState<null | 'actions' | 'display' | 'power' | 'media'>(null);
   const [privacy, setPrivacy] = useState(false); // the PC's own monitors blacked out (pc-privacy.ts)
+  const [locked, setLocked] = useState(false); // the PC's lock screen is up, which no capture can see (pc-power.ts)
+  const wasLocked = useRef(false);
   const [typing, setTyping] = useState(false); // the phone keyboard is up
   const [keysOnly, setKeysOnly] = useState(false); // the PC keys row without the phone keyboard
   const [kbH, setKbH] = useState(0);
@@ -107,6 +109,23 @@ export function RemoteDesktop({ open, onClose }: { open: boolean; onClose: () =>
     return () => { clearInterval(id); api('/pc/privacy', { method: 'POST', body: { on: false } }).catch(() => {}); };
   }, [open, privacy]);
 
+  // A locked PC: Windows' lock screen is off limits to the stream, which just stops. Ask every 5 s, say so, and start
+  // the picture again once it's unlocked.
+  useEffect(() => {
+    if (!open) return;
+    let live = true;
+    const look = () => api<{ locked?: boolean }>('/pc/power').then((r) => {
+      if (!live) return;
+      const v = !!r.locked;
+      if (wasLocked.current && !v) web.current?.injectJavaScript('start(); true;');
+      wasLocked.current = v;
+      setLocked(v);
+    }).catch(() => {});
+    void look();
+    const id = setInterval(look, 5000);
+    return () => { live = false; clearInterval(id); };
+  }, [open]);
+
   useEffect(() => {
     if (!hint) return;
     const t = setTimeout(() => setHint(null), 3200);
@@ -127,7 +146,7 @@ export function RemoteDesktop({ open, onClose }: { open: boolean; onClose: () =>
   };
   const close = () => {
     Keyboard.dismiss();
-    setMenu(false); setSheet(null); setPrivacy(false);
+    setMenu(false); setSheet(null); setPrivacy(false); setLocked(false); wasLocked.current = false;
     if (orient) orient.lockAsync(orient.OrientationLock.PORTRAIT_UP).catch(() => {});
     onClose();
   };
@@ -219,6 +238,16 @@ export function RemoteDesktop({ open, onClose }: { open: boolean; onClose: () =>
 
         {hint ? <View pointerEvents="none" style={[s.hint, { top: insets.top + 52 }]}><Text style={s.hintText}>{hint}</Text></View> : null}
 
+        {locked ? (
+          <View pointerEvents="none" style={s.lockWrap} accessibilityLiveRegion="polite">
+            <View style={s.lockCard}>
+              <Sym name="lock.fill" size={22} color="#fff" fallback={null} />
+              <Text style={s.lockTitle}>Your PC is locked</Text>
+              <Text style={s.lockText}>Unlock it at the PC. The picture comes back here once it is.</Text>
+            </View>
+          </View>
+        ) : null}
+
         {keysRow ? <KeysRow kb={kb} bottom={kbH || insets.bottom} typing={typing} onKeyboard={toggleKeyboard}
           onHide={() => { setKeysOnly(false); if (typing) toggleKeyboard(); }} /> : null}
 
@@ -258,7 +287,7 @@ export function RemoteDesktop({ open, onClose }: { open: boolean; onClose: () =>
             {sheet === 'power' ? <PowerPanel />
               : sheet === 'media' ? <MediaPanel open onKey={(k) => kb.shortcut(k)} />
               : sheet === 'actions'
-              ? <Actions onKey={(k) => { kb.shortcut(k); haptic('light'); }} />
+              ? <Actions onKey={(k) => { kb.shortcut(k); haptic('light'); }} privacy={privacy} onPrivacy={() => void togglePrivacy()} />
               : <Display quality={quality} fit={fit} rotate={rotate} mode={mode} canRotate={!!orient}
                   screens={screens} display={display} onDisplay={pickDisplay}
                   onQuality={pickQuality} onFit={pickFit} onRotate={pickRotate} onMode={pickMode}
@@ -594,9 +623,11 @@ function Sheet({ title, bottom, maxHeight = 380, onClose, children }: { title: s
   );
 }
 
+// Lock used to be a one-tap tile here (Win+L): the stream can't see a locked PC, so the Remote froze. Lock is now
+// only the slider in Power; in its place, Black out darkens the PC's screens and keeps the Remote working.
 const ACTIONS: { k: string; label: string; icon: string }[] = [
   { k: 'ctrl+shift+esc', label: 'Task Manager', icon: 'list.bullet.rectangle' },
-  { k: 'win+l', label: 'Lock PC', icon: 'lock.fill' },
+  { k: 'blackout', label: 'Black out', icon: 'eye.slash' },
   { k: 'win', label: 'Start', icon: 'square.grid.2x2' },
   { k: 'alt+tab', label: 'Switch app', icon: 'rectangle.on.rectangle' },
   { k: 'win+tab', label: 'All windows', icon: 'square.stack.3d.up' },
@@ -613,17 +644,22 @@ const ACTIONS: { k: string; label: string; icon: string }[] = [
   { k: 'playpause', label: 'Play / pause', icon: 'playpause' },
 ];
 
-function Actions({ onKey }: { onKey: (k: string) => void }) {
+function Actions({ onKey, privacy, onPrivacy }: { onKey: (k: string) => void; privacy: boolean; onPrivacy: () => void }) {
   return (
     <View style={s.grid}>
-      {ACTIONS.map((a) => (
-        <Pressable key={a.k} accessibilityRole="button" accessibilityLabel={a.label} onPress={() => onKey(a.k)}
-          style={({ pressed }) => [s.tile, pressed && { backgroundColor: 'rgba(255,255,255,0.18)' }]}>
-          <Sym name={a.icon as never} size={20} color="#fff" fallback={null} />
-          <Text style={s.tileText} numberOfLines={1}>{a.label}</Text>
-        </Pressable>
-      ))}
-      <Text style={s.small}>Ctrl+Alt+Del can&apos;t be sent from an app; Task Manager and Lock PC cover what it opens.</Text>
+      {ACTIONS.map((a) => {
+        const dark = a.k === 'blackout' && privacy;
+        return (
+          <Pressable key={a.k} accessibilityRole="button" accessibilityState={a.k === 'blackout' ? { selected: privacy } : undefined}
+            accessibilityLabel={a.k === 'blackout' ? "Black out the PC's screens" : a.label}
+            onPress={() => (a.k === 'blackout' ? onPrivacy() : onKey(a.k))}
+            style={({ pressed }) => [s.tile, dark && s.tileOn, pressed && { backgroundColor: 'rgba(255,255,255,0.18)' }]}>
+            <Sym name={(dark ? 'eye.slash.fill' : a.icon) as never} size={20} color="#fff" fallback={null} />
+            <Text style={s.tileText} numberOfLines={1}>{dark ? 'Blacked out' : a.label}</Text>
+          </Pressable>
+        );
+      })}
+      <Text style={s.small}>Ctrl+Alt+Del can&apos;t be sent from an app; Task Manager covers most of what it opens. Lock PC is a slider in Power. This screen can&apos;t see a locked PC, so to hide the PC&apos;s screens and keep working here, use Black out.</Text>
     </View>
   );
 }
@@ -735,6 +771,14 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.08)',
   },
   tileText: { fontFamily: F.semibold, fontSize: 12, lineHeight: 16, color: C.text },
+  tileOn: { backgroundColor: 'rgba(255,255,255,0.22)' },
+  lockWrap: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', padding: 24 },
+  lockCard: {
+    alignItems: 'center', gap: 8, maxWidth: 360, paddingHorizontal: 22, paddingVertical: 18, borderRadius: 20,
+    backgroundColor: 'rgba(16,17,22,0.97)', borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.14)',
+  },
+  lockTitle: { fontFamily: F.semibold, fontSize: 17, lineHeight: 22, color: C.text },
+  lockText: { fontFamily: F.medium, fontSize: 14, lineHeight: 19, color: C.muted, textAlign: 'center' },
   small: { fontFamily: F.medium, fontSize: 12, lineHeight: 17, color: C.faint },
   fieldLabel: { fontFamily: F.semibold, fontSize: 13, lineHeight: 18, color: C.muted },
   seg: { flexDirection: 'row', padding: 3, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.08)' },

@@ -10,8 +10,10 @@ export const DEMO =
 
 export function demoData(): { today: TodayPayload; life: LifePayload; areas: Area[] } {
   const now = new Date();
-  const date = new Date(now.getTime() + 5.5 * 3600_000).toISOString().slice(0, 10);
-  const at = (h: number, m = 0) => new Date(`${date}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00+05:30`).toISOString();
+  // his day, which rolls at 04:00 (the sample stays on the same day from 00:00 to 03:59)
+  const date = new Date(now.getTime() + 5.5 * 3600_000 - 4 * 3600_000).toISOString().slice(0, 10);
+  const shift = (n: number) => new Date(Date.parse(`${date}T12:00:00Z`) + n * 86400_000).toISOString().slice(0, 10);
+  const at = (h: number, m = 0, d = date) => new Date(`${d}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00+05:30`).toISOString();
   const t = (id: string, title: string, area: string, extra: Partial<Task> = {}): Task => ({
     id, title, status: 'todo', area, due: date, scheduled: null, owner: 'me', completedAt: null, ...extra,
   });
@@ -22,6 +24,10 @@ export function demoData(): { today: TodayPayload; life: LifePayload; areas: Are
     t('4', 'Send invoice', 'finance', { status: 'done', completedAt: at(11) }),
     t('5', 'Family dinner', 'family', { scheduled: { start: at(21), end: at(22) } }),
     t('6', 'Call a friend back', 'friends'),
+    // the days around it, for swiping: one done and one left yesterday, one due tomorrow
+    t('7', 'Pay the electricity bill', 'finance', { due: shift(-1), status: 'done', completedAt: at(18, 0, shift(-1)) }),
+    t('8', 'Plan the week', 'norrita', { due: shift(-1) }),
+    t('9', 'Dentist at 11', 'health', { due: shift(1) }),
   ];
   return {
     today: { date, now: now.toISOString(), events: [

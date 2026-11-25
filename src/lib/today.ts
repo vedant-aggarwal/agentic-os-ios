@@ -65,7 +65,9 @@ function shortDate(d: string) {
   return `${day} ${MONTHS[m - 1].slice(0, 3)}`;
 }
 
-export function deriveToday(t: TodayPayload, life: LifePayload, areas: Area[]): TodayView {
+/** `doneDay`: the day a finished task counts for, from when it was done. The calendar's by default; the phone's Today
+ *  passes his day, which rolls at 04:00 (a task ticked at 01:30 is the evening's). */
+export function deriveToday(t: TodayPayload, life: LifePayload, areas: Area[], doneDay: (iso: string) => string = istDate): TodayView {
   const aspectOf = (area: string | null): AspectKey | null => (area ? life.areaAspects[area]?.[0] ?? null : null);
   const familyOf = new Map((life.aspects ?? []).map((a) => [a.key, a.family]));
   const areaName = new Map((areas ?? []).map((a) => [a.slug, a.name]));
@@ -74,7 +76,7 @@ export function deriveToday(t: TodayPayload, life: LifePayload, areas: Area[]): 
   // His own top-level tasks; agents' tasks live on the Work page.
   const mine = (t.tasks ?? []).filter((x) => !x.parent && (x.owner == null || x.owner === 'me'));
   const open = (x: Task) => x.status === 'todo' || x.status === 'doing';
-  const doneToday = mine.filter((x) => x.status === 'done' && x.completedAt && istDate(x.completedAt) === t.date);
+  const doneToday = mine.filter((x) => x.status === 'done' && x.completedAt && doneDay(x.completedAt) === t.date);
   const dueToday = mine.filter((x) => open(x) && x.due === t.date);
   const carried = mine.filter((x) => open(x) && x.due != null && x.due < t.date).sort((a, b) => (a.due! < b.due! ? -1 : 1));
 

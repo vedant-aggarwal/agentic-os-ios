@@ -43,8 +43,8 @@ export function tasksChanged() { for (const f of changed) f(); }
 function fold(t: TodayPayload, pending: Map<string, Partial<Task>>): TodayPayload {
   const over = new Map(pending);
   for (const j of waitingWith('task:')) {
-    const id = j.id.slice(5), status = (j.body as { status?: Task['status'] } | undefined)?.status;
-    if (status && !over.has(id)) over.set(id, { status, completedAt: status === 'done' ? j.at : null });
+    const id = j.id.slice(5), b = j.body as { status?: Task['status']; completedAt?: string } | undefined, status = b?.status;
+    if (status && !over.has(id)) over.set(id, { status, completedAt: status === 'done' ? b?.completedAt ?? j.at : null });
   }
   const extra = (t.cancelled ?? []).filter((c) => !t.tasks.some((x) => x.id === c.id));
   if (!extra.length && !over.size) return t;
@@ -181,14 +181,16 @@ export function useToday() {
 
   /** Tick or untick. Shows at once; the PATCH waits out the double-tap window, so a second tap that turns the tick into
    *  a cancel sends only the cancel (a repeating task must not file its next one as done first). Reverts with a
-   *  notice if the PC says no. */
-  const toggle = useCallback(async (id: string) => {
+   *  notice if the PC says no. `at`: when it was done, for a tick on an earlier day (Today swiped back); else now. The
+   *  time goes with the PATCH, so a tick that waits on the phone still counts for the day it was made. */
+  const toggle = useCallback(async (id: string, at?: string) => {
     const s = live.current;
     if (s.status !== 'ready') return;
     const before = s.today.tasks.find((t) => t.id === id);
     if (!before) return;
     const done = before.status !== 'done';
-    const patch: Partial<Task> = done ? { status: 'done', completedAt: new Date().toISOString() } : { status: 'todo', completedAt: null };
+    const completedAt = at ?? new Date().toISOString();
+    const patch: Partial<Task> = done ? { status: 'done', completedAt } : { status: 'todo', completedAt: null };
     if (DEMO) { patchTask(id, patch); return; }
     const base = unhold(id) ?? { status: before.status, completedAt: before.completedAt };
     show(id, patch);
@@ -196,7 +198,7 @@ export function useToday() {
       held.current.set(id, { base, drop: () => resolve(false), timer: setTimeout(() => { held.current.delete(id); resolve(true); }, HOLD) });
     });
     if (!go) return;
-    try { await send(id, { status: done ? 'done' : 'todo' }); } catch (e) { failed(id, base, e); }
+    try { await send(id, done ? { status: 'done', completedAt } : { status: 'todo' }); } catch (e) { failed(id, base, e); }
   }, [patchTask, show, send, unhold, failed]);
 
   /** Cancel for today: the PC skips this occurrence of a repeating task (its next one is filed) and drops a one-off.

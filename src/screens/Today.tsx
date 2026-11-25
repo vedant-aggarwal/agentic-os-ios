@@ -23,7 +23,9 @@ import { micCenter, pillCenter, TOP_GAP, TOP_H, TopBar } from '@/components/TopB
 import { api, signOut } from '@/lib/api';
 import { gazeTouch } from '@/lib/gaze';
 import { type Offline, useToday } from '@/lib/useToday';
-import { clock, dayLabel } from '@/aspects/kit/time';
+import { clock, dayLabel, myDay } from '@/aspects/kit/time';
+import { deriveToday } from '@/lib/today';
+import { payloadFor, useMyDay, useWeekEvents } from '@/today2/when';
 import { useBody } from '@/lib/body';
 import { startContactSync } from '@/lib/contacts';
 import { TodayPlan, TodayToast, useTodayToast } from '@/today2/TodayPlan';
@@ -105,11 +107,18 @@ function PhoneToday() {
   const [remoteOpen, setRemoteOpen] = useState(false); // the top bar's Remote PC button: the PC's screen, full screen
   const [pcTab, setPcTab] = useState<PcTab | null>(null); // hold Remote PC: media remote and power
   const [heroOn, setHeroOn] = useState(true); // the 3D hero renders only while some of it is on screen
+  // His day rolls at 04:00, as capture, mood and the routines count it: at 01:30 Today is still the evening's, its
+  // tasks due that day and everything it ticks lands there (GET /today's date is the calendar's).
+  const liveDay = useMyDay();
+  const ready = t.state.status === 'ready' ? t.state : null;
+  const events = useWeekEvents(liveDay, ready?.today.date ?? null);
+  const dayToday = useMemo(() => (ready ? payloadFor(ready.today, liveDay, events) : null), [ready, liveDay, events]);
+  const dayView = useMemo(() => (ready && dayToday ? deriveToday(dayToday, ready.life, ready.areas, myDay) : null), [ready, dayToday]);
   // Today's routine ticks per aspect (shower, meals, habits...), reported by the plan. The crystals and the orb's
   // arcs count them on top of the tasks, so every tick on Today fills its crystal.
   const [routine, setRoutine] = useState<AspectProgress | null>(null);
-  const reach = useMemo(() => (t.view ? addReach(t.view.reach, routine) : {}), [t.view, routine]);
-  const planned = useMemo(() => (t.view ? addReach(t.view.aspects, routine) : {}), [t.view, routine]);
+  const reach = useMemo(() => (dayView ? addReach(dayView.reach, routine) : {}), [dayView, routine]);
+  const planned = useMemo(() => (dayView ? addReach(dayView.aspects, routine) : {}), [dayView, routine]);
   // A page pushed over Today (Work, a job, a project) leaves Today mounted underneath: both WebGL scenes stop then,
   // else they keep drawing every frame behind the page and the whole app stutters.
   const focused = useIsFocused();
@@ -176,8 +185,8 @@ function PhoneToday() {
 
   if (t.state.status === 'signedOut') return <SignIn onDone={t.reload} />;
 
-  const v = t.view;
-  const day = t.state.status === 'ready' ? t.state : null;
+  const v = dayView;
+  const day = ready;
   const orb = orbFromBottom(insets.bottom);
   return (
     // every touch on Today is passed to the smiley, which looks toward the finger
@@ -193,7 +202,7 @@ function PhoneToday() {
         <Hero view={v} reach={reach} top={insets.top} topBar={TOP_GAP + TOP_H} active={focused && heroOn && !aspect && !moodFrom} />
 
         <View style={[s.sheet, { paddingBottom: insets.bottom + 140 }]}>
-          <TodayPlan today={day.today} life={day.life} areas={day.areas} body={b.body} say={tt.say} hide={tt.hide}
+          <TodayPlan today={dayToday ?? day.today} life={day.life} areas={day.areas} body={b.body} say={tt.say} hide={tt.hide}
             onOpen={openLink} onToggleTask={(id) => { void toggle(id); }} onCancelTask={(id) => { void cancel(id); }} onRestoreTask={(id) => { void restore(id); }}
             onHome={(list) => noraUi.openHome(list)} onRoutine={setRoutine} />
           <Pressable accessibilityRole="button" onPress={async () => { await signOut(); t.reload(); }} style={s.more}>

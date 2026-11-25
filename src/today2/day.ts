@@ -1,12 +1,12 @@
 import { useMemo } from 'react';
 import { useCapture, type BodyCheck } from '@/capture/data';
-import type { FrameId } from '@/capture/moments';
+import type { FrameId, TickId } from '@/capture/moments';
 import { DEMO } from '@/lib/demo';
 import { useCollection, type Doc } from '@/lib/mod';
 import type { BodyToday } from '@/lib/body';
 import type { Area, AspectProgress, LifePayload, Task, TodayPayload } from '@/lib/today';
 import { ASPECT_COLOR, type AspectKey } from '@/theme';
-import { today as calendarDay } from '@/aspects/kit/time';
+import { today as calendarDay, myDay } from '@/aspects/kit/time';
 
 // Today's routine as data: what each section holds, what is done, and the writes. The quick capture panel's items
 // read and write through capture/data.ts, so a tick in one place shows in the other. Routine rows the panel doesn't
@@ -16,7 +16,6 @@ import { today as calendarDay } from '@/aspects/kit/time';
 // and the day's counts pass over it; tomorrow's row is a new check, so it comes back by itself.
 
 export const IST = 5.5 * 3600_000;
-const istDay = (iso: string) => new Date(Date.parse(iso) + IST).toISOString().slice(0, 10);
 
 export type CheckId =
   | 'cold-shower' | 'ice-face' | 'skincare-am' | 'gua-sha' | 'squint' | 'voice'
@@ -36,10 +35,12 @@ export const DEFAULT_MORNING: RoutineItem[] = [
 export const DEFAULT_NIGHT: RoutineItem[] = [
   { id: 'night-room', title: 'Clean my room' }, { id: 'night-teeth', title: 'Brush teeth' }, { id: 'night-skin', title: 'Skincare' },
 ];
-type Routines = { morning: RoutineItem[]; night: RoutineItem[] };
-type RoutineDoc = Doc & Partial<Routines>;
+export type Routines = { morning: RoutineItem[]; night: RoutineItem[] };
+export type RoutineDoc = Doc & Partial<Routines>;
 
 type Session = Doc & { date?: string; kind?: string; title?: string; source?: string };
+/** A workout in the body module (a quick log is one too, done at once): the gym row for a day other than today. */
+export type Workout = Doc & { date?: string; status?: string };
 
 export const MEALS: { id: FrameId; title: string; plan: string; slot: string }[] = [
   { id: 'breakfast', title: 'Breakfast', plan: 'Protein oats, fruit and milk', slot: 'breakfast' },
@@ -49,10 +50,14 @@ export const MEALS: { id: FrameId; title: string; plan: string; slot: string }[]
   { id: 'dinner', title: 'Dinner', plan: 'Light and high protein', slot: 'dinner' },
 ];
 
+/** `o.today` is the day's payload (lib/today `payloadFor`): its `date` is the day on screen, and every routine write
+ *  lands on that day. `o.body` is today's body read; another day's gym comes from the day's workouts. */
 export function useDay(o: { today: TodayPayload | null; life: LifePayload | null; areas: Area[]; body: BodyToday | null }) {
-  const cap = useCapture();
+  const cap = useCapture(o.today?.date);
+  const live = cap.live;
   const checks = useCollection<BodyCheck>('body', 'checks');
   const sessions = useCollection<Session>('mind', 'sessions');
+  const workouts = useCollection<Workout>('body', 'workouts');
   // his routine steps, edited from Today (hold the Body head); body settings doc `today-routines`
   const settings = useCollection<RoutineDoc>('body', 'settings');
   const savedRoutines = settings.items?.find((x) => x.id === 'today-routines');
@@ -118,11 +123,12 @@ export function useDay(o: { today: TodayPayload | null; life: LifePayload | null
     if (!t || !o.life) return { by: new Map<AspectKey | 'none', Task[]>(), dueToday: [] as Task[] };
     const aspectOf = (area: string | null): AspectKey | null => (area ? o.life!.areaAspects[area]?.[0] ?? null : null);
     const mine = t.tasks.filter((x) => !x.parent && (x.owner == null || x.owner === 'me'));
-    // what he cancelled on Today today (useToday folds GET /today's `cancelled` in) stays, struck through, until the day ends
-    const live = mine.filter((x) => x.status === 'todo' || x.status === 'doing' || x.status === 'dropped'
-      || (x.status === 'done' && !!x.completedAt && istDay(x.completedAt) === t.date && x.due === t.date));
+    // what he cancelled on Today today (useToday folds GET /today's `cancelled` in) stays, struck through, until the day
+    // ends; another day leaves it out. A task done counts for his day (rolls at 04:00): ticked at 01:30, the evening's.
+    const shown = mine.filter((x) => x.status === 'todo' || x.status === 'doing' || (x.status === 'dropped' && live)
+      || (x.status === 'done' && !!x.completedAt && myDay(x.completedAt) === t.date && x.due === t.date));
     const by = new Map<AspectKey | 'none', Task[]>();
-    for (const x of live) {
+    for (const x of shown) {
       if (x.due && x.due > t.date) continue; // a later day's task waits on Home
       const k = aspectOf(x.area) ?? 'none';
       (by.get(k) ?? by.set(k, []).get(k)!).push(x);
@@ -131,16 +137,20 @@ export function useDay(o: { today: TodayPayload | null; life: LifePayload | null
     const order = (a: Task, b: Task) => shut(a) - shut(b)
       || Number(!a.due) - Number(!b.due) || String(a.due ?? '').localeCompare(String(b.due ?? ''));
     for (const list of by.values()) list.sort(order);
-    return { by, dueToday: live.filter((x) => x.due === t.date && x.status !== 'dropped') };
-  }, [o.today, o.life]);
+    return { by, dueToday: shown.filter((x) => x.due === t.date && x.status !== 'dropped') };
+  }, [o.today, o.life, live]);
   const areaName = useMemo(() => new Map(o.areas.map((a) => [a.slug, a.name])), [o.areas]);
 
   const mealDone = (id: FrameId) => cap.frames[id]?.status === 'logged';
-  const gymDone = !!o.body && o.body.trained.length > 0;
+  // today: the body module's answer (a quick log counts); another day: a workout finished that day
+  const gymDone = live ? !!o.body && o.body.trained.length > 0 : (workouts.items ?? []).some((w) => w.date === day && w.status === 'done');
+  // the gym counts toward the day once the body module answers; another day's always does
+  const gymCounted = live ? !!o.body : true;
 
   return {
-    // `day`: his day (rolls at 04:00) for routine ticks; `taskDay`: the calendar day Today's tasks are due by (GET /today)
-    cap, day, taskDay: o.today?.date ?? calendarDay(), on, mode, toggle, setShower, routines, saveRoutines, practice, togglePractice, tasks, areaName, mealDone, gymDone,
+    // `day`: the day on screen, his day (rolls at 04:00), which every routine tick lands on; `taskDay`: the day its
+    // tasks are due by (the same day: Today's payload for it). `live`: the day is today.
+    cap, day, live, taskDay: o.today?.date ?? calendarDay(), on, mode, toggle, setShower, routines, saveRoutines, practice, togglePractice, tasks, areaName, mealDone, gymDone, gymCounted,
     skipped: isSkipped, skip, skipPractice,
     color: ASPECT_COLOR,
   };
@@ -150,10 +160,22 @@ export type Day = ReturnType<typeof useDay>;
 /** A body check Today can cancel for the day: a routine row's own, or the practice rows' and the book's stand-ins. */
 export type SkipId = CheckId | 'practice-speak' | 'practice-course' | 'book';
 
+/** What routineFlags reads of a day: `Day` for the day on screen, or the same shape built from the collections for
+ *  any day of the week (today2/week.ts). */
+export type FlagSrc = {
+  cap: { doneTicks: Set<TickId>; wakeAt: string | null; water: number; waterTarget: number };
+  skipped: (item: string) => boolean;
+  on: (id: CheckId) => boolean;
+  routines: Routines;
+  mealDone: (id: FrameId) => boolean;
+  practice: (k: 'speak' | 'course') => boolean;
+  gymDone: boolean;
+};
+
 /** Every routine tick on Today, by the part of the plan it sits in. The section rings count these, and so do the
  *  hero's crystals, so a tick anywhere on Today fills both. A row cancelled for today is left out. Tasks are counted
  *  apart (Plan's dueOf, lib/today's reach). */
-export function routineFlags(d: Day, hasBody: boolean) {
+export function routineFlags(d: FlagSrc, hasBody: boolean) {
   const tk = d.cap.doneTicks, woke = !!d.cap.wakeAt, drink = tk.has('drink');
   const keep = (item: string, v: boolean) => (d.skipped(item) ? [] : [v]);
   const ons = (ids: CheckId[]) => ids.flatMap((id) => keep(id, d.on(id)));

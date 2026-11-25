@@ -50,6 +50,33 @@ type Session = Doc & { kind?: string; date: string; book?: string | null; title?
 type Sit = Doc & { date: string; secs: number; source?: string };
 type Entry = Doc & { date: string; text: string };
 type Habit = Doc & { title: string; archived?: boolean };
+/** Soul's row for a day (id = the date): `pledge` is when Clean's promise was made that day. */
+type SoulDay = Doc & { pledge?: string | null };
+
+/** The records a day's ticks are read from: the same collections the ticks write. */
+export type TickSrc = {
+  checks: readonly BodyCheck[]; sessions: readonly Pick<Session, 'id' | 'date' | 'kind'>[];
+  journal: readonly Pick<Entry, 'date' | 'text'>[]; sits: readonly Pick<Sit, 'date'>[];
+};
+/** The capture ticks done on `day`, from what they wrote; `pledged`: Clean's promise was made that day. */
+export function ticksOn(day: string, src: TickSrc, pledged: boolean): Set<TickId> {
+  const c = new Map(src.checks.filter((x) => x.date === day).map((x) => [x.item, x]));
+  const on = (item: string) => !!c.get(item)?.done;
+  const s = new Set<TickId>();
+  if (on('wake')) s.add('wake');
+  if (on('wake-drink')) s.add('drink');
+  if (on('no-sugar')) s.add('nosugar');
+  if (on('night-routine')) s.add('night');
+  for (const g of ['chess', 'sudoku', 'matiks'] as const) if (src.sessions.some((x) => x.id === `game-${day}-${g}`)) s.add(g);
+  if (src.sessions.some((x) => x.date === day && x.kind === 'reading')) s.add('book');
+  if (src.journal.some((x) => x.date === day && x.text?.trim())) s.add('journal');
+  if (src.sits.some((x) => x.date === day)) s.add('meditate');
+  if (pledged) s.add('clean');
+  return s;
+}
+
+/** A meal typed in for an earlier day sits at its slot's usual hour that day. */
+const SLOT_HM: Record<string, string> = { breakfast: '08:30', salad: '12:00', lunch: '13:30', evening_snack: '17:30', snack: '17:30', dinner: '20:30' };
 /** What a tap did, for the toast, with the way back when it took something off. */
 export type Said = { said: string; undo: () => Promise<unknown> };
 
@@ -87,6 +114,7 @@ function demoDescribe(id: string, text: string, as?: DescribeKind): Described {
 }
 
 type Roll = { day: string; shots: Partial<Record<FrameId, Shot>> };
+const NO_SHOTS: Roll['shots'] = {};
 const KEY = 'capture:v1:roll';
 let roll: Roll = { day: myDay(), shots: {} };
 const subs = new Set<() => void>();
@@ -135,12 +163,12 @@ export type FrameState = {
 export const SEALED: ReadonlySet<FrameId> = new Set<FrameId>(['body', 'face']);
 
 // ── demo: sample data for the web preview (?demo), nobody's real numbers ───────────────────────────────────────────
-function demoDiet(): Diet {
-  const d = myDay();
+function demoDiet(d: string = myDay()): Diet {
+  const live = d === myDay();
   return {
-    day: d, today: d, totals: { kcal: 640, protein: 42, carbs: 70, fat: 18, n: 1 }, water: 5,
+    day: d, today: myDay(), totals: live ? { kcal: 640, protein: 42, carbs: 70, fat: 18, n: 1 } : { kcal: 0, protein: 0, carbs: 0, fat: 0, n: 0 }, water: live ? 5 : 0,
     targets: { protein: { v: 140, set: true, from: 'you' }, kcal: { v: 2400, set: true, from: 'you' }, water: { v: 20, set: true, from: 'you' } },
-    meals: [{ id: 'm1', name: 'Protein oats, banana, milk', at: `${d}T03:30:00.000Z`, slot: 'breakfast', kcal: 640, protein: 42, carbs: 70, fat: 18, estimate: false, unknown: false, photo: null, source: 'app', items: null }],
+    meals: live ? [{ id: 'm1', name: 'Protein oats, banana, milk', at: `${d}T03:30:00.000Z`, slot: 'breakfast', kcal: 640, protein: 42, carbs: 70, fat: 18, estimate: false, unknown: false, photo: null, source: 'app', items: null }] : [],
     week: [], recent: [], photos: [],
   };
 }
@@ -150,10 +178,14 @@ const DEMO_READ = { reading: [{ id: 'b1', title: 'Deep Work', author: 'Cal Newpo
 
 const fakeWait = (ms = 700) => new Promise((r) => setTimeout(r, ms));
 
-/** Everything the capture surface reads, and every write it makes. */
-export function useCapture() {
-  const day = myDay();
-  const diet = useGet<Diet>(DEMO ? null : '/mod/body/diet');
+/** Everything the capture surface reads, and every write it makes, for his day `on` (YYYY-MM-DD; today's by default,
+ *  which rolls at 04:00). Today swiped back to an earlier day passes that day, and every tick, glass, meal, line and
+ *  pledge then lands on it. Photos are today's only (the meal photo has no day on the PC). */
+export function useCapture(on?: string) {
+  const today0 = myDay();
+  const day = on ?? today0;
+  const live = day === today0;
+  const diet = useGet<Diet>(DEMO ? null : live ? '/mod/body/diet' : `/mod/body/diet?day=${day}`);
   const clean = useGet<CleanNow>(DEMO ? null : '/mod/soul/clean/now');
   const read = useGet<ReadView>(DEMO ? null : '/mod/mind/read');
   const lifeRead = useGet<LifePayload>(DEMO ? null : '/life');
@@ -162,13 +194,23 @@ export function useCapture() {
   const sits = useCollection<Sit>('soul', 'sits');
   const journal = useCollection<Entry>('growth', 'journal');
   const habits = useCollection<Habit>('soul', 'habits');
-  const shots = useRoll();
+  const soulDays = useCollection<SoulDay>('soul', 'days');
+  const roll = useRoll();
+  const shots = live ? roll : NO_SHOTS;
 
-  const [demoDietState, setDemoDiet] = useState<Diet | null>(() => (DEMO ? demoDiet() : null));
+  // the sample preview keeps each day's diet in memory: today's sample, any other day empty until he adds to it
+  const [demoDiets, setDemoDiets] = useState<Record<string, Diet>>({});
+  const setDemoDiet = (f: (d: Diet | null) => Diet | null) => setDemoDiets((all) => {
+    const next = f(all[day] ?? demoDiet(day));
+    return next ? { ...all, [day]: next } : all;
+  });
   const [demoClean, setDemoClean] = useState(DEMO_CLEAN);
   const [demoSmart] = useState(() => new Map<string, SmartItem>());
-  const dietData = DEMO ? demoDietState : diet.data;
+  const dietData = DEMO ? demoDiets[day] ?? demoDiet(day) : diet.data;
   const cleanData = DEMO ? demoClean : clean.data;
+  // Clean's promise: today's from Clean's own read; an earlier day's from Soul's row for that day
+  const dayRow = (soulDays.items ?? []).find((x) => x.id === day);
+  const pledged = live ? !!(cleanData && cleanData.setup && cleanData.pledged) : !!dayRow?.pledge;
   const book = (DEMO ? DEMO_READ : read.data)?.reading?.[0] ?? null;
   const demo = useMemo(() => (DEMO ? demoData() : null), []);
   const life = DEMO ? demo?.life : lifeRead.data;
@@ -181,21 +223,11 @@ export function useCapture() {
   const todayChecks = useMemo(() => new Map((checks.items ?? []).filter((c) => c.date === day).map((c) => [c.item, c])), [checks.items, day]);
   const checked = (item: string) => !!todayChecks.get(item)?.done;
 
-  // ── done today ──
-  const doneTicks = useMemo(() => {
-    const s = new Set<TickId>();
-    if (checked('wake')) s.add('wake');
-    if (checked('wake-drink')) s.add('drink');
-    if (checked('no-sugar')) s.add('nosugar');
-    if (checked('night-routine')) s.add('night');
-    for (const g of ['chess', 'sudoku', 'matiks'] as const) if ((sessions.items ?? []).some((x) => x.id === `game-${day}-${g}`)) s.add(g);
-    if ((sessions.items ?? []).some((x) => x.date === day && x.kind === 'reading')) s.add('book');
-    if ((journal.items ?? []).some((x) => x.date === day && x.text?.trim())) s.add('journal');
-    if ((sits.items ?? []).some((x) => x.date === day)) s.add('meditate');
-    if (cleanData && cleanData.setup && cleanData.pledged) s.add('clean');
-    return s;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [todayChecks, sessions.items, journal.items, sits.items, cleanData, day]);
+  // ── done on the day ──
+  const doneTicks = useMemo(
+    () => ticksOn(day, { checks: checks.items ?? [], sessions: sessions.items ?? [], journal: journal.items ?? [], sits: sits.items ?? [] }, pledged),
+    [day, checks.items, sessions.items, journal.items, sits.items, pledged],
+  );
 
   const frames = useMemo(() => {
     const out = {} as Record<FrameId, FrameState>;
@@ -322,6 +354,21 @@ export function useCapture() {
       }
       case 'wake': case 'journal': case 'book': return null; // through wake(), journalLine() and page()
       case 'clean': {
+        if (!live) {
+          // an earlier day: the pledge is made at that evening's time (the PC files it under the day it falls in);
+          // taking it back clears that day's row, as the PC's own take-back does for today
+          if (on) {
+            if (cleanData && !cleanData.setup) throw new Error('Start Clean in Soul first.');
+            if (DEMO) await soulDays.put({ ...(dayRow ?? {}), id: day, pledge: stamp() } as never);
+            else { await api('/mod/soul/clean/pledge', { method: 'POST', body: { at: new Date(`${day}T21:00:00+05:30`).toISOString() } }); invalidate('/mod/soul/'); void soulDays.refresh(); }
+            tickHabit(/clean/i, true);
+            return 'Pledged for that day';
+          }
+          await soulDays.put({ ...(dayRow ?? {}), id: day, pledge: null } as never);
+          invalidate('/mod/soul/');
+          tickHabit(/clean/i, false);
+          return 'Pledge taken back';
+        }
         if (!on) {
           if (DEMO) { await fakeWait(300); setDemoClean({ ...demoClean, pledged: false } as CleanNow); return 'Pledge taken back'; }
           await api('/mod/soul/clean/pledge', { method: 'DELETE' });
@@ -355,12 +402,14 @@ export function useCapture() {
     const slot = MEAL_SLOT[f] ?? 'snack';
     const word = SLOT_WORD[f] ?? 'Meal';
     const id = newId('meal');
+    // an earlier day's meal is filed under that day, at its slot's usual hour
+    const at = live ? stamp() : new Date(`${day}T${SLOT_HM[slot] ?? '13:00'}:00+05:30`).toISOString();
     if (DEMO) {
       await fakeWait(350);
-      setDemoDiet((d) => (d ? { ...d, meals: [...d.meals, { id, name, at: stamp(), slot, kcal: 380, protein: 18, carbs: null, fat: null, estimate: true, unknown: false, photo: null, source: 'today', items: null }] } : d));
+      setDemoDiet((d) => (d ? { ...d, meals: [...d.meals, { id, name, at, slot, kcal: 380, protein: 18, carbs: null, fat: null, estimate: true, unknown: false, photo: null, source: 'today', items: null }] } : d));
       return { said: `${word} logged, about 18 g protein`, undo: async () => { setDemoDiet((d) => (d ? { ...d, meals: d.meals.filter((m) => m.id !== id) } : d)); } };
     }
-    const r = await api<{ item: { protein?: number; unknown?: boolean } }>('/mod/body/meals', { method: 'POST', body: { id, name, slot, at: stamp(), source: 'today' } });
+    const r = await api<{ item: { protein?: number; unknown?: boolean } }>('/mod/body/meals', { method: 'POST', body: { id, name, slot, at, date: day, source: 'today' } });
     invalidate('/mod/body/');
     return {
       said: r.item.unknown ? `${word} logged. Add its protein in Diet.` : `${word} logged, about ${Math.round(Number(r.item.protein) || 0)} g protein`,
@@ -381,7 +430,7 @@ export function useCapture() {
   async function journalLine(text: string) {
     const at = stamp();
     const id = newId('jr');
-    const date = myDay(at);
+    const date = live ? myDay(at) : day;
     await journal.put({ id, date, at, text: text.trim(), kind: 'typed', by: 'me', source: 'capture' } as never);
     tickHabit(/journal/i, true);
     invalidate('/mod/soul/journal');
@@ -519,7 +568,8 @@ export function useCapture() {
   const aspects = ASPECT_KEYS.map((k) => ({ key: k, name: ASPECT_NAME[k] }));
 
   return {
-    day, frames, doneTicks, water, waterTarget,
+    // `live`: the day is today's (photos and the smart photo work only then)
+    day, live, frames, doneTicks, water, waterTarget,
     wakeAt: todayChecks.get('wake')?.done ? (todayChecks.get('wake')?.time ?? null) : null,
     cleanDay: cleanData && cleanData.setup ? cleanData.day : null,
     cleanReady: !cleanData || cleanData.setup,

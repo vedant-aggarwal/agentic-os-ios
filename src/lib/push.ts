@@ -1,7 +1,7 @@
 import { requireOptionalNativeModule } from 'expo';
 import { Alert, AppState, Platform } from 'react-native';
 import { api, currentToken } from './api';
-import { authorizeAlarms } from './alarms';
+import { alarmsRingThroughSilent, authorizeAlarms } from './alarms';
 import { openLink, parseLink } from './links';
 
 // Push notifications: the APNs token goes to the PC (POST /devices { kind: 'apns', token }, as the old app sent it),
@@ -114,13 +114,26 @@ export async function askForPush(): Promise<boolean> {
 
 const LATER_KEY = 'aos_push_later';
 const LAUNCH_KEY = 'aos_launches';
+const ALARMS_KEY = 'aos_alarms_answer';
 let askTimer: ReturnType<typeof setTimeout> | null = null;
 
-/** On the second launch onward, signed in, after 20 seconds on screen: say what notifications are for, then ask. */
+/** iOS 26: AlarmKit's own permission, asked until he has answered it. Until then the PC's alarms are plain
+ *  notifications that don't ring through silent mode or Focus. iOS asks only while it's undecided, with the app's
+ *  one-line reason (NSAlarmKitUsageDescription in app.json). */
+async function alarmsOnce() {
+  if (!store || !alarmsRingThroughSilent()) return;
+  if (await store.getItemAsync(ALARMS_KEY)) return;
+  const r = await authorizeAlarms();
+  if (r.status !== 'prompt') await store.setItemAsync(ALARMS_KEY, r.status); // 'prompt': still undecided, ask next time
+}
+
+/** On the second launch onward, signed in, after 20 seconds on screen: say what notifications are for, then ask.
+ *  Once notifications are settled (the prompt won't show), it asks for alarms instead: before this, alarms were only
+ *  asked for by the prompt's Turn on, so with notifications already allowed they were never asked for. */
 async function maybeAsk() {
   if (!N || !store || !currentToken()) return;
   const p = await N.getPermissionsAsync();
-  if (p.granted || !p.canAskAgain || p.ios?.status !== N.IosAuthorizationStatus.NOT_DETERMINED) return;
+  if (p.granted || !p.canAskAgain || p.ios?.status !== N.IosAuthorizationStatus.NOT_DETERMINED) { await alarmsOnce(); return; }
   const launches = Number((await store.getItemAsync(LAUNCH_KEY)) ?? 0);
   const later = Number((await store.getItemAsync(LATER_KEY)) ?? 0);
   if (launches < 2 || Date.now() < later) return;
@@ -129,7 +142,7 @@ async function maybeAsk() {
     "Nora's messages, finished jobs and your alarms show up here, even when the app is closed.",
     [
       { text: 'Not now', style: 'cancel', onPress: () => { store.setItemAsync(LATER_KEY, String(Date.now() + 3 * 86400_000)).catch(() => {}); } },
-      { text: 'Turn on', onPress: () => { askForPush().then(() => authorizeAlarms()).catch(() => {}); } },
+      { text: 'Turn on', onPress: () => { askForPush().then(async () => { if (alarmsRingThroughSilent()) await alarmsOnce(); else await authorizeAlarms(); }).catch(() => {}); } },
     ],
   );
 }

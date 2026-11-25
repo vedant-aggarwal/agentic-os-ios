@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { Button, Field, haptic, Row, Sheet, shortDay, Skeleton, t, undoable, useAspect } from '@/aspects/kit';
+import { Block, Button, Field, Group, haptic, Item, Sheet, Skeleton, t, undoable, useAspect } from '@/aspects/kit';
 import { invalidate, useGet } from '@/lib/mod';
-import { act, M, message } from './data';
+import { act, dueWords, M, message } from './data';
 import type { GoalDetail } from './types';
 
 /** An open task as `GET /tasks?status=open` sends it, as far as tying reads it. */
@@ -68,31 +68,34 @@ export function TieSheet({ goal, onClose }: { goal: string | null; onClose: () =
   };
 
   const sub = (x: OpenTask) => [
-    x.goal ? 'Serves another goal. Tying it moves it here' : null,
-    x.project ? x.project : x.area,
-    x.due ? `Due ${shortDay(x.due)}` : null,
-  ].filter(Boolean).join('. ') || null;
+    x.goal ? 'Serves another goal, tying moves it here' : null,
+    (x.project ?? x.area)?.replace(/[-_]+/g, ' ') ?? null,
+    x.due ? `due ${dueWords(x.due)}` : null,
+  ].filter(Boolean).join(', ').replace(/^./, (c) => c.toUpperCase()) || null;
 
   return (
     <Sheet open={!!goal} onClose={onClose} title="Tie a task to it">
-      <Text style={t.small}>{d ? `Pick one of your tasks as the next step for ${d.goal.title}.` : 'Pick one of your tasks as its next step.'}</Text>
+      <Text style={t.subhead}>{d ? `The next step for ${d.goal.title}. Write a new one, or pick one of your tasks.` : 'Write a new next step, or pick one of your tasks.'}</Text>
       <View style={st.new}>
-        <Field label="Or write a new next step" value={step} onChangeText={setStep} placeholder="The smallest thing that moves it" onSubmit={() => void add()} maxLength={300} />
-        {step.trim() ? <Button label="Add it to Today" kind="soft" small busy={busy === 'new'} onPress={() => void add()} wrap={st.left} /> : null}
+        <Field label="A new next step" value={step} onChangeText={setStep} placeholder="The smallest thing that moves it" onSubmit={() => void add()} maxLength={300} />
+        {step.trim() ? <Button label="Add it to Today" kind="accent" small busy={busy === 'new'} onPress={() => void add()} wrap={st.left} /> : null}
       </View>
-      {!tasks.data ? (tasks.error ? <Text style={t.small}>{tasks.error}</Text> : <Skeleton height={160} radius={16} />) : (
-        <>
-          {tasks.data.tasks.length > 8 ? <Field value={find} onChangeText={setFind} placeholder="Find a task" maxLength={100} /> : null}
-          {list.length ? (
-            <View>
-              {list.slice(0, SHOWN).map((x) => (
-                <Row key={x.id} title={x.title} sub={busy === x.id ? 'Tying it' : sub(x)} label={`Tie ${x.title}`} onPress={() => void tie(x)} />
-              ))}
-              {list.length > SHOWN ? <Text style={t.caption}>{`${list.length - SHOWN} more. Find one by name.`}</Text> : null}
-            </View>
-          ) : <Text style={t.small}>{find.trim() ? 'No open task by that name.' : 'No open tasks to tie. Write a new step above.'}</Text>}
-        </>
-      )}
+      <Block title="Your open tasks" sub="Ones in its projects and area come first">
+        {!tasks.data ? (tasks.error ? <Text style={t.footnote}>{tasks.error}</Text> : <Skeleton height={160} radius={22} />) : (
+          <>
+            {tasks.data.tasks.length > 8 ? <Field value={find} onChangeText={setFind} placeholder="Find a task" maxLength={100} /> : null}
+            {list.length ? (
+              <Group>
+                {list.slice(0, SHOWN).map((x) => (
+                  <Item key={x.id} title={x.title} sub={busy === x.id ? 'Tying it' : sub(x)} label={`Tie ${x.title}`} onPress={() => void tie(x)}
+                    action={<Button label="Tie" kind="soft" small busy={busy === x.id} onPress={() => void tie(x)} />} />
+                ))}
+              </Group>
+            ) : <Text style={t.footnote}>{find.trim() ? 'No open task by that name.' : 'No open tasks to tie. Write a new step above.'}</Text>}
+            {list.length > SHOWN ? <Text style={t.footnote}>{`${list.length - SHOWN} more. Find one by name.`}</Text> : null}
+          </>
+        )}
+      </Block>
     </Sheet>
   );
 }

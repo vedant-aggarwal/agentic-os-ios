@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { addDays, Button, Card, Chip, Empty, haptic, Screen, Skeleton, t, today, useAspect, weekStart } from '@/aspects/kit';
+import { addDays, Button, Chip, Empty, Group, haptic, Screen, Skeleton, t, today, undoable, useAspect, weekStart } from '@/aspects/kit';
 import { useGet } from '@/lib/mod';
 import { C, type AspectKey } from '@/theme';
 import { act, ASPECT_LABEL, cap, count, endedAgo, message, nextStart, NUMBER_WORDS, OUTCOME_WORD, slotsPath, WHY_MISSED } from './data';
@@ -75,7 +75,7 @@ export function CloseChoice({ goal, sunday, onClosed, nested }: { goal: Goal; su
       </View>
       {pick === 'missed' || pick === 'dropped' ? (
         <View style={st.follow}>
-          <Text style={t.label}>What got in the way? One tap, or skip.</Text>
+          <Text style={t.footnote}>What got in the way? One tap, or skip.</Text>
           <View style={st.chips}>
             {(pick === 'dropped' ? ['Plans changed', 'Lost interest', 'Done another way', 'Too big'] : WHY_MISSED).map((w) => (
               <Chip key={w} label={w} onPress={busy ? undefined : () => void send(pick, { why: w })} />
@@ -86,7 +86,7 @@ export function CloseChoice({ goal, sunday, onClosed, nested }: { goal: Goal; su
       ) : null}
       {pick === 'carried' ? (
         <View style={st.follow}>
-          <Text style={t.label}>Carry it into</Text>
+          <Text style={t.footnote}>Carry it into</Text>
           <View style={st.chips}>
             {[...new Set<Horizon>([...CARRY_TO, ...(goal.horizon === 'year' ? ['year' as Horizon] : [])])].map((h) => (
               <Chip key={h} label={h === 'year' ? 'This year' : carryLabel(h)} selected={into === h} onPress={busy ? undefined : () => carry(h)} />
@@ -113,10 +113,10 @@ function Replace({ goal, full, f, error, busy, sunday, nested, onReplace, onLate
   const later = nextStart(full.h, full.start);
   return (
     <View style={st.follow}>
-      <Text style={t.small}>
+      <Text style={t.subhead}>
         {f ? `${f.label} already holds ${NUMBER_WORDS[f.limit] ?? f.limit}. ${open.length ? 'Pick the one this replaces. That one is let go, with the reason kept.' : 'None of them is still open to replace.'}` : 'That period is full.'}
       </Text>
-      {!f ? (error ? <Text style={t.small}>{error}</Text> : <Skeleton height={56} radius={16} />) : open.map((x) => (
+      {!f ? (error ? <Text style={t.footnote}>{error}</Text> : <Skeleton height={56} radius={16} />) : open.map((x) => (
         <Tile key={x.id} nested={nested} title={x.title} sub={busy === x.id ? 'Replacing it' : ASPECT_LABEL[x.aspect as AspectKey] ?? 'Goal'}
           color={colorOf(x.aspect, a.color)} selected={busy === x.id} onPress={() => { if (!busy) onReplace(f, x.id); }} wrap={st.full} />
       ))}
@@ -127,6 +127,7 @@ function Replace({ goal, full, f, error, busy, sunday, nested, onReplace, onLate
 
 /** The clean-up: every goal past its end date, one card each. The first run clears out what is left from before. */
 export function CloseFlow({ open, onClose, home }: { open: boolean; onClose: () => void; home: Home | null }) {
+  const a = useAspect();
   const nav = useNav();
   const [items, setItems] = useState<{ g: Goal; out: Outcome | null; why?: string | null }[]>([]);
   const [was, setWas] = useState(false);
@@ -138,7 +139,11 @@ export function CloseFlow({ open, onClose, home }: { open: boolean; onClose: () 
   const sunday = home?.weekday === 7;
   const live = home ? home.plan ?? home.week : null;
   const reopen = async (g: Goal) => {
-    try { await act('/reopen', { goal: g.id }); setItems((xs) => xs.map((x) => (x.g.id === g.id ? { ...x, out: null } : x))); } catch {}
+    try { await act('/reopen', { goal: g.id }); setItems((xs) => xs.map((x) => (x.g.id === g.id ? { ...x, out: null } : x))); } catch (e) { a.notice(message(e)); }
+  };
+  const closed = (g: Goal, o: Outcome, w: string | null | undefined) => {
+    setItems((xs) => xs.map((x) => (x.g.id === g.id ? { ...x, out: o, why: w } : x)));
+    undoable(`${OUTCOME_WORD[o]}: ${g.title}`, () => reopen(g));
   };
   return (
     <Screen open={open} onClose={onClose} title="Close goals">
@@ -148,31 +153,33 @@ export function CloseFlow({ open, onClose, home }: { open: boolean; onClose: () 
         <Empty title="Nothing ran past its date" body="When a goal's week, month or quarter ends, it comes here to be closed." />
       ) : (
         <>
-          <Text style={t.body}>
-            {left ? `${cap(count(left, 'goal'))} still open past ${left === 1 ? 'its' : 'their'} end. Say what happened to each. It all stays on your record.` : 'All closed. Your record keeps each one.'}
+          <Text style={t.subhead}>
+            {left ? `${cap(count(left, 'goal'))} still open past ${left === 1 ? 'its' : 'their'} end. Say what happened to ${left === 1 ? 'it' : 'each'}. It all stays on your record.` : 'All closed. Your record keeps each one.'}
           </Text>
           {items.map(({ g, out, why }) => (
-            <Card key={g.id} style={st.card}>
-              <View style={st.head}>
-                <Dot aspect={g.aspect} top={8} />
-                <Text numberOfLines={3} style={[t.strong, ps.flex, out && { color: C.muted }]}>{g.title}</Text>
+            <Group key={g.id} pad>
+              <View style={st.headCol}>
+                <View style={st.head}>
+                  <Dot aspect={g.aspect} top={7} />
+                  <Text numberOfLines={3} style={[t.headline, ps.flex, out && { color: C.faint }]}>{g.title}</Text>
+                </View>
+                <Text style={t.footnote}>{[cap(g.horizon === 'week' ? `Week of ${g.label}` : g.label), endedAgo(g.end)].filter(Boolean).join('. ')}</Text>
               </View>
-              <Text style={t.caption}>{[cap(g.horizon === 'week' ? `Week of ${g.label}` : g.label), endedAgo(g.end)].filter(Boolean).join('. ')}</Text>
               {out ? (
                 <View style={st.closed}>
-                  <Text style={[t.label, ps.flex]}>{why ? `${OUTCOME_WORD[out]}, ${why.toLowerCase()}` : OUTCOME_WORD[out]}</Text>
+                  <Text style={[t.subhead, ps.flex]}>{why ? `${OUTCOME_WORD[out]}, ${why.toLowerCase()}` : OUTCOME_WORD[out]}</Text>
                   <Link label="Undo" onPress={() => void reopen(g)} />
                 </View>
               ) : (
-                <CloseChoice nested goal={g} sunday={sunday} onClosed={(o, w) => setItems((xs) => xs.map((x) => (x.g.id === g.id ? { ...x, out: o, why: w } : x)))} />
+                <CloseChoice nested goal={g} sunday={sunday} onClosed={(o, w) => closed(g, o, w)} />
               )}
-            </Card>
+            </Group>
           ))}
           {!left && live ? (
             // a week that already holds its three has nothing left to set: go back to it on home instead
             live.commitments.filter((c) => c.status !== 'dropped').length >= live.limit
               ? <Button label={sunday ? 'See next week' : 'See this week'} kind="soft" onPress={onClose} />
-              : <Button label={sunday ? 'Set next week' : 'Set this week'} onPress={() => { onClose(); nav.add({ horizon: 'week', start: live.start }); }} />
+              : <Button label={sunday ? 'Set next week' : 'Set this week'} kind="accent" onPress={() => { onClose(); nav.add({ horizon: 'week', start: live.start }); }} />
           ) : null}
         </>
       )}
@@ -182,10 +189,10 @@ export function CloseFlow({ open, onClose, home }: { open: boolean; onClose: () 
 
 const st = StyleSheet.create({
   gap: { gap: 16 },
-  card: { gap: 8 },
-  head: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
-  closed: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 32 },
-  choice: { gap: 12, marginTop: 4 },
+  headCol: { gap: 4 },
+  head: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  closed: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44 },
+  choice: { gap: 12 },
   tiles: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   follow: { gap: 8 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },

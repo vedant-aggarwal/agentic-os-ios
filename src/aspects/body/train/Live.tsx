@@ -35,6 +35,7 @@ export function LiveWorkout({ open, onClose }: { open: boolean; onClose: () => v
   const [ending, setEnding] = useState(false);
   const [hold, setHold] = useState<{ i: number; j: number; until: number } | null>(null);
   const [restGone, setRestGone] = useState<number | null>(null); // a rest that ran out on screen
+  const [saving, setSaving] = useState(false); // Finish was tapped: the record is on its way, the summary follows
   useKeepAwake(open && !!live, 'body-live');
   const [wasOpen, setWasOpen] = useState(open);
   if (wasOpen !== open) { setWasOpen(open); if (open) { setHold(null); setFinished(null); } }
@@ -96,11 +97,13 @@ export function LiveWorkout({ open, onClose }: { open: boolean; onClose: () => v
   const finish = async () => {
     if (!live) return;
     setEnding(false);
+    setSaving(true);
     const id = live.id;
     void cancelRestAlert();
     await save({ ...live, status: 'done', ended_at: new Date().toISOString(), rest_until: null, rest_total: null }, true);
     setHold(null);
     setFinished(id);
+    setSaving(false);
     haptic.success();
   };
   const discard = async () => {
@@ -119,14 +122,14 @@ export function LiveWorkout({ open, onClose }: { open: boolean; onClose: () => v
   const started = live?.started_at ? Date.parse(live.started_at) : null;
   return (
     <>
-      <Screen open={open} onClose={onClose} title={finished ? 'Saved' : live?.name ?? 'Workout'} immersive
+      <Screen open={open} onClose={onClose} title={finished ? 'Saved' : live?.name ?? (saving ? 'Saving' : 'Workout')} immersive
         right={live && !finished ? <Button label="Finish" kind="accent" small onPress={() => setEnding(true)} /> : undefined}
         contentStyle={rest ? s.roomForRest : undefined}
         footer={rest && !finished ? <RestBar key={rest.until} until={rest.until} total={rest.total} bottom={a.insets.bottom} onAdd={changeRest} onSkip={skipRest} onEnd={() => setRestGone(rest.until)} /> : null}>
         {finished ? <Summary id={finished} onDone={onClose} /> : null}
-        {!finished && !live && col.items == null && !col.error ? <Skeleton height={320} radius={22} /> : null}
+        {!finished && !live && (saving || (col.items == null && !col.error)) ? <Skeleton height={320} radius={22} /> : null}
         {!finished && !live && col.error && col.items == null ? <Failed message={col.error} onRetry={() => { void col.refresh(); }} /> : null}
-        {!finished && !live && col.items != null ? <Empty title="No workout in progress" body="Start one from Train." action="Back" onAction={onClose} /> : null}
+        {!finished && !live && !saving && col.items != null ? <Empty title="No workout in progress" body="Start one from Train." action="Back" onAction={onClose} /> : null}
         {!finished && live ? (
           <>
             <Metrics style={s.stats}>

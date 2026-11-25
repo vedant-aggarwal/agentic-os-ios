@@ -2,7 +2,7 @@
 // Invented sample data, nobody's real numbers. Taps change an in-memory copy, so the preview can be used.
 import { collection, demoSource, newId } from '@/lib/mod';
 import { addDays, myDay } from '@/aspects/kit/time';
-import type { Diet, Face, FullSession, Gym, Home, HistoryRow, LibItem, MealRow, Prev, SessionDetail, Voice } from '@/aspects/body/api';
+import type { Diet, Face, FullSession, Gym, Home, HistoryRow, LibItem, MealRow, Prev, ScanSummary, SessionDetail, Voice } from '@/aspects/body/api';
 import type { WorkoutDoc } from '@/aspects/body/gym/workout';
 
 const B = '/mod/body';
@@ -75,6 +75,7 @@ const st = {
     { date: addDays(day, -28), waist: 87, chest: 98.5, arm: 33.5 },
     { date: addDays(day, -12), waist: 86, chest: 99, arm: 34 },
   ] as { date: string; waist: number | null; chest: number | null; arm: number | null }[],
+  scan: null as ScanSummary | null, // the face scan in progress
 };
 st.meals = [
   { id: 'meal-1', name: 'Poha and chai', at: at(day, '08:40'), slot: 'breakfast', kcal: 380, protein: 9, carbs: 62, fat: 9, estimate: true, unknown: false, photo: null, source: 'app', items: null },
@@ -314,7 +315,12 @@ demoSource({
         { key: 'legs', name: 'Legs and speed', muscles: ['quads', 'hamstrings', 'glutes', 'calves'] }, { key: 'upper', name: 'Upper', muscles: ['chest', 'upperback', 'shoulders'] },
         { key: 'lower', name: 'Lower', muscles: ['quads', 'hamstrings', 'glutes'] }, { key: 'arms', name: 'Arms and core', muscles: ['biceps', 'triceps', 'abs'] },
       ];
-      return { split: 'six day', next: 'pull', days: order.map((o) => { const p = past.find((x) => x.split === o.key); return { ...o, last: p?.date ?? null, days: p ? daysSince(p.date) : null }; }) };
+      // today's Pull, once done, moves the rotation on to legs (as Train's Next line says)
+      const pulled = trainedToday().some((h) => h.name === 'Pull');
+      return { split: 'six day', next: pulled ? 'legs' : 'pull', days: order.map((o) => {
+        if (pulled && o.key === 'pull') return { ...o, last: day, days: 0 };
+        const p = past.find((x) => x.split === o.key); return { ...o, last: p?.date ?? null, days: p ? daysSince(p.date) : null };
+      }) };
     },
     [`${B}/voice`]: (): Voice => {
       const dims = [
@@ -377,6 +383,23 @@ demoSource({
     [`${B}/workouts/*`]: (_b, info) => { const id = decodeURIComponent(info.path.split('/').pop() ?? ''); st.quick = st.quick.filter((q) => q.id !== id); return { item: { id } }; },
     [`${B}/targets`]: (body: Partial<typeof st.targets>) => { Object.assign(st.targets, body); return { ok: true }; },
     [`${B}/plan`]: () => ({ by: 'rules', plan: plan() }),
+    // the guided face scan: start or find one, a photo per slot (or taken back), read it, throw it away
+    [`${B}/face/scans`]: () => ({ scan: (st.scan ??= { id: newId('scan'), date: day, status: 'open', overall: null, margin: null, rubric: 'face-3', photos: {} }) }),
+    [`${B}/face/scans/*`]: (_b, info) => {
+      const scan = st.scan;
+      if (!scan) throw new Error('No scan in progress.');
+      const tail = info.path.split('/').pop();
+      if (tail === 'photo') {
+        const slot = info.query.get('slot') ?? 'front';
+        const photos = { ...scan.photos };
+        if (info.method === 'DELETE') delete photos[slot]; else photos[slot] = `demo/face-${slot}`;
+        st.scan = { ...scan, photos };
+        return { ok: true, scan: st.scan };
+      }
+      if (tail === 'read') { st.scan = null; return { scan: { ...scan, status: 'reading' }, started: true }; }
+      if (info.method === 'DELETE') st.scan = null;
+      return { ok: true };
+    },
     [`${B}/measures`]: (body: { date: string; waist: number | null; chest: number | null; arm: number | null }) => {
       st.measures = [...st.measures.filter((m) => m.date !== body.date), body];
       return { ok: true };

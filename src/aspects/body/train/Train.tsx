@@ -104,7 +104,7 @@ function Session({ g }: { g: Gym }) {
       <Lead>
         <View style={u.between}>
           <Text style={[t.footnote, { color: a.color }]}>{s0.plan_by === 'rules' ? 'Today, planned by the rules' : 'Today, planned by Nora'}</Text>
-          <Text style={[t.footnote, t.num]}>{`${sets} sets, about ${minutesFor({ items: s0.items.map((it) => ({ ex: it.ex, name: it.name, sets: it.sets.length, target: it.target, note: it.note })) })} min`}</Text>
+          <Text style={[t.footnote, t.num]}>{`${sets} ${sets === 1 ? 'set' : 'sets'}, about ${minutesFor({ items: s0.items.map((it) => ({ ex: it.ex, name: it.name, sets: it.sets.length, target: it.target, note: it.note })) })} min`}</Text>
         </View>
         <View style={u.gap4}>
           <Text style={t.large}>{s0.name}</Text>
@@ -248,7 +248,7 @@ function History({ g }: { g: Gym }) {
   );
 }
 function HistoryLine({ h, today, onOpen }: { h: HistoryRow; today: string; onOpen: () => void }) {
-  const bits = h.quick ? [`${h.minutes ?? 0} min`] : [`${h.sets} sets`, h.volume ? volumeText(h.volume) : null, h.minutes ? `${h.minutes} min` : null].filter(Boolean);
+  const bits = h.quick ? [`${h.minutes ?? 0} min`] : [trainedWords(h), h.volume ? volumeText(h.volume) : null, h.minutes ? `${h.minutes} min` : null].filter(Boolean);
   return (
     <Item title={h.status === 'skipped' ? `${h.name}, skipped` : h.name} sub={`${dayWord(h.date, today)}, ${bits.join(', ')}`} onPress={onOpen} chevron
       right={h.records ? <Tag label={h.records === 1 ? 'Record' : `${h.records} records`} tone="aspect" /> : undefined} />

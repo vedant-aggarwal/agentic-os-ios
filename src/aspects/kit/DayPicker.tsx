@@ -1,5 +1,5 @@
 import { use, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View, type ScrollViewInstance } from 'react-native';
 import { C, F } from '@/theme';
 import { Chip, Press } from './controls';
 import { addDays, daysBetween, myDay, weekday } from './time';
@@ -31,7 +31,7 @@ export function DayPicker({ value, onChange, days = 14, past = 0, color }: {
   const [grid, setGrid] = useState(!strip.includes(value));
   // A day already chosen further out (next Tuesday) opens scrolled into view, centred, once. Taps after that are on
   // chips the person can already see, so the strip stays where they left it.
-  const scroll = useRef<ScrollView>(null);
+  const scroll = useRef<ScrollViewInstance>(null);
   const box = useRef({ view: 0, x: -1, w: 0, done: false });
   const reveal = () => {
     const b = box.current;

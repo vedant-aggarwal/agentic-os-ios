@@ -7,11 +7,11 @@ import { C, F } from '@/theme';
 
 // Power for the PC: lock, sleep, restart, shut down. Each is a slider: drag the knob to the end to do it, so a
 // stray tap never turns the PC off. Restart and shut down wait 10 s on the PC (with Windows' notice) and show a
-// Cancel button here until then.
+// Cancel button here until then. Lock and sleep can't be undone from the phone (no wake yet), so each says so under it.
 type Action = 'lock' | 'sleep' | 'restart' | 'shutdown';
-const ROWS: { action: Action; icon: string; label: string; done: string; color: string }[] = [
-  { action: 'lock', icon: 'lock.fill', label: 'Slide to lock', done: 'Locked', color: '#766BE6' },
-  { action: 'sleep', icon: 'moon.fill', label: 'Slide to sleep', done: 'Going to sleep', color: '#4F8DF7' },
+const ROWS: { action: Action; icon: string; label: string; done: string; color: string; hint?: string }[] = [
+  { action: 'lock', icon: 'lock.fill', label: 'Slide to lock', done: 'Locked', color: '#766BE6', hint: "Unlock it at the PC. The Remote can't see a locked PC." },
+  { action: 'sleep', icon: 'moon.fill', label: 'Slide to sleep', done: 'Going to sleep', color: '#4F8DF7', hint: "Wake it at the PC. The phone can't wake it." },
   { action: 'restart', icon: 'arrow.clockwise', label: 'Slide to restart', done: 'Restarting', color: '#F5A524' },
   { action: 'shutdown', icon: 'power', label: 'Slide to shut down', done: 'Shutting down', color: '#FF5A5F' },
 ];
@@ -62,7 +62,12 @@ export function PowerPanel() {
           <Pressable accessibilityRole="button" onPress={() => void cancel()} style={s.cancel}><Text style={s.cancelText}>Cancel</Text></Pressable>
         </View>
       ) : null}
-      {ROWS.map((r) => <Slider key={r.action} row={r} onDone={() => void act(r)} />)}
+      {ROWS.map((r) => (
+        <View key={r.action} style={{ gap: 4 }}>
+          <Slider row={r} onDone={() => void act(r)} />
+          {r.hint ? <Text style={s.hint}>{r.hint}</Text> : null}
+        </View>
+      ))}
       {note ? <Text style={[s.note, note.bad && { color: C.danger }]}>{note.text}</Text> : null}
     </View>
   );
@@ -99,7 +104,7 @@ function Slider({ row, onDone }: { row: (typeof ROWS)[number]; onDone: () => voi
     <View style={s.track} onLayout={(e) => setW(e.nativeEvent.layout.width)}>
       <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: row.color, opacity: fill.interpolate({ inputRange: [0, 1], outputRange: [0.08, 0.45] }) }]} />
       <Text style={s.trackText} pointerEvents="none">{armed ? 'Let go' : row.label}</Text>
-      <Animated.View {...handlers} accessible accessibilityRole="adjustable" accessibilityLabel={row.label}
+      <Animated.View {...handlers} accessible accessibilityRole="adjustable" accessibilityLabel={row.label} accessibilityHint={row.hint}
         accessibilityActions={[{ name: 'activate' }]} onAccessibilityAction={() => onDone()}
         style={[s.knob, { backgroundColor: row.color, transform: [{ translateX: x }] }]}>
         <Sym name={row.icon as never} size={20} color="#fff" fallback={<Text style={s.knobText}>›</Text>} />
@@ -121,4 +126,5 @@ const s = StyleSheet.create({
   cancel: { height: 36, paddingHorizontal: 16, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: C.text },
   cancelText: { fontFamily: F.semibold, fontSize: 14, lineHeight: 18, color: '#111' },
   note: { fontFamily: F.medium, fontSize: 13, lineHeight: 18, color: '#3DDC97', paddingHorizontal: 4 },
+  hint: { fontFamily: F.medium, fontSize: 12, lineHeight: 16, color: C.faint, paddingHorizontal: 16 },
 });

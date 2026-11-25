@@ -38,16 +38,15 @@ export function ScoreScreen({ open, onClose }: { open: boolean; onClose: () => v
     <Screen open={open} onClose={() => { setValues(null); onClose(); }} title="Score your wheel" immersive>
       {!sections ? (
         home.error ? <Failed message={home.error} onRetry={home.refresh} /> : (
-          <View style={s.list}>{Array.from({ length: 6 }, (_, i) => <Skeleton key={i} height={64} />)}</View>
+          <View style={s.list}>{Array.from({ length: 6 }, (_, i) => <Skeleton key={i} height={64} radius={16} />)}</View>
         )
       ) : (
         <View style={s.list}>
-          <Text style={t.body}>
-            How each part of your life feels right now, from 0 to 10.
-            {last ? ` Each starts at your last score from ${whenSaid(last)}; move only what changed.` : ' Drag or tap each track.'}
+          <Text style={t.subhead}>
+            {`How each part of your life feels right now, from 0 to 10.${last ? ` Each starts at your last score, from ${whenSaid(last)}. Move only what changed.` : ' Drag or tap each track.'}`}
           </Text>
           <Scorer sections={sections} values={v} onChange={(k, n) => setValues({ ...v, [k]: n })} />
-          <Text style={t.caption}>The white mark is what your data reads. Scoring away from it is fine; it shows up as a gap on the wheel.</Text>
+          <Text style={t.footnote}>The white mark is what your data reads. Scoring away from it is fine. It shows up as a gap on the wheel.</Text>
           <Button label={set === 9 ? 'Save scores' : `Save ${set} of 9`} onPress={save} busy={busy} disabled={!set} />
         </View>
       )}

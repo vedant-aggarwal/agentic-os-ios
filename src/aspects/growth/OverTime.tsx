@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { Card, Chip, Empty, Failed, num, Screen, Section, Skeleton, SP, t, useAspect } from '@/aspects/kit';
+import { Block, Chip, Failed, Group, Item, num, Press, Screen, Skeleton, SP, t, useAspect } from '@/aspects/kit';
 import { useGet } from '@/lib/mod';
 import { C, type AspectKey } from '@/theme';
 import { Chart, ChartKey } from './Chart';
@@ -29,14 +29,16 @@ export function OverTime({ open, start, onClose }: { open: boolean; start: Aspec
   const d = wheel.data;
   const width = a.width - SP[32] - SP[32];
   const sec = focus && d ? d.sections.find((x) => x.key === focus) ?? null : null;
+  // a first visit: no week read and nothing scored, so one card says so instead of nine
+  const blank = !!d && d.sections.every((x) => !x.series.some((v) => v != null) && !x.feltHistory.length);
 
   return (
     <Screen open={open} onClose={sec && !start ? () => setFocus(null) : onClose} title={sec ? sec.name : 'Over time'}>
       {!d ? (
         wheel.error ? <Failed message={wheel.error} onRetry={wheel.refresh} /> : (
           <View style={s.list}>
-            <Skeleton height={300} radius={150} width={300} />
-            {Array.from({ length: 4 }, (_, i) => <Skeleton key={i} height={96} />)}
+            <View style={s.centre}><Skeleton height={300} radius={150} width={300} /></View>
+            {Array.from({ length: 4 }, (_, i) => <Skeleton key={i} height={112} radius={22} />)}
           </View>
         )
       ) : sec ? (
@@ -44,22 +46,33 @@ export function OverTime({ open, start, onClose }: { open: boolean; start: Aspec
       ) : (
         <View style={s.list}>
           <ThenNow d={d} cmp={cmp} setCmp={setCmp} size={Math.min(a.width - SP[32], 340)} />
-          <Section title="Week by week">
-            <ChartKey />
-            {d.sections.map((x) => (
-              <Card key={x.key} onPress={() => setFocus(x.key)} label={`${x.name}, ${x.note ? 'not tracked yet' : TREND_WORD[x.trend.state]}`} style={s.card}>
-                <View style={s.cardHead}>
-                  <Text style={[t.strong, s.flex]}>{x.name}</Text>
-                  <Text style={[t.label, !x.note && (x.trend.state === 'up' || x.trend.state === 'down') ? { color: C.text } : null]}>{x.note ? 'Not tracked yet' : TREND_WORD[x.trend.state]}</Text>
-                </View>
-                {x.series.some((v) => v != null) || x.feltHistory.length ? (
-                  <Chart series={x.series} weeks={d.weeks} felt={x.feltHistory} width={width} height={56} />
-                ) : null}
-                {x.note ? <Text style={t.caption}>{x.note}</Text> : null}
-                {!x.series.some((v) => v != null) ? <Text style={t.caption}>{x.feltHistory.length ? 'No data from this part of your life yet. Only your score shows.' : 'Nothing here yet. Score the wheel and this fills in week by week.'}</Text> : null}
-              </Card>
-            ))}
-          </Section>
+          <Block title="Week by week" sub={blank ? undefined : 'Each section on the same 0 to 10 scale. Tap one for its weeks and every score you gave it.'}>
+            {blank ? (
+              <Group pad>
+                <Text style={t.callout}>Nothing here yet</Text>
+                <Text style={t.footnote}>Score the wheel and each section fills in week by week. A trend needs six weeks of data.</Text>
+              </Group>
+            ) : <ChartKey />}
+            {blank ? null : d.sections.map((x) => {
+              const word = x.note ? 'Not tracked lately' : TREND_WORD[x.trend.state];
+              const empty = !x.series.some((v) => v != null);
+              return (
+                <Press key={x.key} label={`${x.name}, ${word}. Open its weeks`} onPress={() => setFocus(x.key)} scale={0.98}>
+                  <Group pad>
+                    <View style={s.cardHead}>
+                      <Text style={[t.callout, s.flex]}>{x.name}</Text>
+                      <Text style={[t.footnote, !x.note && (x.trend.state === 'up' || x.trend.state === 'down') ? { color: C.text } : null]}>{word}</Text>
+                    </View>
+                    {!empty || x.feltHistory.length ? <Chart series={x.series} weeks={d.weeks} felt={x.feltHistory} width={width} height={56} /> : null}
+                    {x.note ? <Text style={t.footnote}>{x.note}</Text> : null}
+                    {empty ? (
+                      <Text style={t.footnote}>{x.feltHistory.length ? 'No data from this part of your life yet. Only your score shows.' : 'Nothing here yet. Score the wheel and this fills in week by week.'}</Text>
+                    ) : null}
+                  </Group>
+                </Press>
+              );
+            })}
+          </Block>
         </View>
       )}
     </Screen>
@@ -73,10 +86,17 @@ function ThenNow({ d, cmp, setCmp, size }: { d: WheelData; cmp: string | null; s
   const then = pick ? d.snapshots.find((x) => x.date === pick)?.scores ?? null : null;
   const [sel, setSel] = useState<AspectKey | null>(null);
   if (!d.snapshots.length) {
-    return <Card><Empty title="The wheel then and now" body="After two scorings the wheel shows how each section moved between them." /></Card>;
+    return (
+      <Block title="The wheel then and now">
+        <Group pad>
+          <Text style={t.callout}>Nothing to compare yet</Text>
+          <Text style={t.footnote}>After two scorings the wheel shows how each section moved between them.</Text>
+        </Group>
+      </Block>
+    );
   }
   return (
-    <Section title="The wheel then and now">
+    <Block title="The wheel then and now" gap={16}>
       <View style={s.centre}><Wheel sections={d.sections} size={size} selected={sel} onSelect={(k) => setSel(sel === k ? null : k)} then={then} showData={false} /></View>
       <WheelKey showData={false} thenLabel={pick ? `Scored ${whenSaid(pick)}` : undefined} />
       {earlier.length > 1 ? (
@@ -86,9 +106,9 @@ function ThenNow({ d, cmp, setCmp, size }: { d: WheelData; cmp: string | null; s
           ))}
         </View>
       ) : null}
-      {!earlier.length ? <Text style={[t.small, s.centreText]}>One scoring so far. Score again and the earlier one shows here as an outline.</Text> : null}
-      {sel ? <Text style={[t.small, s.centreText]}>{changeLine(d.sections.find((x) => x.key === sel)!, then)}</Text> : null}
-    </Section>
+      {!earlier.length ? <Text style={[t.subhead, s.centreText]}>One scoring so far. Score again and the earlier one shows here as an outline.</Text> : null}
+      {sel ? <Text style={[t.subhead, s.centreText]}>{changeLine(d.sections.find((x) => x.key === sel)!, then)}</Text> : null}
+    </Block>
   );
 }
 
@@ -108,40 +128,47 @@ function Detail({ sec, d, width }: { sec: Sec; d: WheelData; width: number }) {
   const quiet = !!sec.note; // nothing logged lately: no number, no average, the note says why
   return (
     <View style={s.list}>
-      <Card style={s.card}>
+      <Group pad>
         <View style={s.cardHead}>
-          <Text style={[t.title2, s.flex]}>{quiet ? 'Not tracked yet' : TREND_WORD[tr.state]}</Text>
-          {!quiet && tr.now != null ? <Text style={[t.label, t.num]}>{num(tr.now, 1)} lately</Text> : null}
+          <Text accessibilityRole="header" style={[t.title3, s.flex]}>{quiet ? 'Not tracked lately' : TREND_WORD[tr.state]}</Text>
+          {!quiet && tr.now != null ? <Text style={[t.subhead, t.num]}>{`${num(tr.now, 1)} lately`}</Text> : null}
         </View>
-        <Text style={t.small}>
+        <Text style={t.subhead}>
           {quiet ? sec.note : WHY[tr.state]}
-          {!quiet && tr.now != null && tr.before != null ? ` Last four weeks average ${num(tr.now, 1)}, the four before ${num(tr.before, 1)}.` : ''}
+          {!quiet && tr.now != null && tr.before != null ? ` On average ${num(tr.now, 1)} lately, against ${num(tr.before, 1)} before.` : ''}
         </Text>
         {nums.length || sec.feltHistory.length ? (
-          <Chart series={sec.series} weeks={d.weeks} felt={sec.feltHistory} width={width} height={160} trend={quiet ? null : tr} axis />
+          <>
+            <Chart series={sec.series} weeks={d.weeks} felt={sec.feltHistory} width={width} height={160} trend={quiet ? null : tr} axis />
+            <ChartKey trend={!quiet && tr.now != null && tr.before != null} />
+          </>
         ) : null}
-        <ChartKey trend={!quiet && tr.now != null && tr.before != null} />
-      </Card>
+      </Group>
 
-      <Section title="Your score and the data">
-        <Text style={t.body}>{f.head} {f.data}</Text>
-        {f.verdict ? <Text style={t.strong}>{f.verdict}</Text> : null}
-        {sec.evidence.map((e) => <Text key={e} style={t.small}>{e}</Text>)}
-        {sec.sources.length ? <Text style={t.caption}>Read from: {sec.sources.join(', ').toLowerCase()}.</Text> : null}
-      </Section>
+      <Block title="Your score and the data">
+        <Group pad>
+          <Text style={t.subhead}>{`${f.head} ${f.data}`}</Text>
+          {f.verdict ? <Text style={t.callout}>{f.verdict}</Text> : null}
+          {sec.evidence.length ? (
+            <View style={s.evidence}>
+              {sec.evidence.map((e) => (
+                <View key={e} style={s.evRow}><View style={s.evBar} /><Text style={[t.footnote, s.flex]}>{e}</Text></View>
+              ))}
+            </View>
+          ) : null}
+          {sec.sources.length ? <Text style={t.footnote}>{`Read from ${sec.sources.join(', ').toLowerCase()}.`}</Text> : null}
+        </Group>
+      </Block>
 
       {sec.feltHistory.length ? (
-        <Section title="Every time you scored it">
-          {[...sec.feltHistory].reverse().map((h) => (
-            <View key={h.date} style={s.histRow}>
-              <Text style={[t.body, s.flex]}>{whenSaid(h.date)}</Text>
-              <Text style={[t.strong, t.num]}>{num(h.v, 1)}</Text>
-            </View>
-          ))}
-        </Section>
+        <Block title="Every time you scored it">
+          <Group>
+            {[...sec.feltHistory].reverse().map((h) => <Item key={h.date} title={whenSaid(h.date)} value={num(h.v, 1)} />)}
+          </Group>
+        </Block>
       ) : null}
-      <Text style={t.caption}>
-        Felt scores move a point or two on their own from one scoring to the next, so only a change of {d.noise.felt} or more gets an arrow on the wheel.
+      <Text style={t.footnote}>
+        {`Felt scores move a point or two on their own from one scoring to the next, so only a change of ${d.noise.felt} or more gets an arrow on the wheel.`}
       </Text>
     </View>
   );
@@ -152,8 +179,9 @@ const s = StyleSheet.create({
   list: { gap: SP[24] },
   centre: { alignItems: 'center' },
   centreText: { textAlign: 'center' },
-  card: { gap: SP[8] },
   cardHead: { flexDirection: 'row', alignItems: 'center', gap: SP[8] },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: SP[8], justifyContent: 'center' },
-  histRow: { flexDirection: 'row', alignItems: 'center', minHeight: 44, gap: SP[12] },
+  evidence: { gap: SP[4] },
+  evRow: { flexDirection: 'row', alignItems: 'center', gap: SP[8] },
+  evBar: { width: 2, height: 16, borderRadius: 1, backgroundColor: C.faint },
 });

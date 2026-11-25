@@ -59,10 +59,10 @@ export function Scorer({ sections, values, onChange }: {
           <View key={sec.key} style={s.row}>
             <View style={s.head}>
               <View style={s.names}>
-                <Text style={t.strong}>{sec.name}</Text>
-                <Text style={t.caption}>{sub}</Text>
+                <Text style={t.callout}>{sec.name}</Text>
+                <Text style={t.footnote}>{sub}</Text>
               </View>
-              <Text style={[v == null ? t.label : t.title2, t.num, { color: v == null ? C.faint : changed ? color : C.text }]}>{v == null ? 'Not set' : num(v, 1)}</Text>
+              <Text style={[v == null ? t.subhead : t.title3, t.num, { color: v == null ? C.faint : changed ? color : C.text }]}>{v == null ? 'Not set' : num(v, 1)}</Text>
             </View>
             <Track value={v} measured={sec.measured} label={`${sec.name} score`} onChange={(n) => onChange(sec.key, n)} />
           </View>

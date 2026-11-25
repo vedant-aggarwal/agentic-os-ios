@@ -1,19 +1,20 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
-  Bar, Button, Card, Chip, dayLabel, Empty, Failed, Field, haptic, Icon, IconButton, Loading, Press, Row, Screen, Skeleton, SP, t, useAspect,
+  Bar, Button, CheckRing, Chip, Failed, Field, Group, haptic, Icon, IconButton, Item, Loading, Press, Screen, shortDay, Skeleton, SP, t, useAspect,
 } from '@/aspects/kit';
 import { keep, kept, useGet } from '@/lib/mod';
 import { C, type AspectKey } from '@/theme';
 import { draftWithAI, landInMission, REVIEW, saveScores, sealReview, type SealBody } from './data';
+import { useRules } from './Rules';
 import { Scorer } from './Score';
 import type { Commitment, DraftItem, DraftMove, ReviewDraft, Verdict } from './types';
-import { NAME, range, ruleSub, weekWords } from './ui';
+import { NAME, opensOn, range, ruleSub, weekWords } from './ui';
 
 // The Sunday review: one question a screen, mostly drafted by the PC, about five minutes. It closes the week's
 // goals, keeps what moved and what missed (with why), checks the rules, offers one new rule, scores the wheel when
 // it's due, and picks up to three moves. Closing the week lands the moves in Mission, whose route makes each one a
-// week goal (HANDOFFS.md); Growth itself makes no goals.
+// week goal (HANDOFFS.md); Growth itself makes no goals. Rules he ticked on the page this week come in already marked.
 
 type StepKey = 'week' | 'moved' | 'missed' | 'rules' | 'rule' | 'score' | 'moves' | 'close';
 const VERDICTS: { key: Verdict; label: string }[] = [{ key: 'done', label: 'Done' }, { key: 'partly', label: 'Partly' }, { key: 'missed', label: 'Not done' }];
@@ -44,9 +45,10 @@ export function Review({ open, onClose }: { open: boolean; onClose: () => void }
       ) : just ? (
         <Done d={d} moves={just.moves} rule={just.rule} landed={just.landed} onClose={close} />
       ) : d.status === 'closed' ? (
-        <Card>
-          <Empty title="The review opens on Saturday" body={`A week can be closed from Saturday to Tuesday.${d.window.nextOpen ? ` The next one opens ${dayLabel(d.window.nextOpen)}.` : ''}`} />
-        </Card>
+        <Group pad>
+          <Text style={t.callout}>The review opens on Saturday</Text>
+          <Text style={t.footnote}>{`A week can be closed from Saturday to Tuesday.${d.window.nextOpen ? ` The next one opens ${opensOn(d.window.nextOpen)}.` : ''}`}</Text>
+        </Group>
       ) : d.status === 'sealed' ? (
         <Done d={d} moves={null} rule={null} landed={null} onClose={close} />
       ) : (
@@ -83,6 +85,22 @@ function saveAnswers(v: Answers | null) {
 const uid = (p: string) => `${p}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
 
 /**
+ * How far he got in this week's review before he stopped: the step he was on, or null when he hasn't started (or
+ * the week is closed). Read again each time the flow closes, so the page can say "Continue the review".
+ */
+export function useReviewProgress(week: string | null, flowOpen: boolean): number | null {
+  const [step, setStep] = useState<{ week: string; i: number } | null>(null);
+  useEffect(() => {
+    if (!week || flowOpen) return;
+    let live = true;
+    const read = inMemory?.week === week ? Promise.resolve(inMemory) : kept<Answers>(ANSWERS);
+    read.then((x) => { if (live) setStep(x && x.week === week ? { week, i: x.i } : null); }, () => {});
+    return () => { live = false; };
+  }, [week, flowOpen]);
+  return week && step?.week === week && step.i > 0 ? step.i : null;
+}
+
+/**
  * The flow's starting state: the draft, with his saved answers laid back on it. Answers on drafted items come back
  * only when the item is the same one (same id and words, same drafter); what he wrote himself always comes back.
  */
@@ -101,12 +119,14 @@ function restore(d: ReviewDraft, saved: Answers | null, steps: number): Answers 
     ...(a?.missed.filter((m) => m.source === 'you') ?? []),
   ];
   const ruleIds = new Set(d.rules.filter((r) => r.status === 'active').map((r) => r.id));
+  // a rule he ticked on the page this week starts marked; what he answers here wins
+  const ticked = Object.fromEntries(d.rules.filter((r) => r.status === 'active' && r.last?.week === d.week).map((r) => [r.id, r.last!.held]));
   const extra = a?.extra ?? [];
   const moveIds = new Set([...d.moves.map((m) => m.id), ...extra.map((m) => m.id)]);
   return {
     week: d.week, by: d.drafted_by, i: Math.min(a?.i ?? 0, steps - 1),
     verdicts, moved, missed,
-    checks: Object.fromEntries(Object.entries(a?.checks ?? {}).filter(([id]) => ruleIds.has(id))),
+    checks: { ...ticked, ...Object.fromEntries(Object.entries(a?.checks ?? {}).filter(([id]) => ruleIds.has(id))) },
     ruleId: a?.ruleId === 'own' || (same && a?.ruleId) ? a!.ruleId : null,
     own: a?.own ?? { when: '', then: '' },
     scores: a?.scores ?? Object.fromEntries(d.wheel.sections.filter((x) => x.felt != null).map((x) => [x.key, x.felt!])),
@@ -134,7 +154,9 @@ function Resume(props: { d: ReviewDraft; onSealed: (s: Sealed) => void; redraft:
 
 function Flow({ d, saved, onSealed, redraft }: { d: ReviewDraft; saved: Answers | null; onSealed: (s: Sealed) => void; redraft: () => Promise<unknown> }) {
   const a = useAspect();
+  const rulesCol = useRules();
   const active = d.rules.filter((r) => r.status === 'active');
+  const prefilled = active.some((r) => r.last?.week === d.week);
   const steps: StepKey[] = [
     ...(d.commitments.length ? ['week' as const] : []), 'moved', 'missed', ...(active.length ? ['rules' as const] : []),
     'rule', ...(d.wheel.due ? ['score' as const] : []), 'moves', 'close',
@@ -212,6 +234,12 @@ function Flow({ d, saved, onSealed, redraft }: { d: ReviewDraft; saved: Answers 
         moves: chosen.map((m) => ({ text: m.text, aspect: m.aspect, serves: serves[m.id] ?? m.serves ?? null, carry: m.carry, from: m.from })),
       };
       const res = await sealReview(body);
+      // "Didn't come up" on a rule he had ticked this week takes the tick off (the seal only writes held or broke it)
+      for (const r of active) {
+        if (checks[r.id] !== null || r.last?.week !== d.week) continue;
+        const doc = rulesCol.items?.find((x) => x.id === r.id);
+        if (doc) await rulesCol.patch(r.id, { checks: (doc.checks ?? []).filter((c) => c.week !== d.week) }).catch(() => {});
+      }
       const landed = res.already ? null : await landInMission(res.item); // never throws: what Mission can't take stays offered
       haptic.success();
       setSealed(true);
@@ -236,8 +264,8 @@ function Flow({ d, saved, onSealed, redraft }: { d: ReviewDraft; saved: Answers 
 
   const head = (title: string, sub?: string) => (
     <View style={s.head}>
-      <Text accessibilityRole="header" style={t.title2}>{title}</Text>
-      {sub ? <Text style={t.small}>{sub}</Text> : null}
+      <Text accessibilityRole="header" style={t.title3}>{title}</Text>
+      {sub ? <Text style={t.subhead}>{sub}</Text> : null}
     </View>
   );
 
@@ -255,29 +283,29 @@ function Flow({ d, saved, onSealed, redraft }: { d: ReviewDraft; saved: Answers 
   } else if (step === 'moved') {
     body = (
       <>
-        {head('What moved', moved.length ? 'Drafted from your data. Untick anything that doesn’t feel like progress; add what the data missed.' : 'Nothing stood out in the data. Add anything that went well, even small.')}
+        {head('What moved', moved.length ? 'Drafted from your data. Untick anything that doesn’t feel like progress, and add what the data missed.' : 'Nothing stood out in the data. Add anything that went well, even small.')}
         {moved.length ? (
-          <View style={s.rows}>
+          <Group inset={52}>
             {moved.map((m) => (
-              <Row key={m.id} title={m.text} sub={m.mine ? 'Added by you' : NAME[m.aspect]} done={m.keep}
-                onToggle={() => setMoved(moved.map((x) => (x.id === m.id ? { ...x, keep: !x.keep } : x)))} />
+              <TickItem key={m.id} title={m.text} sub={m.mine ? 'Added by you' : NAME[m.aspect]} on={m.keep}
+                onPress={() => setMoved(moved.map((x) => (x.id === m.id ? { ...x, keep: !x.keep } : x)))} />
             ))}
-          </View>
+          </Group>
         ) : null}
         <AddLine placeholder="Something that went well" value={draft} onChange={setDraft}
           onAdd={() => { setMoved([...moved, { id: uid('u'), text: draft.trim(), aspect: 'growth', keep: true, mine: true }]); setDraft(''); }} />
         {d.drafted_by === 'code' ? (
-          <View style={s.aiRow}>
-            <Text style={[t.caption, s.flex]}>Drafted from your numbers. Nora can draft it from your journal and tasks too.</Text>
-            <Button label="Ask Nora" kind="quiet" small onPress={askModel} />
-          </View>
-        ) : <Text style={t.caption}>Drafted by Nora from your week. Change anything.</Text>}
+          <Group pad>
+            <Text style={t.footnote}>Drafted from your numbers. Nora can draft it from your journal and tasks too.</Text>
+            <View style={s.left}><Button label="Ask Nora" kind="quiet" small onPress={askModel} /></View>
+          </Group>
+        ) : <Text style={t.footnote}>Drafted by Nora from your week. Change anything.</Text>}
       </>
     );
   } else if (step === 'missed') {
     body = (
       <>
-        {head('What missed, and why', missed.length ? 'Pick the nearest reason; a second tap narrows it. Reasons turn into rule ideas next.' : 'Nothing slipped in the data this week.')}
+        {head('What missed, and why', missed.length ? 'Pick the nearest reason. A second tap narrows it. Reasons turn into rule ideas next.' : 'Nothing slipped in the data this week.')}
         {missed.map((m) => (
           <MissCard key={m.id} m={m} whys={m.task ? d.taskWhys : (m.whys?.length ? m.whys : d.whys)} tree={d.whyTree}
             onChange={(x) => setMissed(missed.map((y) => (y.id === m.id ? x : y)))} />
@@ -289,17 +317,19 @@ function Flow({ d, saved, onSealed, redraft }: { d: ReviewDraft; saved: Answers 
   } else if (step === 'rules') {
     body = (
       <>
-        {head('Did your rules hold?', 'Only the times it came up count.')}
+        {head('Did your rules hold?', prefilled ? 'Only the times it came up count. The ones you ticked this week are already marked.' : 'Only the times it came up count.')}
         {active.map((r) => (
-          <Card key={r.id} style={s.card}>
-            <Text style={t.strong}>{r.text}</Text>
-            <Text style={t.caption}>{ruleSub(r, d.week)}</Text>
+          <Group key={r.id} pad>
+            <View style={s.gap4}>
+              <Text style={t.callout}>{r.text}</Text>
+              <Text style={t.footnote}>{ruleSub(r, d.week)}</Text>
+            </View>
             <View style={s.chips}>
               {HELD.map(([label, v]) => (
                 <Chip key={label} label={label} selected={r.id in checks && checks[r.id] === v} onPress={() => setChecks({ ...checks, [r.id]: v })} />
               ))}
             </View>
-          </Card>
+          </Group>
         ))}
       </>
     );
@@ -307,27 +337,17 @@ function Flow({ d, saved, onSealed, redraft }: { d: ReviewDraft; saved: Answers 
     nextLabel = ruleId ? 'Next' : 'Skip for this week';
     body = (
       <>
-        {head('One rule from this week', 'When this happens, I do that. One is plenty; none is fine.')}
+        {head('One rule from this week', 'When this happens, I do that. One is plenty, and none is fine.')}
         {ideas.map((r) => (
-          <Card key={r.id} onPress={() => setRuleId(ruleId === r.id ? null : r.id)} label={`When ${r.when}, ${r.then}`} style={[s.card, ruleId === r.id && { borderColor: a.color }]}>
-            <View style={s.pickRow}>
-              <Text style={[t.strong, s.flex]}>When {r.when}, {r.then}.</Text>
-              <Radio on={ruleId === r.id} />
-            </View>
-            <Text style={t.caption}>{r.from ? `From: ${r.from.text}` : r.why}</Text>
-          </Card>
+          <Pick key={r.id} on={ruleId === r.id} label={`When ${r.when}, ${r.then}`} onPress={() => setRuleId(ruleId === r.id ? null : r.id)}
+            title={`When ${r.when}, ${r.then}.`} sub={r.from ? `From: ${r.from.text}` : r.why} />
         ))}
         {!ideas.length ? (
-          <Text style={t.small}>
+          <Text style={t.subhead}>
             {missed.some((m) => m.keep && m.why) ? 'Your rules already cover the reasons you picked. Write a new one if something else is going on.' : 'Pick reasons on the misses screen and ideas show up here. Or write your own.'}
           </Text>
         ) : null}
-        <Card onPress={() => setRuleId(ruleId === 'own' ? null : 'own')} label="Write my own rule" style={[s.card, ruleId === 'own' && { borderColor: a.color }]}>
-          <View style={s.pickRow}>
-            <Text style={[t.strong, s.flex]}>Write my own</Text>
-            <Radio on={ruleId === 'own'} />
-          </View>
-        </Card>
+        <Pick on={ruleId === 'own'} label="Write my own rule" onPress={() => setRuleId(ruleId === 'own' ? null : 'own')} title="Write my own" />
         {ruleId === 'own' ? (
           <View style={s.list}>
             <Field label="When" value={own.when} onChangeText={(v) => setOwn({ ...own, when: v })} placeholder="the evening gets away from me" maxLength={140} />
@@ -340,10 +360,10 @@ function Flow({ d, saved, onSealed, redraft }: { d: ReviewDraft; saved: Answers 
     nextLabel = 'Save scores';
     body = (
       <>
-        {head('Score your wheel', `${d.wheel.last ? `Last scored ${dayLabel(d.wheel.last)}.` : 'Your first scoring.'} Each starts at your last score; move only what changed.`)}
+        {head('Score your wheel', `${d.wheel.last ? `Last scored ${shortDay(d.wheel.last)}.` : 'Your first scoring.'} Each starts at your last score. Move only what changed.`)}
         <Scorer sections={d.wheel.sections} values={scores} onChange={(k, v) => setScores({ ...scores, [k]: v })} />
         <Press label="Skip scoring this week" onPress={() => { setScoreSkip(true); next(); }} style={s.skip}>
-          <Text style={t.label}>Skip scoring this week</Text>
+          <Text style={t.subhead}>Skip scoring this week</Text>
         </Press>
       </>
     );
@@ -372,25 +392,28 @@ function Flow({ d, saved, onSealed, redraft }: { d: ReviewDraft; saved: Answers 
             if (chosen.length < MAX_MOVES) setPicks([...picks, id]);
             setDraft('');
           }} />
-        <Text style={t.caption}>{chosen.length} of {MAX_MOVES} picked. Each one becomes a goal for that week in Mission.</Text>
+        <Text style={t.footnote}>{`${chosen.length} of ${MAX_MOVES} picked. Each one becomes a goal for that week in Mission.`}</Text>
       </>
     );
   } else {
     nextLabel = 'Close the week';
     const kept = moved.filter((m) => m.keep).length, missN = missed.filter((m) => m.keep).length, why = missed.filter((m) => m.keep && m.why).length;
     const done = Object.values(verdicts).filter((v) => v.verdict === 'done').length;
+    const held = Object.values(checks).filter((v) => v === true).length, broke = Object.values(checks).filter((v) => v === false).length;
     body = (
       <>
         {head('Close the week', range(d.label))}
-        {d.headline ? <Text style={t.lead}>{d.headline}</Text> : null}
+        {d.headline ? <Text style={t.headline}>{d.headline}</Text> : null}
         <Field label="One line on how it felt, if you like" value={feel} onChangeText={setFeel} placeholder="Slow start, good finish" maxLength={200} multiline />
-        <View style={s.sum}>
-          {d.commitments.length ? <SumLine text={`${done} of ${d.commitments.length} done from the week you set`} /> : null}
-          <SumLine text={`${kept ? `${kept} ${kept === 1 ? 'thing' : 'things'} moved` : 'Nothing marked as moved'}, ${missN} missed${why ? `, ${why} with a reason` : ''}`} />
-          <SumLine text={ruleLine ? `New rule: ${ruleLine}` : 'No new rule this week'} />
-          {steps.includes('score') ? <SumLine text={scoreSkip ? 'Wheel not scored' : 'Wheel scored'} /> : null}
-          <SumLine text={chosen.length ? `${chosen.length} ${chosen.length === 1 ? 'move' : 'moves'} for Mission: ${chosen.map((m) => m.text).join('; ')}` : 'No moves for next week'} />
-        </View>
+        <Group>
+          {d.commitments.length ? <Item title={`${done} of ${d.commitments.length} done`} sub="From the week you set" /> : null}
+          <Item title={kept ? `${kept} ${kept === 1 ? 'thing' : 'things'} moved` : 'Nothing marked as moved'} sub={`${missN} missed${why ? `, ${why} with a reason` : ''}`} />
+          {active.length ? <Item title={held || broke ? `${held} ${held === 1 ? 'rule' : 'rules'} held${broke ? `, ${broke} broke` : ''}` : 'No rule marked'} sub="Your rules this week" /> : null}
+          <Item title={ruleLine ?? 'No new rule this week'} sub={ruleLine ? 'New rule' : null} lines={3} />
+          {steps.includes('score') ? <Item title={scoreSkip ? 'Wheel not scored' : 'Wheel scored'} /> : null}
+          <Item title={chosen.length ? `${chosen.length} ${chosen.length === 1 ? 'move' : 'moves'} for Mission` : 'No moves for next week'}
+            sub={chosen.length ? chosen.map((m) => m.text).join('; ') : null} lines={4} />
+        </Group>
       </>
     );
   }
@@ -399,7 +422,7 @@ function Flow({ d, saved, onSealed, redraft }: { d: ReviewDraft; saved: Answers 
     <View style={s.flow}>
       <View style={s.progress} accessible accessibilityLabel={`Step ${i + 1} of ${steps.length}`}>
         <View style={s.flex}><Bar progress={(i + 1) / steps.length} height={4} /></View>
-        <Text style={[t.caption, t.num]}>{i + 1} of {steps.length}</Text>
+        <Text style={[t.footnote, t.num]}>{`${i + 1} of ${steps.length}`}</Text>
       </View>
       <ScrollView style={s.flex} contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         {body}
@@ -414,8 +437,43 @@ function Flow({ d, saved, onSealed, redraft }: { d: ReviewDraft; saved: Answers 
   );
 }
 
-function SumLine({ text }: { text: string }) {
-  return <View style={s.sumRow}><View style={s.sumBar} /><Text style={[t.small, s.flex]}>{text}</Text></View>;
+/** A row that is a tick: kept or not. */
+function TickItem({ title, sub, on, onPress }: { title: string; sub?: string | null; on: boolean; onPress: () => void }) {
+  return (
+    <Press label={title} role="checkbox" state={{ checked: on }} onPress={onPress} feel={on ? 'light' : 'medium'} scale={0.99} style={s.tickItem}>
+      <CheckRing done={on} />
+      <View style={s.tickText}>
+        <Text style={[t.callout, !on && { color: C.muted }]}>{title}</Text>
+        {sub ? <Text style={t.footnote}>{sub}</Text> : null}
+      </View>
+    </Press>
+  );
+}
+
+/** A small tick with words beside it, inside a card. */
+function Tick({ label, on, onPress }: { label: string; on: boolean; onPress: () => void }) {
+  return (
+    <Press label={label} role="checkbox" state={{ checked: on }} onPress={onPress} scale={0.98} style={s.tick}>
+      <CheckRing done={on} size={22} />
+      <Text style={[t.subhead, s.flex]}>{label}</Text>
+    </Press>
+  );
+}
+
+/** One of a few choices, as a card that lights when picked. */
+function Pick({ on, label, onPress, title, sub }: { on: boolean; label: string; onPress: () => void; title: string; sub?: string }) {
+  const a = useAspect();
+  return (
+    <Press label={label} role="radio" state={{ selected: on }} onPress={onPress} scale={0.98}>
+      <Group pad tone={on ? a.color : undefined}>
+        <View style={s.pickRow}>
+          <Text style={[t.callout, s.flex]}>{title}</Text>
+          <Radio on={on} />
+        </View>
+        {sub ? <Text style={t.footnote}>{sub}</Text> : null}
+      </Group>
+    </Press>
+  );
 }
 
 function Radio({ on }: { on: boolean }) {
@@ -438,28 +496,30 @@ function CommitCard({ c, v, onChange }: {
   const meta = [NAME[c.aspect], c.kind === 'move' ? 'a move from last review' : null,
     c.progress ? `${Math.round(c.progress)} percent along` : null, c.tasks ? `${c.tasks} ${c.tasks === 1 ? 'task' : 'tasks'}` : null].filter(Boolean).join(', ');
   return (
-    <Card style={s.card}>
-      <Text style={t.strong}>{c.text}</Text>
-      <Text style={t.caption}>{meta}</Text>
+    <Group pad>
+      <View style={s.gap4}>
+        <Text style={t.callout}>{c.text}</Text>
+        <Text style={t.footnote}>{meta}</Text>
+      </View>
       <View style={s.chips}>
         {VERDICTS.map((x) => <Chip key={x.key} label={x.label} selected={v.verdict === x.key} onPress={() => onChange({ ...v, verdict: x.key })} />)}
       </View>
-      {v.verdict && v.verdict !== 'done' ? (
-        <Row title="Carry it into next week" done={v.carry} onToggle={() => onChange({ ...v, carry: !v.carry })} />
-      ) : null}
-    </Card>
+      {v.verdict && v.verdict !== 'done' ? <Tick label="Carry it into next week" on={v.carry} onPress={() => onChange({ ...v, carry: !v.carry })} /> : null}
+    </Group>
   );
 }
 
 function MissCard({ m, whys, tree, onChange }: { m: Miss; whys: string[]; tree: Record<string, string[]>; onChange: (m: Miss) => void }) {
   const sub = m.why ? tree[m.why] ?? [] : [];
   return (
-    <Card style={[s.card, !m.keep && s.off]}>
-      <Text style={t.strong}>{m.text}</Text>
-      <View style={s.missMeta}>
-        <Text style={[t.caption, s.flex]}>{m.detail ? `${NAME[m.aspect]}: ${m.detail.charAt(0).toUpperCase()}${m.detail.slice(1)}` : NAME[m.aspect]}</Text>
+    <Group pad style={!m.keep && s.off}>
+      <View style={s.missHead}>
+        <View style={s.tickText}>
+          <Text style={t.callout}>{m.text}</Text>
+          <Text style={t.footnote}>{m.detail ? `${NAME[m.aspect]}: ${m.detail.charAt(0).toUpperCase()}${m.detail.slice(1)}` : NAME[m.aspect]}</Text>
+        </View>
         <Press label={m.keep ? `Not a miss: ${m.text}` : `Count it again: ${m.text}`} onPress={() => onChange({ ...m, keep: !m.keep })} style={s.notMiss}>
-          <Text style={t.label}>{m.keep ? 'Not a miss' : 'Count it'}</Text>
+          <Text style={t.subhead}>{m.keep ? 'Not a miss' : 'Count it'}</Text>
         </Press>
       </View>
       {m.keep ? (
@@ -474,7 +534,7 @@ function MissCard({ m, whys, tree, onChange }: { m: Miss; whys: string[]; tree: 
           ) : null}
         </>
       ) : null}
-    </Card>
+    </Group>
   );
 }
 
@@ -484,17 +544,17 @@ function MoveCard({ m, on, disabled, note, goals, serves, onServe, onToggle }: {
 }) {
   const { color } = useAspect();
   return (
-    <Card style={[s.card, on && { borderColor: color }, disabled && s.off]}>
-      <Press label={`${on ? 'Drop' : 'Pick'}: ${m.text}`} onPress={onToggle} disabled={disabled} state={{ selected: on, disabled }} style={s.pickRow}>
-        <View style={s.flex}>
-          <Text style={t.strong}>{m.text}</Text>
-          <Text style={t.caption}>{note}</Text>
+    <Group pad tone={on ? color : undefined} style={disabled && s.off}>
+      <Press label={`${on ? 'Drop' : 'Pick'}: ${m.text}`} onPress={onToggle} disabled={disabled} role="checkbox" state={{ checked: on, disabled }} scale={0.99} style={s.pickRow}>
+        <View style={s.tickText}>
+          <Text style={t.callout}>{m.text}</Text>
+          <Text style={t.footnote}>{note}</Text>
         </View>
-        <Radio on={on} />
+        <CheckRing done={on} />
       </Press>
       {on && goals.length && (m.aspect === 'mission' || serves) ? (
         <View style={s.serve}>
-          <Text style={t.caption}>Serves</Text>
+          <Text style={t.footnote}>Serves</Text>
           <View style={s.chips}>
             {goals.slice(0, 3).map((g) => (
               <Chip key={g.id} label={g.title.length > 34 ? `${g.title.slice(0, 33).replace(/\s+\S*$/, '')}…` : g.title}
@@ -503,7 +563,7 @@ function MoveCard({ m, on, disabled, note, goals, serves, onServe, onToggle }: {
           </View>
         </View>
       ) : null}
-    </Card>
+    </Group>
   );
 }
 
@@ -519,20 +579,20 @@ function Done({ d, moves, rule, landed, onClose }: { d: ReviewDraft; moves: stri
     : `${landed.landed} in Mission for ${wk}. ${landed.held} ${landed.held === 1 ? 'waits' : 'wait'} at the top of Mission’s week, for you to keep or let go.`;
   return (
     <View style={s.done}>
-      <View style={[s.doneMark, { borderColor: a.color }]}><Icon name="check" size={28} color={a.color} /></View>
-      <Text accessibilityRole="header" style={[t.title2, s.centreText]}>Week closed</Text>
-      <Text style={[t.body, s.centreText]}>{range(d.label)}</Text>
+      <View style={s.doneHead}>
+        <View style={[s.doneMark, { borderColor: a.color }]}><Icon name="check" size={28} color={a.color} /></View>
+        <Text accessibilityRole="header" style={[t.title3, s.centreText]}>Week closed</Text>
+        <Text style={[t.subhead, s.centreText]}>{range(d.label)}</Text>
+      </View>
       {moves?.length ? (
-        <View style={s.sum}>
-          {moves.map((m) => <SumLine key={m} text={m} />)}
-          <Text style={t.caption}>{where}</Text>
+        <View style={s.gap8}>
+          <Group>{moves.map((m) => <Item key={m} title={m} lines={3} />)}</Group>
+          <Text style={t.footnote}>{where}</Text>
         </View>
-      ) : moves ? <Text style={[t.small, s.centreText]}>No moves for next week.</Text> : kept?.length ? (
-        <View style={s.sum}>
-          {kept.map((m) => <SumLine key={m.id} text={`${m.text}. ${STATE_WORD[m.state] ?? ''}`} />)}
-        </View>
-      ) : kept ? <Text style={[t.small, s.centreText]}>No moves for next week.</Text> : null}
-      {rule ? <Text style={[t.small, s.centreText]}>New rule: {rule}</Text> : null}
+      ) : moves ? <Text style={[t.subhead, s.centreText]}>No moves for next week.</Text> : kept?.length ? (
+        <Group>{kept.map((m) => <Item key={m.id} title={m.text} sub={STATE_WORD[m.state] ?? null} lines={3} />)}</Group>
+      ) : kept ? <Text style={[t.subhead, s.centreText]}>No moves for next week.</Text> : null}
+      {rule ? <Text style={[t.subhead, s.centreText]}>{`New rule: ${rule}`}</Text> : null}
       <View style={s.doneBtns}>
         <Button label="Open Mission" kind="accent" onPress={() => { onClose(); a.openAspect('mission'); }} />
         <Button label="Back to Growth" kind="quiet" onPress={onClose} />
@@ -544,30 +604,31 @@ function Done({ d, moves, rule, landed, onClose }: { d: ReviewDraft; moves: stri
 const s = StyleSheet.create({
   flex: { flex: 1 },
   list: { gap: SP[16] },
-  rows: { gap: SP[8] },
+  gap4: { gap: SP[4] },
+  gap8: { gap: SP[8] },
+  left: { flexDirection: 'row' },
   flow: { flex: 1, gap: SP[16] },
   progress: { flexDirection: 'row', alignItems: 'center', gap: SP[12] },
   scroll: { gap: SP[16], paddingBottom: SP[24] },
   head: { gap: SP[8], marginBottom: SP[4] },
   foot: { flexDirection: 'row', alignItems: 'center', gap: SP[12], paddingTop: SP[8] },
-  card: { gap: SP[8] },
   off: { opacity: 0.55 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: SP[8] },
   sub: { paddingLeft: SP[12], borderLeftWidth: 2, borderLeftColor: 'rgba(255,255,255,0.12)' },
   pickRow: { flexDirection: 'row', alignItems: 'center', gap: SP[12], minHeight: 44 },
+  tickItem: { flexDirection: 'row', alignItems: 'center', gap: SP[12], minHeight: 52, paddingHorizontal: SP[16], paddingVertical: 10 },
+  tickText: { flex: 1, minWidth: 0, gap: SP[2] },
+  tick: { flexDirection: 'row', alignItems: 'center', gap: SP[12], minHeight: 44 },
   radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
   radioIn: { width: 10, height: 10, borderRadius: 5 },
   addRow: { flexDirection: 'row', alignItems: 'flex-end', gap: SP[8] },
-  aiRow: { flexDirection: 'row', alignItems: 'center', gap: SP[12] },
-  missMeta: { flexDirection: 'row', alignItems: 'center', gap: SP[8], marginTop: -SP[8] },
-  notMiss: { minHeight: 44, justifyContent: 'center', paddingLeft: SP[8] },
+  missHead: { flexDirection: 'row', alignItems: 'flex-start', gap: SP[8] },
+  notMiss: { minHeight: 44, justifyContent: 'center', paddingLeft: SP[8], marginTop: -10 },
   skip: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
-  serve: { gap: SP[4] },
-  sum: { alignSelf: 'stretch', gap: SP[8] },
-  sumRow: { flexDirection: 'row', gap: SP[8], alignItems: 'flex-start' },
-  sumBar: { width: 2, alignSelf: 'stretch', minHeight: 16, borderRadius: 1, backgroundColor: C.faint },
-  done: { alignItems: 'center', gap: SP[16], paddingTop: SP[32] },
-  doneMark: { width: 64, height: 64, borderRadius: 32, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
+  serve: { gap: SP[8] },
+  done: { gap: SP[24], paddingTop: SP[24] },
+  doneHead: { alignItems: 'center', gap: SP[8] },
+  doneMark: { width: 64, height: 64, borderRadius: 32, borderWidth: 2, alignItems: 'center', justifyContent: 'center', marginBottom: SP[8] },
   centreText: { textAlign: 'center' },
-  doneBtns: { alignSelf: 'stretch', gap: SP[8], marginTop: SP[16] },
+  doneBtns: { gap: SP[8] },
 });

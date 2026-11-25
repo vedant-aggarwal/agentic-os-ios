@@ -1,7 +1,7 @@
 """App Store signing on a CI Mac without Apple's cloud signing (that needs an Admin API key).
 
-Adapted from the Capacitor app's scripts/ios_signing.py. The app and its Controls extension (targets/controls,
-bundle ID <app>.controls, the Action button control) each get a profile.
+Adapted from the Capacitor app's scripts/ios_signing.py. The app and each app extension (targets/*: <app>.controls,
+.keyboard, .share, .calldirectory, .notify) get a profile.
 
 setup:        make a key + CSR, create an Apple Distribution certificate, make an App Store profile for the app
               through the App Store Connect API, install both in a temporary keychain, and write PROFILE_APP /
@@ -94,7 +94,9 @@ def setup():
     made = {}
     for role, ident, label in (("APP", bundle, "Agentic OS"), ("EXT", f"{bundle}.controls", "Agentic OS Controls"),
                                ("KBD", f"{bundle}.keyboard", "Agentic OS Keyboard"),
-                               ("SHR", f"{bundle}.share", "Agentic OS Share")):
+                               ("SHR", f"{bundle}.share", "Agentic OS Share"),
+                               ("CDX", f"{bundle}.calldirectory", "Agentic OS Call Directory"),
+                               ("NSE", f"{bundle}.notify", "Agentic OS Notifications")):
         name = f"{label} CI {stamp}"
         pk = ensure_bundle(ident, label)
         prof = call("POST", "/profiles", {"data": {"type": "profiles",
@@ -115,6 +117,7 @@ def setup():
     with open(os.environ["GITHUB_ENV"], "a") as env:
         env.write(f"PROFILE_APP={made['APP'][0]}\nPROFILE_NAME={made['APP'][0]}\nPROFILE_UUID={made['APP'][1]}\n")
         env.write(f"PROFILE_EXT={made['EXT'][0]}\nPROFILE_KBD={made['KBD'][0]}\nPROFILE_SHR={made['SHR'][0]}\n")
+        env.write(f"PROFILE_CDX={made['CDX'][0]}\nPROFILE_NSE={made['NSE'][0]}\n")
     print(f"Signing ready: certificate {cert['id']}, {len(made)} profiles")
 
 

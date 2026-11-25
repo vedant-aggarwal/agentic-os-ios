@@ -143,6 +143,8 @@ jobs:
               <key>$BUNDLE_ID.controls</key><string>$PROFILE_EXT</string>
               <key>$BUNDLE_ID.keyboard</key><string>$PROFILE_KBD</string>
               <key>$BUNDLE_ID.share</key><string>$PROFILE_SHR</string>
+              <key>$BUNDLE_ID.calldirectory</key><string>$PROFILE_CDX</string>
+              <key>$BUNDLE_ID.notify</key><string>$PROFILE_NSE</string>
             </dict>
             <key>uploadSymbols</key><false/>
             <key>manageAppVersionAndBuildNumber</key><false/>

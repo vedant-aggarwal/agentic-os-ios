@@ -1,6 +1,7 @@
 # After `expo prebuild`: manual App Store signing on the app target and its app extensions, every build configuration.
 # Only those targets are touched, so Pods never get a provisioning profile they don't support.
-# Env: TEAM, BUNDLE_ID, PROFILE_APP, PROFILE_EXT, PROFILE_KBD, PROFILE_SHR (written by scripts/ios_signing.py setup).
+# Env: TEAM, BUNDLE_ID, PROFILE_APP, PROFILE_EXT, PROFILE_KBD, PROFILE_SHR, PROFILE_CDX, PROFILE_NSE (written by
+# scripts/ios_signing.py setup).
 require 'xcodeproj'
 
 path = Dir['ios/*.xcodeproj'].reject { |p| p.include?('Pods') }.first or abort('No Xcode project under ios/')
@@ -37,6 +38,10 @@ exts.each do |t|
     sign.call(t, ENV.fetch('PROFILE_KBD'), "#{ENV.fetch('BUNDLE_ID')}.keyboard")
   elsif t.name =~ /share/i # targets/share, <app>.share: "Open on PC" in the share sheet
     sign.call(t, ENV.fetch('PROFILE_SHR'), "#{ENV.fetch('BUNDLE_ID')}.share")
+  elsif t.name =~ /calldirectory/i # targets/calldirectory, <app>.calldirectory: Nora's line's call blocking
+    sign.call(t, ENV.fetch('PROFILE_CDX'), "#{ENV.fetch('BUNDLE_ID')}.calldirectory")
+  elsif t.name =~ /notify/i # targets/notify, <app>.notify: a line decision's option buttons
+    sign.call(t, ENV.fetch('PROFILE_NSE'), "#{ENV.fetch('BUNDLE_ID')}.notify")
   else
     sign.call(t, ENV.fetch('PROFILE_EXT'), "#{ENV.fetch('BUNDLE_ID')}.controls")
   end

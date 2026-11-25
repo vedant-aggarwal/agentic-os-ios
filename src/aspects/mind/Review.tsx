@@ -1,22 +1,27 @@
 import { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import {
-  Block, Button, Chip, Failed, Group, IconButton, Icon, Screen, SegTabs, Skeleton, dayLabel, timer, t, undoable, useAspect,
+  Block, Button, Chip, Failed, Field, Group, IconButton, Icon, Item, Screen, SegTabs, Skeleton, dayLabel, haptic, timer, t, undoable, useAspect,
 } from '@/aspects/kit';
 import { call, fileSource, invalidate, useGet } from '@/lib/mod';
 import { C } from '@/theme';
+import { useNav } from './nav';
 import { usePlayer } from './recorder';
-import type { DimKey, Take, TakeSpec } from './types';
+import type { DimKey, Moment, StageSpec, Take, TakeSpec } from './types';
 import { Quote, ScoreRow, Steps, Sym, secsWords, useLast, usePoll } from './ui';
+import { VideoPlayer, VideoPoster } from './Video';
 
 const DIM_NAME: Record<DimKey, string> = { structure: 'Structure', clarity: 'Clarity', focus: 'On topic', words: 'Word choice', economy: 'Economy', fillers: 'Fillers' };
 const ORDER: DimKey[] = ['structure', 'clarity', 'focus', 'words', 'economy', 'fillers'];
-const busy = (s?: string) => s === 'transcribing' || s === 'reviewing';
+const busy = (s?: string) => s === 'saving' || s === 'transcribing' || s === 'reviewing';
+const PACE = { slow: 'Slow', steady: 'Steady', fast: 'Fast', uneven: 'Uneven' } as const;
 
 /** The same topic again, as a new take. */
 export function specOf(take: Take): TakeSpec {
   return { kind: take.kind, topic: take.topic, label: take.topic_label, topicKind: take.topic_kind ?? undefined, drill: take.drill ?? undefined, source: take.source ?? undefined };
 }
+/** The same prompt again, on camera. */
+const stageSpecOf = (take: Take): StageSpec => ({ mode: take.mode ?? 'topic', topic: take.topic, label: take.topic_label, topicKind: take.topic_kind, topicId: null });
 
 /** Where a take is: the wait, a failure with Try again, too short, or the review itself. */
 export function TakeState({ take, onRetry, retrying }: { take: Take; onRetry: () => void; retrying?: boolean }) {
@@ -31,17 +36,20 @@ export function TakeState({ take, onRetry, retrying }: { take: Take; onRetry: ()
     );
   }
   const failed = take.status === 'failed';
-  const heard = !!take.transcript || take.status === 'reviewing' || take.failed_step === 'review';
+  const saving = take.status === 'saving' || take.failed_step === 'save';
+  const heard = !saving && (!!take.transcript || take.status === 'reviewing' || take.failed_step === 'review');
   return (
     <Group pad>
       <View style={s.gap16}>
         <Steps items={[
-          { label: 'Saved on your PC', state: 'done' },
-          { label: 'Writing down what you said', state: heard ? 'done' : failed ? 'failed' : 'now', note: !heard && failed ? take.error : null },
+          take.video
+            ? { label: 'Putting the video together on your PC', state: take.status === 'saving' ? 'now' : take.failed_step === 'save' ? 'failed' : 'done', note: take.failed_step === 'save' ? take.error : null }
+            : { label: 'Saved on your PC', state: 'done' },
+          { label: 'Writing down what you said', state: heard ? 'done' : saving ? 'next' : failed ? 'failed' : 'now', note: !heard && failed && !saving ? take.error : null },
           { label: 'Reviewing', state: take.failed_step === 'review' ? 'failed' : take.status === 'reviewing' ? 'now' : 'next', note: take.failed_step === 'review' ? take.error : null },
         ]} />
-        {failed ? <Button label={take.failed_step === 'review' ? 'Review it again' : 'Write it down again'} kind="quiet" small onPress={onRetry} busy={retrying} wrap={s.start} />
-          : <Text style={t.footnote}>Usually under a minute. You can leave, the review will be on Mind when it&apos;s ready.</Text>}
+        {failed ? <Button label={take.failed_step === 'save' ? 'Save it again' : take.failed_step === 'review' ? 'Review it again' : 'Write it down again'} kind="quiet" small onPress={onRetry} busy={retrying} wrap={s.start} />
+          : <Text style={t.footnote}>{take.video ? 'Usually a minute or two. You can leave, it will be on Speak when it’s ready.' : 'Usually under a minute. You can leave, the review will be on Mind when it’s ready.'}</Text>}
       </View>
     </Group>
   );
@@ -102,8 +110,143 @@ export function ReviewBody({ take }: { take: Take }) {
         </Group>
       </Block>
 
-      <Player take={take} />
+      {take.video ? null : <Player take={take} />}
     </View>
+  );
+}
+
+/** Moments in the video, each one tap from playing there. */
+function Moments({ items, label, onSeek }: { items?: Moment[]; label: string; onSeek: (at: number) => void }) {
+  const a = useAspect();
+  if (!items?.length) return null;
+  return (
+    <>
+      <Text style={t.footnote}>{label}</Text>
+      <Group inset={72}>
+        {items.map((m, i) => (
+          <Item key={`${m.at}-${i}`} title={m.note} lines={3} onPress={() => onSeek(m.at)} chevron label={`Play from ${timer(m.at)}. ${m.note}`}
+            left={<View style={s.at}><Text style={[t.subhead, t.num, { color: a.color }]}>{timer(m.at)}</Text></View>} />
+        ))}
+      </Group>
+    </>
+  );
+}
+
+function Waiting({ title, line }: { title: string; line: string }) {
+  const a = useAspect();
+  return (
+    <Block title={title}>
+      <Group pad><View style={s.wait}><ActivityIndicator color={a.color} /><Text style={[t.subhead, s.flex]}>{line}</Text></View></Group>
+    </Block>
+  );
+}
+
+/** How he looked: Claude Opus on frames from the video. */
+function Look({ take, onRetry, retrying, onSeek }: { take: Take; onRetry: () => void; retrying: boolean; onSeek: (at: number) => void }) {
+  const a = useAspect();
+  const p = take.presence;
+  if (!take.video || take.status === 'saving' || take.failed_step === 'save') return null;
+  if (!p || p.state === 'running') return <Waiting title="How you looked" line={p ? 'Claude is watching your video.' : 'Claude watches your video once it is written down.'} />;
+  if (p.state === 'failed') {
+    return (
+      <Block title="How you looked">
+        <Group pad>
+          <Text style={t.subhead}>{p.error ?? "The look at your video didn't finish."}</Text>
+          <Button label="Look again" kind="quiet" small onPress={onRetry} busy={retrying} wrap={s.start} />
+        </Group>
+      </Block>
+    );
+  }
+  const parts = ([['Eyes', p.eyes], ['Posture', p.posture], ['Hands', p.hands], ['Face', p.face]] as const).filter(([, v]) => !!v);
+  return (
+    <Block title="How you looked" sub="Claude watched frames from your video.">
+      <Group pad><ScoreRow name="Confidence on camera" value={p.confidence ?? null} note={p.summary} /></Group>
+      {p.fix ? (
+        <Group pad tone={a.color}>
+          <Text style={[t.footnote, { color: a.color }]}>On camera next time</Text>
+          <Text style={t.headline}>{p.fix}</Text>
+        </Group>
+      ) : null}
+      {parts.length ? <Group>{parts.map(([k, v]) => <Item key={k} title={k} sub={v} lines={4} />)}</Group> : null}
+      <Moments items={p.stuck} label="Where you got stuck. Tap one to watch it." onSeek={onSeek} />
+    </Block>
+  );
+}
+
+/** How he sounded: Gemini on the audio, once a key is saved. */
+function Voice({ take, onRetry, retrying, onSeek }: { take: Take; onRetry: () => void; retrying: boolean; onSeek: (at: number) => void }) {
+  const a = useAspect();
+  const nav = useNav();
+  const d = take.delivery;
+  if (!take.video || take.status === 'saving' || take.failed_step === 'save') return null;
+  if (d?.state === 'off') {
+    return (
+      <Block title="How you sounded">
+        <Group pad>
+          <Text style={t.subhead}>Add a Gemini key and Gemini listens to your videos: energy, pitch, pace and pauses.</Text>
+          <Button label="Add a key" kind="soft" small onPress={nav.openKey} wrap={s.start} />
+        </Group>
+      </Block>
+    );
+  }
+  if (!d || d.state === 'running') return <Waiting title="How you sounded" line={d ? 'Gemini is listening to your video.' : 'Gemini listens once the video is written down.'} />;
+  if (d.state === 'failed') {
+    return (
+      <Block title="How you sounded">
+        <Group pad>
+          <Text style={t.subhead}>{d.error ?? "Gemini's listen didn't finish."}</Text>
+          <Button label="Listen again" kind="quiet" small onPress={onRetry} busy={retrying} wrap={s.start} />
+        </Group>
+      </Block>
+    );
+  }
+  return (
+    <Block title="How you sounded" sub="Gemini listened to your video.">
+      <Group pad>
+        <ScoreRow name="Energy" value={d.energy ?? null} note={d.tone} />
+        <ScoreRow name="Pitch and pace that move" value={d.variety ?? null} note={d.pitch} />
+        <ScoreRow name="Clear words" value={d.clarity ?? null} />
+        <View style={s.gap4}>
+          <View style={s.between}>
+            <Text style={t.callout}>Pace</Text>
+            <Text style={[t.headline, t.num]}>{`${PACE[d.pace ?? 'steady']}${d.wpm ? `, ${d.wpm} words a minute` : ''}`}</Text>
+          </View>
+          {d.pace_note ? <Text style={t.footnote}>{d.pace_note}</Text> : null}
+        </View>
+        {d.pauses ? (
+          <View style={s.gap4}>
+            <Text style={t.callout}>Pauses</Text>
+            <Text style={t.footnote}>{d.pauses}</Text>
+          </View>
+        ) : null}
+      </Group>
+      {d.fix ? (
+        <Group pad tone={a.color}>
+          <Text style={[t.footnote, { color: a.color }]}>Your voice next time</Text>
+          <Text style={t.headline}>{d.fix}</Text>
+        </Group>
+      ) : null}
+      <Moments items={d.stuck} label="Where your voice faltered. Tap one to watch it." onSeek={onSeek} />
+    </Block>
+  );
+}
+
+/** His own notes on a video, kept with it. */
+function Notes({ take, onSaved }: { take: Take; onSaved: () => void }) {
+  const a = useAspect();
+  const [text, setText] = useState(take.notes ?? '');
+  const [saving, setSaving] = useState(false);
+  const dirty = text.trim() !== (take.notes ?? '').trim();
+  const save = async () => {
+    setSaving(true);
+    try { await call(`/mod/mind/stage/${take.id}/notes`, { text }); invalidate('/mod/mind/stage'); haptic.light(); onSaved(); }
+    catch (e) { a.notice((e as Error).message); } finally { setSaving(false); }
+  };
+  return (
+    <Block title="Your notes">
+      <Field multiline value={text} onChangeText={setText} placeholder="What to remember for the next one" />
+      {dirty ? <Button label="Save notes" kind="soft" small busy={saving} onPress={() => { void save(); }} wrap={s.start} /> : null}
+    </Block>
   );
 }
 
@@ -128,18 +271,28 @@ function Player({ take }: { take: Take }) {
 }
 
 /** One take, on its own screen: from the Speak list or from Mind home. */
-export function ReviewScreen({ id, onClose, onAgain }: { id: string | null; onClose: () => void; onAgain: (spec: TakeSpec) => void }) {
+export function ReviewScreen({ id, onClose, onAgain, onStage }: { id: string | null; onClose: () => void; onAgain: (spec: TakeSpec) => void; onStage?: (spec: StageSpec) => void }) {
   const a = useAspect();
   const shown = useLast(id);
   const g = useGet<{ item: Take }>(shown ? `/mod/mind/takes/${shown}` : null);
   const take = g.data?.item?.id === shown ? g.data.item : null;
   const [retrying, setRetrying] = useState(false);
+  const [looking, setLooking] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  usePoll(() => { void g.refresh().then(() => invalidate('/mod/mind/speak')); }, 2500, a.open && !!id && busy(take?.status));
+  const [play, setPlay] = useState<number | null>(null);
+  // a video keeps filling in after its review: the look and the listen land on their own
+  const parts = !!take?.video && take.failed_step !== 'save'
+    && (!take.presence || !take.delivery || take.presence.state === 'running' || take.delivery.state === 'running');
+  usePoll(() => { void g.refresh().then(() => invalidate(take?.video ? '/mod/mind/stage' : '/mod/mind/speak')); }, 2500, a.open && !!id && (busy(take?.status) || parts));
   const retry = async () => {
     if (!take) return;
     setRetrying(true);
     try { await call(`/mod/mind/takes/${take.id}/retry`); await g.refresh(); } catch (e) { a.notice((e as Error).message); } finally { setRetrying(false); }
+  };
+  const analyse = async () => {
+    if (!take) return;
+    setLooking(true);
+    try { await call(`/mod/mind/stage/${take.id}/analyse`); await g.refresh(); } catch (e) { a.notice((e as Error).message); } finally { setLooking(false); }
   };
   const remove = async () => {
     if (!take) return;
@@ -150,7 +303,7 @@ export function ReviewScreen({ id, onClose, onAgain }: { id: string | null; onCl
       invalidate('/mod/mind/');
       onClose();
       // the PC keeps the record and the recording for a day, so Undo puts both back
-      undoable('Take deleted', async () => {
+      undoable(take.video ? 'Video deleted' : 'Take deleted', async () => {
         try { await call(`/mod/mind/takes/${id}/restore`); invalidate('/mod/mind/'); } catch (e) { a.notice((e as Error).message); }
       });
     } catch (e) { a.notice((e as Error).message); } finally { setDeleting(false); }
@@ -164,12 +317,21 @@ export function ReviewScreen({ id, onClose, onAgain }: { id: string | null; onCl
             <Text style={t.title3}>{take.topic}</Text>
             <Text style={[t.footnote, t.num]}>{`${dayLabel(take.day)}${take.secs ? `, ${secsWords(take.secs)}` : ''}`}</Text>
           </View>
+          {take.video ? <VideoPoster id={take.id} thumb={!!take.thumb && !!take.file} secs={take.secs} onPlay={() => setPlay(0)} /> : null}
+          {take.video ? <Notes key={take.id} take={take} onSaved={() => { void g.refresh(); }} /> : null}
           <TakeState take={take} onRetry={retry} retrying={retrying} />
           {take.status === 'reviewed' && take.review ? <ReviewBody take={take} /> : null}
+          <Look take={take} onRetry={analyse} retrying={looking} onSeek={setPlay} />
+          <Voice take={take} onRetry={analyse} retrying={looking} onSeek={setPlay} />
           <View style={s.gap12}>
-            <Button label="Try this topic again" kind="accent" icon={<Icon name="mic" size={18} color="#14161C" />} onPress={() => onAgain(specOf(take))} />
-            <Button label="Delete this take" kind="danger" small onPress={remove} busy={deleting} icon={<Sym name="trash" size={16} color={C.danger} />} wrap={s.start} />
+            {take.video && onStage ? (
+              <Button label="Film this prompt again" kind="accent" icon={<Sym name="video" size={18} color="#14161C" />} onPress={() => onStage(stageSpecOf(take))} />
+            ) : (
+              <Button label="Try this topic again" kind="accent" icon={<Icon name="mic" size={18} color="#14161C" />} onPress={() => onAgain(specOf(take))} />
+            )}
+            <Button label={take.video ? 'Delete this video' : 'Delete this take'} kind="danger" small onPress={remove} busy={deleting} icon={<Sym name="trash" size={16} color={C.danger} />} wrap={s.start} />
           </View>
+          {take.video ? <VideoPlayer id={play != null ? take.id : null} at={play ?? 0} onClose={() => setPlay(null)} /> : null}
         </>
       )}
     </Screen>
@@ -188,4 +350,7 @@ const s = StyleSheet.create({
   read: { color: C.textSoft },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   player: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  wait: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  at: { width: 44 },
+  between: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 },
 });

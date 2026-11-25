@@ -1,9 +1,9 @@
 import { createContext, use } from 'react';
 import type { TabDef } from '@/aspects/kit';
-import type { TakeSpec } from './types';
+import type { StageSpec, TakeSpec } from './types';
 
-// Where the Mind page is: the open tab, and the full screen flows on top (a take, recall, a drill, a review, the end
-// of a reading sitting). Any part of the page can open another without passing callbacks down.
+// Where the Mind page is: the open tab, and the full screen flows on top (a take, a video on Stage, recall, a drill, a
+// review, the end of a reading sitting). Any part of the page can open another without passing callbacks down.
 
 export type Tab = 'today' | 'read' | 'learn' | 'speak';
 export const TABS: readonly TabDef<Tab>[] = [
@@ -15,6 +15,10 @@ export type MindNav = {
   openTab: (t: Tab) => void;
   /** Record a take on this topic (the think, talk and review flow). */
   take: (spec: TakeSpec, steps?: string[]) => void;
+  /** Film a take on this prompt (Stage), or pick up an unfinished one. */
+  stage: (spec: StageSpec) => void;
+  /** The Gemini key: voice feedback on videos. */
+  openKey: () => void;
   openRecall: () => void;
   openDrill: (id: string) => void;
   openReview: (id: string) => void;

@@ -3,10 +3,11 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import {
   Block, Button, Failed, Group, Icon, IconButton, Item, Lead, Screen, Skeleton, Spark, Tag, dayLabel, num, t, useAspect,
 } from '@/aspects/kit';
-import { call, invalidate, useGet } from '@/lib/mod';
+import { useGet } from '@/lib/mod';
 import { C } from '@/theme';
 import { useNav } from './nav';
-import type { Drill, SpeakView, TakeLite, TakeSpec } from './types';
+import { OpenRecordings, STAGE, StageLead, Videos } from './Stage';
+import type { Drill, SpeakView, StageView, TakeLite, TakeSpec } from './types';
 import { ScoreRow, Sym, secsWords, useLast, usePoll } from './ui';
 
 export const SPEAK = '/mod/mind/speak';
@@ -14,6 +15,7 @@ export const SPEAK = '/mod/mind/speak';
 /** A take's state in a few words, for lists. */
 export function takeWord(t: TakeLite) {
   if (t.status === 'reviewed' && t.overall != null) return String(t.overall);
+  if (t.status === 'saving') return 'Saving';
   if (t.status === 'transcribing') return 'Writing down';
   if (t.status === 'reviewing') return 'Reviewing';
   if (t.status === 'short') return 'Too short';
@@ -25,7 +27,7 @@ export function TakeRow({ take, onPress }: { take: TakeLite; onPress: () => void
   const a = useAspect();
   const word = takeWord(take);
   const scored = take.status === 'reviewed' && take.overall != null;
-  const working = take.status === 'transcribing' || take.status === 'reviewing';
+  const working = take.status === 'saving' || take.status === 'transcribing' || take.status === 'reviewing';
   return (
     <Item title={take.topic} sub={`${dayLabel(take.day)}${take.secs ? `, ${secsWords(take.secs)}` : ''}`} onPress={onPress} chevron
       label={`${take.topic}, ${scored ? `scored ${word}` : word}`}
@@ -35,8 +37,9 @@ export function TakeRow({ take, onPress }: { take: TakeLite; onPress: () => void
 }
 
 /**
- * Speak: today's topic is one tap from a take (think, talk, review). What he learned is there to say back, the drills
- * teach one pattern each, and every take is scored on the same rubric so the numbers compare.
+ * Speak: impromptu speaking on camera first (Stage: two dice, no prompt or his own, think, talk, review), with an
+ * unfinished video to pick up and the diary of videos. What he learned is there to say back, the drills teach one
+ * pattern each, and every take is scored on the same rubric so the numbers compare.
  */
 export function SpeakTab({ active }: { active: boolean }) {
   const a = useAspect();
@@ -44,38 +47,28 @@ export function SpeakTab({ active }: { active: boolean }) {
   const [seen, setSeen] = useState(active);
   if (active && !seen) setSeen(true);
   const g = useGet<SpeakView>(a.open && seen ? SPEAK : null);
-  const v = g.data;
-  const [another, setAnother] = useState(false);
-  usePoll(() => { void g.refresh(); }, 4000, a.open && active && !!v?.pending.length);
-  const next = async () => {
-    setAnother(true);
-    try { await call(`/mod/mind/topics/next`); invalidate('/mod/mind/'); } catch (e) { a.notice((e as Error).message); } finally { setAnother(false); }
-  };
+  const st = useGet<StageView>(a.open && seen ? STAGE : null);
+  const v = g.data, sv = st.data;
+  const pending = v?.pending.filter((p) => !p.video) ?? [];
+  usePoll(() => { void g.refresh(); }, 4000, a.open && active && !!pending.length);
+  // a video being saved, reviewed, looked at or listened to shows each part as it lands
+  usePoll(() => { void st.refresh(); }, 4000, a.open && active && !!sv?.videos.some((x) => x.status === 'saving' || x.status === 'transcribing' || x.status === 'reviewing' || x.look === 'running' || x.voice === 'running'));
   if (!v) return g.error ? <Failed message={g.error} onRetry={g.refresh} /> : <SpeakSkeleton />;
   return (
     <>
-      <Lead>
-        <Text style={[t.footnote, { color: a.color }]}>{`Today's topic, ${v.topic.label.toLowerCase()}`}</Text>
-        <View style={s.gap4}>
-          <Text style={t.title3}>{v.topic.text}</Text>
-          {v.topic.from ? <Text style={t.footnote}>{`Made from ${v.topic.from.title}`}</Text> : null}
-        </View>
-        <Text style={t.footnote}>Fifteen seconds to think, then about a minute. It stops at two.</Text>
-        <View style={s.buttons}>
-          <Button label="Start" kind="accent" wrap={s.flex} icon={<Icon name="mic" size={18} color="#14161C" />}
-            onPress={() => nav.take({ kind: 'impromptu', topic: v.topic.text, label: v.topic.label, topicId: v.topic.id, topicKind: v.topic.kind })} />
-          <Button label="Another" kind="quiet" onPress={() => { void next(); }} busy={another} icon={<Sym name="again" size={16} />} />
-        </View>
-      </Lead>
+      <StageLead topic={v.topic} />
+      {sv ? <OpenRecordings open={sv.open} /> : null}
 
-      {v.pending.length ? (
+      {pending.length ? (
         <Group>
-          {v.pending.map((p) => (
+          {pending.map((p) => (
             <Item key={p.id} title={p.status === 'transcribing' ? 'Writing down your take' : 'Reviewing your take'} sub={p.topic} onPress={() => nav.openReview(p.id)}
               left={<ActivityIndicator color={a.color} />} chevron />
           ))}
         </Group>
       ) : null}
+
+      {sv ? <Videos v={sv} /> : st.error ? <Failed message={st.error} onRetry={st.refresh} /> : <Skeleton height={120} radius={22} />}
 
       {v.learned.length ? (
         <Block title="Say what you learned" sub="Explaining it back is how it sticks.">
@@ -103,8 +96,8 @@ export function SpeakTab({ active }: { active: boolean }) {
 
       <Scores v={v} />
 
-      <Block title="Your takes" sub={v.takes.length ? null : 'Each take you record lands here with its review.'}>
-        {v.takes.length ? <Group>{v.takes.map((tk) => <TakeRow key={tk.id} take={tk} onPress={() => nav.openReview(tk.id)} />)}</Group> : null}
+      <Block title="Your voice takes" sub={v.takes.some((tk) => !tk.video) ? null : 'Each take you record without the camera lands here with its review.'}>
+        {v.takes.some((tk) => !tk.video) ? <Group>{v.takes.filter((tk) => !tk.video).map((tk) => <TakeRow key={tk.id} take={tk} onPress={() => nav.openReview(tk.id)} />)}</Group> : null}
       </Block>
     </>
   );

@@ -1,17 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
-import { Icon, IconButton, haptic, t, timer, useAspect } from '@/aspects/kit';
+import { Chip, Icon, IconButton, haptic, t, timer, useAspect } from '@/aspects/kit';
 import { upload } from '@/lib/mod';
+import { C } from '@/theme';
 import { useRecorder } from './recorder';
 import { Sym, useNow } from './ui';
 
 const MAX = 60; // a spoken line stops itself at a minute
 
 /**
- * Say one line instead of typing it (a takeaway, a recall answer). It records, sends the clip to the PC to be
- * written down, and hands back the text. The clip is deleted on the PC once it is written down.
+ * Say one line instead of typing it (a takeaway, a recall answer, a prompt of his own). It records, sends the clip to
+ * the PC to be written down, and hands back the text. The clip is deleted on the PC once it is written down. `chip`
+ * shows it as a chip with that label instead of a mic button.
  */
-export function Dictate({ onText, what }: { onText: (text: string) => void; what: string }) {
+export function Dictate({ onText, what, chip, selected }: { onText: (text: string) => void; what: string; chip?: string; selected?: boolean }) {
   const a = useAspect();
   const mic = useRecorder();
   const [state, setState] = useState<'idle' | 'rec' | 'work'>('idle');
@@ -49,6 +51,11 @@ export function Dictate({ onText, what }: { onText: (text: string) => void; what
   }, [state, from]);
   useEffect(() => { if (!a.open && state === 'rec') void mic.discard().then(() => setState('idle')); }, [a.open, state, mic]);
 
+  if (chip) {
+    if (state === 'work') return <Chip label="Writing down" selected icon={<ActivityIndicator size="small" color={a.color} />} />;
+    if (state === 'rec') return <Chip label={`${timer(secs)}  Stop`} selected onPress={stop} icon={<Sym name="stop" size={14} color={a.color} filled />} />;
+    return <Chip label={chip} selected={selected} onPress={start} icon={<Icon name="mic" size={16} color={selected ? a.color : C.textSoft} />} />;
+  }
   if (state === 'work') {
     return <View style={s.box} accessibilityLabel="Writing down what you said"><ActivityIndicator color={a.color} /></View>;
   }

@@ -14,6 +14,11 @@ export const G = {
   wave: ['waveform', 'M4 10v4M8 7v10M12 4v16M16 8v8M20 10.5v3'],
   bulb: ['lightbulb', 'M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z'],
   trash: ['trash', 'M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13'],
+  play: ['play.fill', 'M8 5.5v13l10.5-6.5z'],
+  video: ['video', 'M3.5 7.5h11a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1zM15.5 10.5l5-3v9l-5-3'],
+  dice: ['dice', 'M5.5 3.5h13a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2v-13a2 2 0 0 1 2-2zM8.5 8.5h.01M15.5 15.5h.01M15.5 8.5h.01M8.5 15.5h.01M12 12h.01'],
+  talk: ['bubble.left.and.bubble.right', 'M3.5 5h11a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H9l-3 3v-3H4.5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zM18 9h1.5a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H18v3l-3-3h-3.5'],
+  phone: ['phone', 'M5 4h3l1.5 4-2 1.5a11 11 0 0 0 7 7l1.5-2 4 1.5v3a1 1 0 0 1-1 1A16 16 0 0 1 4 5a1 1 0 0 1 1-1z'],
 } as const;
 
 export function Sym({ name, size = 20, color = C.text, filled }: { name: keyof typeof G; size?: number; color?: string; filled?: boolean }) {

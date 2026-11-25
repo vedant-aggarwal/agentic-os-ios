@@ -1,16 +1,18 @@
 // What the Mind routes answer (server/modules/mind*.ts). Only the fields the page reads.
 
-export type TopicKind = 'opinion' | 'explain' | 'story' | 'persuade' | 'think';
+export type TopicKind = 'opinion' | 'explain' | 'story' | 'persuade' | 'think' | 'talk';
 export type Source = { kind: 'lesson' | 'takeaway'; id: string; title: string };
 export type Topic = { id: string; text: string; kind: TopicKind; label: string; by: 'bank' | 'ai'; from: Source | null };
 export type Learned = { text: string; line: string | null; source: Source; day: string };
 
-export type TakeStatus = 'transcribing' | 'reviewing' | 'reviewed' | 'short' | 'failed';
+export type TakeStatus = 'saving' | 'transcribing' | 'reviewing' | 'reviewed' | 'short' | 'failed';
 export type TakeKind = 'impromptu' | 'drill' | 'learned';
 export type TakeLite = {
   id: string; day: string; at: string; kind: TakeKind; topic: string; topic_label: string; status: TakeStatus;
-  failed_step: 'transcribe' | 'review' | null; error: string | null; secs: number | null; overall: number | null;
+  failed_step: 'save' | 'transcribe' | 'review' | null; error: string | null; secs: number | null; overall: number | null;
   source: Source | null; drill: string | null; updated_at: string;
+  /** a Stage take: filmed on the camera (mind-stage.ts) */
+  video?: boolean;
 };
 export type DimKey = 'structure' | 'clarity' | 'focus' | 'words' | 'economy' | 'fillers';
 export type Check = { score: number; note: string };
@@ -22,7 +24,36 @@ export type Review = {
 export type Take = TakeLite & {
   transcript: string | null; review: Review | null; file: string | null; mime: string | null; bytes: number;
   words?: number; secs_estimated?: boolean; topic_kind: TopicKind | null;
+  mode?: StageMode; thumb?: string | null; notes?: string; presence?: Presence | null; delivery?: Delivery | null;
 };
+
+// ── Stage: impromptu speaking on camera ──
+export type StageMode = 'topic' | 'talk' | 'none' | 'own';
+export type Moment = { at: number; note: string };
+/** Claude Opus on frames from the video. */
+export type Presence = {
+  state: 'running' | 'done' | 'failed'; error?: string; confidence?: number; summary?: string;
+  eyes?: string; posture?: string; hands?: string; face?: string; stuck?: Moment[]; fix?: string;
+};
+/** Gemini on the audio, when a key is saved. */
+export type Delivery = {
+  state: 'off' | 'running' | 'done' | 'failed'; error?: string; energy?: number; variety?: number; clarity?: number;
+  pace?: 'slow' | 'steady' | 'fast' | 'uneven'; wpm?: number | null; tone?: string; pitch?: string; pace_note?: string; pauses?: string; stuck?: Moment[]; fix?: string; model?: string;
+};
+export type VideoLite = TakeLite & {
+  video: true; mode: StageMode; thumb: boolean; notes: string | null;
+  look: Presence['state'] | null; confidence: number | null; voice: Delivery['state'] | null; energy: number | null;
+};
+/** A recording that never finished: the PC has what was sent before the app closed. */
+export type OpenRec = {
+  id: string; at: string; topic: string; mode: StageMode; topic_kind: TopicKind | null; topic_id: string | null; label: string;
+  secs: number; bytes: number; parts: number; next: number; updated_at: string;
+};
+export type GeminiState = { set: boolean; from: 'app' | 'config' | null; model: string | null; tail: string | null };
+export type StageView = { day: string; open: OpenRec[]; videos: VideoLite[]; total: number; gemini: GeminiState; limit: number; prep: number };
+export type Rolled = { id: string; text: string; kind: TopicKind; label: string; die: 'topic' | 'talk' };
+/** What a Stage recording is about when it starts; `resume` picks up an unfinished one. */
+export type StageSpec = { mode: StageMode; topic: string; label: string; topicKind?: TopicKind | null; topicId?: string | null; resume?: OpenRec };
 
 export type Drill = { id: string; name: string; lines: [string, string]; steps: string[]; done: number; prompt: string; prompts: string[] };
 export type Progress = {

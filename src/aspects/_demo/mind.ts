@@ -4,7 +4,8 @@
 import { collection, demoSource, newId, type Doc } from '@/lib/mod';
 import { addDays, myDay, weekStart } from '@/aspects/kit/time';
 import type {
-  Book, CourseView, DimKey, Drill, HomeView, Learned, Lesson, Pace, ReadView, Review, Shelf, SpeakView, Take, TakeLite, Topic, TopicKind,
+  Book, CourseView, Delivery, DimKey, Drill, GeminiState, HomeView, Learned, Lesson, OpenRec, Pace, Presence, ReadView, Review, Shelf, SpeakView,
+  StageMode, StageView, Take, TakeLite, Topic, TopicKind, VideoLite,
 } from '@/aspects/mind/types';
 
 const day = myDay();
@@ -26,13 +27,17 @@ const books: BookRec[] = [
 ];
 const bookOf = (id: string) => books.find((b) => b.id === id && !b.gone) ?? fail('No such book.');
 
-type Session = Doc & { kind: 'reading' | 'lesson'; book?: string | null; lesson?: string | null; date: string; minutes: number; from_page?: number | null; to_page?: number | null };
+type Session = Doc & { kind: 'reading' | 'lesson' | 'game'; book?: string | null; lesson?: string | null; date: string; minutes: number; from_page?: number | null; to_page?: number | null; title?: string };
 const read1 = (n: number, date: string, minutes: number, from: number, to: number, book = 'mb-1'): Session =>
   ({ id: `ms-${n}`, kind: 'reading', book, date, minutes, from_page: from, to_page: to, created_at: at(date, '22:00'), updated_at: at(date, '22:00') });
+// brain games on the three days before today (any one keeps the day)
+const game1 = (back: number, id: 'chess' | 'sudoku' | 'matiks', title: string): Session =>
+  ({ id: `game-${addDays(day, -back)}-${id}`, kind: 'game', date: addDays(day, -back), minutes: 0, title, created_at: at(addDays(day, -back), '13:10'), updated_at: at(addDays(day, -back), '13:10') });
 const sessionSeed: Session[] = [
   read1(1, addDays(day, -15), 20, 52, 66), read1(2, addDays(day, -13), 25, 66, 84), read1(3, addDays(day, -11), 30, 84, 102),
   read1(4, addDays(day, -8), 15, 102, 110), read1(5, addDays(day, -6), 28, 110, 124), read1(6, addDays(day, -4), 18, 124, 131),
   read1(7, addDays(mon, 0) < day ? mon : addDays(day, -3), 22, 131, 140), read1(8, addDays(day, -1), 26, 140, 148),
+  game1(1, 'chess', 'Chess'), game1(2, 'sudoku', 'Sudoku'), game1(2, 'matiks', 'Maths'), game1(3, 'chess', 'Chess'), game1(5, 'matiks', 'Maths'),
 ];
 // Today (the app's home) opens mind/sessions before this file loads, so the samples may need adding to it.
 const seeded = collection<Session>('mind', 'sessions');
@@ -170,7 +175,7 @@ function courseView(): CourseView {
 }
 
 // ── speaking: topics, drills, takes ──
-const LABEL: Record<TopicKind, string> = { opinion: 'Take a side', explain: 'Explain it simply', story: 'Tell a story', persuade: 'Persuade', think: 'Think on your feet' };
+const LABEL: Record<TopicKind, string> = { opinion: 'Take a side', explain: 'Explain it simply', story: 'Tell a story', persuade: 'Persuade', think: 'Think on your feet', talk: 'Conversation' };
 const TOPICS: Omit<Topic, 'label'>[] = [
   { id: 'ai-1', kind: 'explain', text: 'Explain why small steps done daily beat big pushes done rarely.', by: 'ai', from: { kind: 'takeaway', id: 'hl-2', title: 'The Long Game of Small Things' } },
   { id: 'o1', kind: 'opinion', text: 'Is it better to be early or to be right?', by: 'bank', from: null },
@@ -235,16 +240,69 @@ const takes: TakeRec[] = [
 ];
 const lite = (t: TakeRec): TakeLite => ({
   id: t.id, day: t.day, at: t.at, kind: t.kind, topic: t.topic, topic_label: t.topic_label, status: t.status, failed_step: t.failed_step, error: t.error,
-  secs: t.secs, overall: t.review?.overall ?? null, source: t.source, drill: t.drill, updated_at: t.updated_at,
+  secs: t.secs, overall: t.review?.overall ?? null, source: t.source, drill: t.drill, updated_at: t.updated_at, video: !!t.video,
 });
-// a take sent in the preview: written down after three seconds, reviewed after eight
+
+// ── Stage: videos on camera (no real video in the preview, so the posters are blank) ──
+const TALK: { id: string; kind: TopicKind; text: string }[] = [
+  { id: 'c1', kind: 'talk', text: 'A relative at a family function asks what you are doing these days. Answer them.' },
+  { id: 'c4', kind: 'talk', text: 'An interviewer says: tell me about yourself.' },
+  { id: 'c8', kind: 'talk', text: 'Your friend wants to quit the gym after two weeks. Talk them out of it.' },
+];
+const presence = (confidence: number): Presence => ({
+  state: 'done', confidence, summary: 'You come across calm, a little guarded in the first half.',
+  eyes: 'You hold the lens for most of it, and look down at 0:22 while you search for the example.', posture: 'Upright and still, shoulders a touch raised at the start.',
+  hands: 'Out of frame until 0:40, then one open gesture that helps.', face: 'Neutral at first; a real smile lands at 1:05.',
+  stuck: [{ at: 22, note: 'You looked down and restarted the sentence while finding the example.' }, { at: 51, note: 'A long pause before the close, eyes off the lens.' }],
+  fix: 'Keep your eyes on the lens while you think, even through a pause.',
+});
+const delivery = (energy: number): Delivery => ({
+  state: 'done', energy, variety: energy - 6, clarity: 72, pace: 'steady', wpm: 138, model: 'sample',
+  tone: 'Warm and even, more sure of itself in the second half.', pitch: 'Mostly level; it lifts on the example at 0:35, which helps.',
+  pace_note: 'Steady, a little quicker near the end.', pauses: 'Two pauses read as hesitation; the one before your close works.',
+  stuck: [{ at: 51, note: 'Your voice trails off before the close.' }], fix: 'Finish each sentence at full volume instead of trailing off.',
+});
+const video = (n: number, d: string, topic: { id: string; kind: TopicKind; text: string }, overall: number, secs: number, notes = ''): TakeRec => ({
+  ...take(10 + n, d, { ...topic, label: LABEL[topic.kind], by: 'bank', from: null }, overall, 3.2, [overall + 2, overall + 1, overall + 5, overall - 4, overall - 2, 66], secs),
+  id: `mv-${n}`, video: true, mode: topic.kind === 'talk' ? 'talk' : 'topic', thumb: null, notes, file: `mv-${n}.mp4`, mime: 'video/mp4',
+  presence: presence(overall - 4), delivery: delivery(overall - 2),
+});
+takes.push(
+  video(1, addDays(day, -5), TALK[1], 63, 84, 'Opened with my college. Next time open with what I build.'),
+  video(2, addDays(day, -2), TALK[2], 68, 96),
+);
+const stg = {
+  gemini: { set: true, from: 'app', model: 'gemini-3-flash', tail: '7Qx2' } as GeminiState, topic: 0, talk: 0,
+  open: [{ id: 'mo-1', at: at(addDays(day, -1), '21:12'), topic: TALK[0].text, mode: 'talk', topic_kind: 'talk', topic_id: 'c1', label: 'Conversation',
+    secs: 38, bytes: 4_800_000, parts: 1, next: 1, updated_at: at(addDays(day, -1), '21:13') }] as OpenRec[],
+  started: new Map<string, { topic: string; mode: StageMode; label: string; kind: TopicKind | null }>(),
+};
+const videoLite = (t: TakeRec): VideoLite => ({
+  ...lite(t), video: true, mode: t.mode ?? 'topic', thumb: false, notes: t.notes?.trim() ? t.notes.trim().slice(0, 140) : null,
+  look: t.presence?.state ?? null, confidence: t.presence?.state === 'done' ? t.presence.confidence ?? null : null,
+  voice: t.delivery?.state ?? null, energy: t.delivery?.state === 'done' ? t.delivery.energy ?? null : null,
+});
+function stageView(): StageView {
+  const vids = liveTakes().filter((t) => t.video);
+  return { day, open: stg.open, videos: vids.map(videoLite), total: vids.length, gemini: stg.gemini, limit: 120, prep: 15 };
+}
+
+// a take sent in the preview: written down after three seconds, reviewed after eight (a video is put together for
+// two seconds first, then looked at and listened to after the review)
 function settle(t: TakeRec) {
-  if (!t.made_at || t.status === 'reviewed') return t;
+  if (!t.made_at) return t;
   const s = (Date.now() - t.made_at) / 1000;
+  if (t.video && t.presence?.state !== 'done') {
+    if (s > 13) Object.assign(t, { presence: presence(61), delivery: stg.gemini.set ? delivery(64) : { state: 'off' } });
+    else if (s > 9) Object.assign(t, { presence: { state: 'running' }, delivery: stg.gemini.set ? { state: 'running' } : { state: 'off' } });
+  }
+  if (t.status === 'reviewed') return t;
+  if (t.video && s <= 2) return t;
   if (s > 8) {
     const r = review(74, 2.6, [76, 75, 78, 68, 70, 72], t.kind === 'learned' ? { grasp: { score: 78, note: 'You explained the idea in your own words and gave a fair example.' } } : {});
     Object.assign(t, { status: 'reviewed', review: r, overall: r.overall, transcript: 'A take recorded in the sample preview. Nothing was sent anywhere.', updated_at: new Date().toISOString() });
   } else if (s > 3) Object.assign(t, { status: 'reviewing', transcript: 'A take recorded in the sample preview. Nothing was sent anywhere.' });
+  else if (t.video) Object.assign(t, { status: 'transcribing', file: `${t.id}.mp4` });
   return t;
 }
 const liveTakes = () => takes.filter((t) => !t.gone).map(settle).sort((x, y) => y.at.localeCompare(x.at));
@@ -339,6 +397,13 @@ demoSource({
     '/mod/mind/read': () => readView(),
     '/mod/mind/course': () => courseView(),
     '/mod/mind/speak': () => speakView(),
+    '/mod/mind/stage': () => stageView(),
+    '/mod/mind/stage/gemini': () => ({ ...stg.gemini }),
+    '/mod/mind/academy': () => ({
+      title: 'Stage Academy', url: 'https://example.com/', up: true, why: null,
+      lesson: { id: 'l-7', title: 'Open with a question', module: 'Openings', seconds: 312, watched: true },
+      progress: { done: 6, total: 24, percent: 25, watched_minutes: 140 },
+    }),
     '/mod/mind/takes/*': (path: string) => {
       const id = path.split('?')[0].split('/')[4];
       const t = takes.find((x) => x.id === id && !x.gone) ?? fail('No such take.');
@@ -476,5 +541,48 @@ demoSource({
       return fail('Not in the sample preview.');
     },
     '/mod/mind/transcribe': () => ({ text: 'Words said in the sample preview land here.' }),
+    '/mod/mind/stage/roll': (body: Record<string, unknown>) => {
+      const talk = body.die === 'talk';
+      const pool = talk ? TALK : TOPICS.filter((x) => x.by === 'bank');
+      const x = pool[(talk ? ++stg.talk : ++stg.topic) % pool.length];
+      return { topic: { id: x.id, text: x.text, kind: x.kind, label: LABEL[x.kind], die: talk ? 'talk' : 'topic' } };
+    },
+    '/mod/mind/stage/start': (body: Record<string, unknown>) => {
+      const mode = (body.mode as StageMode) ?? 'topic';
+      const kind = mode === 'talk' ? 'talk' : (body.topic_kind as TopicKind | null) ?? null;
+      const label = mode === 'none' ? 'No prompt' : mode === 'own' ? 'Your own prompt' : kind ? LABEL[kind] : 'Impromptu';
+      stg.started.set(String(body.id), { topic: String(body.topic ?? 'Anything you want to talk about'), mode, label, kind });
+      return { open: { id: body.id } };
+    },
+    '/mod/mind/stage/gemini': (body: Record<string, unknown>) => {
+      const k = String(body.key ?? '').trim();
+      stg.gemini = k ? { set: true, from: 'app', model: 'gemini-3-flash', tail: k.slice(-4) } : { set: false, from: null, model: null, tail: null };
+      return stg.gemini;
+    },
+    '/mod/mind/stage/*': (body: Record<string, unknown>, info) => {
+      const [, , , , id, what] = info.path.split('/');
+      if (what === 'finish') {
+        const o = stg.open.find((x) => x.id === id);
+        const st0 = stg.started.get(id) ?? (o ? { topic: o.topic, mode: o.mode, label: o.label, kind: o.topic_kind } : fail("That recording isn't on the PC."));
+        const now = new Date().toISOString();
+        const t: TakeRec = {
+          id, day, at: now, kind: 'impromptu', topic: st0.topic, topic_label: st0.label, status: 'saving', failed_step: null, error: null, secs: o?.secs ?? 62, overall: null,
+          source: null, drill: null, updated_at: now, transcript: null, review: null, file: null, mime: 'video/mp4', bytes: 0, topic_kind: st0.kind,
+          video: true, mode: st0.mode, thumb: null, notes: '', presence: null, delivery: null, made_at: Date.now(),
+        };
+        takes.push(t);
+        stg.open = stg.open.filter((x) => x.id !== id);
+        return { take: lite(t) };
+      }
+      if (what === 'discard') { stg.open = stg.open.filter((x) => x.id !== id); stg.started.delete(id); return { ok: true }; }
+      const t = takes.find((x) => x.id === id && !x.gone) ?? fail('No such video.');
+      if (what === 'notes') { t.notes = String(body.text ?? '').trim(); return { take: videoLite(t) }; }
+      if (what === 'analyse') {
+        if (t.presence?.state === 'failed') t.presence = presence(61);
+        if (stg.gemini.set && t.delivery?.state !== 'done') t.delivery = delivery(64);
+        return { take: videoLite(t) };
+      }
+      return fail('Not in the sample preview.');
+    },
   },
 });

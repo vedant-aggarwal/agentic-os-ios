@@ -5,6 +5,7 @@ import { haptic, t, tint } from '@/aspects/kit/tokens';
 import { WaterRow } from '@/capture/parts';
 import { takePhoto } from '@/capture/shoot';
 import { frameOf, type FrameId } from '@/capture/moments';
+import { openAcademy } from '@/aspects/mind/academy';
 import type { BodyToday } from '@/lib/body';
 import type { Task } from '@/lib/today';
 import { ASPECT_NAME } from '@/lib/aspects';
@@ -312,8 +313,10 @@ export function Plan({ d, body, now, onOpen, onToggleTask, onCancelTask, onResto
     const games = [
       { id: 'chess' as const, name: 'Chess', cap: 'Duolingo', url: 'duolingo://', web: 'https://www.duolingo.com' },
       { id: 'sudoku' as const, name: 'Sudoku', cap: 'New game', url: 'https://sudoku.com', web: 'https://sudoku.com' },
-      { id: 'matiks' as const, name: 'Matiks', cap: 'Open app', url: 'matiks://', web: 'https://www.matiks.in' },
+      { id: 'matiks' as const, name: 'Maths', cap: 'Matiks', url: 'matiks://', web: 'https://www.matiks.in' },
     ];
+    // any one game keeps the brain-game habit; once one is played the other two read as extras (still tickable)
+    const played = games.some((g) => cap.doneTicks.has(g.id));
     const speak = d.practice('speak'), course = d.practice('course'), book = cap.doneTicks.has('book');
     const speakActs = routineActs('Impromptu speaking', 'practice-speak', speak, () => { d.togglePractice('speak').catch(fail); }, (v) => d.skipPractice('speak', v));
     const courseActs = routineActs('Communication course', 'practice-course', course, () => { d.togglePractice('course').catch(fail); }, (v) => d.skipPractice('course', v));
@@ -329,9 +332,9 @@ export function Plan({ d, body, now, onOpen, onToggleTask, onCancelTask, onResto
               <View key={g.id} style={[st.app, done && { backgroundColor: tint(A.mind, 0.1) }]}>
                 <View style={st.appTop}>
                   <Text numberOfLines={1} style={st.appName}>{g.name}</Text>
-                  <Tick done={done} color={A.mind} size={22} label={`${g.name} done`} onPress={() => tick(g.id, !done)} />
+                  <Tick done={done} color={A.mind} size={22} label={played && !done ? `${g.name}, an extra today` : `${g.name} done`} onPress={() => tick(g.id, !done)} />
                 </View>
-                <Link text={g.cap} out onPress={() => { Linking.openURL(g.url).catch(() => Linking.openURL(g.web).catch(() => {})); }} />
+                <Link text={played && !done ? 'Extra' : g.cap} out onPress={() => { Linking.openURL(g.url).catch(() => Linking.openURL(g.web).catch(() => {})); }} />
               </View>
             );
           })}
@@ -339,12 +342,14 @@ export function Plan({ d, body, now, onOpen, onToggleTask, onCancelTask, onResto
         <Group>
           {settleOrder([
             { id: 'practice-speak', done: speak, cancelled: speakActs.cancelled, node: (first: boolean) => (
-              <Row key="speak" first={first} title="Impromptu speaking" sub="Roll a topic and talk" color={A.mind} {...speakActs} />
+              <Row key="speak" first={first} title="Impromptu speaking" sub="Roll a topic and talk" color={A.mind} {...speakActs}>
+                {speak || speakActs.cancelled ? null : <View style={st.links}><Link text="Start on camera" onPress={() => onOpen('mind/impromptu')} /></View>}
+              </Row>
             ) },
             { id: 'practice-course', done: course, cancelled: courseActs.cancelled, node: (first: boolean) => (
               <Row key="course" first={first} title="Communication course" color={A.mind} {...courseActs}
                 sub={null}>
-                {course || courseActs.cancelled ? null : <View style={st.links}><Link text="Gleam" out onPress={() => { Linking.openURL('https://apps.apple.com/search?term=gleam%20communication').catch(() => {}); }} /><Link text="Stage Academy on PC" /></View>}
+                {course || courseActs.cancelled ? null : <View style={st.links}><Link text="Gleam" out onPress={() => { Linking.openURL('https://apps.apple.com/search?term=gleam%20communication').catch(() => {}); }} /><Link text="Stage Academy on PC" out onPress={() => { void openAcademy(say); }} /></View>}
               </Row>
             ) },
             { id: 'book', done: book, cancelled: bookActs.cancelled, node: (first: boolean) => (

@@ -1,87 +1,153 @@
 import { useMemo, useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import {
-  addDays, ago, Button, Card, Chip, Empty, Failed, Icon, IconButton, Loading, Press, Row, Screen, Section, Skeleton,
-  myDay, SURF, t, tint, useAspect, weekday,
+  addDays, ago, Block, Button, Chip, Failed, Group, Icon, IconButton, Item, Lead, Loading, Metric, Metrics, myDay, Press, Segmented, Sheet, Skeleton,
+  SURF, t, tint, useAspect, weekday,
 } from '@/aspects/kit';
-import { call, useCollection, type Read } from '@/lib/mod';
+import { call, useCollection } from '@/lib/mod';
 import { C, F } from '@/theme';
-import { errText, nightLabel, refreshJournal, useEntries, type Entry, type JournalDay, type JournalOut, type Reading, type Settings } from './data';
-import type { Seed } from './Editor';
-import { Fig, Gl, plural } from './parts';
+import { errText, nightLabel, refreshJournal, useEntries, useJournalDay, type Entry, type JournalDay, type JournalOut, type Reading, type Settings } from './data';
+import { useNav } from './nav';
+import { Gl, plural } from './parts';
 import { moodWord } from './words';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const FILTERS = ['All', 'Bookmarked', 'Photos', 'Spoken'] as const;
 const REMIND = ['21:00', '21:30', '22:00', '22:30', '23:00'];
+const wordsOf = (e: Entry) => e.words ?? (e.text?.trim() ? e.text.trim().split(/\s+/).length : 0);
 
-/** Journal: write or speak, things from his day, prompts, his numbers, a month calendar, search, the entries, Nora’s reading. */
-export function Journal({ open, onClose, day, onWrite, onOpen }: {
-  open: boolean; onClose: () => void; day: Read<JournalDay>; onWrite: (seed: Seed) => void; onOpen: (e: Entry) => void;
-}) {
+/**
+ * Journal: tonight's entry on top (write or speak), then things from his day and prompts to start from, the entries
+ * as a list or a month, his numbers, Nora's reading and the reminder. The list never shows what he wrote: only the
+ * day, the length and the mood, until he opens one.
+ */
+export function JournalTab() {
+  const nav = useNav();
+  const day = useJournalDay();
   const journal = useEntries();
+  const [view, setView] = useState<'list' | 'month'>('list');
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>('All');
   const [pick, setPick] = useState<string | null>(null);
-  const [shown, setShown] = useState(12);
+  const [shown, setShown] = useState(8);
+  const [reading, setReading] = useState(false);
   const all = useMemo(() => (journal.items ?? []).filter((e) => !e.deleted_at && (e.text?.trim() || e.photos?.length))
     .sort((a, b) => b.date.localeCompare(a.date) || String(b.at).localeCompare(String(a.at))), [journal.items]);
-  const list = all.filter((e) => (!pick || e.date === pick)
-    && (filter === 'All' || (filter === 'Bookmarked' && e.bookmark) || (filter === 'Photos' && e.photos?.length) || (filter === 'Spoken' && e.kind === 'voice'))
+  const list = view === 'month' ? all.filter((e) => e.date === pick) : all.filter((e) =>
+    (filter === 'All' || (filter === 'Bookmarked' && e.bookmark) || (filter === 'Photos' && e.photos?.length) || (filter === 'Spoken' && e.kind === 'voice'))
     && (!q.trim() || `${e.title ?? ''} ${e.text}`.toLowerCase().includes(q.trim().toLowerCase())));
   const d = day.data;
+  const mine = all.filter((e) => e.date === myDay());
+  const days = (n: number) => (n === 1 ? 'day' : 'days');
 
   return (
-    <Screen open={open} onClose={onClose} title="Journal">
-      <View style={s.two}>
-        <Button label="Write" onPress={() => onWrite({})} wrap={s.flex} icon={<Icon name="pencil" size={16} color={C.scene} />} />
-        <Button label="Speak" kind="quiet" onPress={() => onWrite({ speak: true })} wrap={s.flex} icon={<Icon name="mic" size={16} />} />
-      </View>
+    <>
+      <TonightLead mine={mine} d={d} />
 
-      {!d && day.error ? <Failed message={day.error} onRetry={day.refresh} /> : null}
-      {!d && !day.error ? <View style={{ gap: 12 }}><Skeleton height={56} radius={16} /><Skeleton height={56} radius={16} /><Skeleton height={88} radius={24} /></View> : null}
-      {d ? <Today d={d} onWrite={onWrite} /> : null}
+      {!d && day.error ? <Failed message={day.error} onRetry={() => { void day.refresh(); }} /> : null}
+      {!d && !day.error ? <Skeleton height={168} radius={22} /> : null}
+      {d ? <Ideas d={d} /> : null}
 
-      <Section title="Your journal">
-        {d ? (
-          <View style={s.figs}>
-            <Fig value={`${d.stats.days}`} label="days written" />
-            <Fig value={`${d.stats.week}`} label="this week" />
-            <Fig value={`${d.stats.streak.current}`} label="days in a row" />
-            <Fig value={d.stats.words >= 10_000 ? `${Math.round(d.stats.words / 1000)}k` : `${d.stats.words}`} label="words this year" />
-          </View>
-        ) : null}
-        <Month entries={all} pick={pick} onPick={(x) => { setPick(x); setShown(12); }} />
-      </Section>
-
-      <Section title={pick ? nightLabel(pick) : 'Entries'} action={pick ? 'Show all' : undefined} onAction={() => setPick(null)}>
-        <Search value={q} onChange={setQ} />
-        <View style={s.wrap}>
-          {FILTERS.map((f) => <Chip key={f} label={f} selected={filter === f} onPress={() => setFilter(f)} />)}
-        </View>
-        {journal.items == null && journal.error ? <Failed message={journal.error} onRetry={journal.refresh} /> : null}
-        {journal.items == null && !journal.error ? <Skeleton height={96} radius={24} /> : null}
+      <Block title="Entries" sub="Only the day and length show here. Open one to read it.">
+        {journal.items == null && journal.error ? <Failed message={journal.error} onRetry={() => { void journal.refresh(); }} /> : null}
+        {journal.items == null && !journal.error ? <Skeleton height={168} radius={22} /> : null}
         {journal.items && all.length === 0 ? (
-          <Empty title="Your entries will be here" body="Two lines are enough. Pick something from your day above, or just start." action="Write the first one" onAction={() => onWrite({})} />
+          <Group pad>
+            <Text style={t.callout}>No entries yet</Text>
+            <Text style={t.footnote}>Two lines are enough. Start from something in your day above, or just start.</Text>
+            <View style={s.self}><Button label="Write the first one" kind="soft" small onPress={() => nav.write({})} /></View>
+          </Group>
         ) : null}
-        {journal.items && all.length > 0 && list.length === 0 ? <Text style={t.small}>Nothing matches.</Text> : null}
-        {list.slice(0, shown).map((e) => <EntryCard key={e.id} e={e} onPress={() => onOpen(e)} />)}
-        {list.length > shown ? <Button label="Show more" kind="quiet" small onPress={() => setShown((n) => n + 20)} wrap={s.self} /> : null}
-      </Section>
+        {all.length ? (
+          <Segmented options={[{ key: 'list', label: 'List' }, { key: 'month', label: 'Month' }]} value={view}
+            onChange={(v) => { setView(v); setPick(null); setShown(8); }} />
+        ) : null}
+        {all.length && view === 'list' ? (
+          <>
+            <Search value={q} onChange={setQ} />
+            <View style={s.wrap}>
+              {FILTERS.map((f) => <Chip key={f} label={f} selected={filter === f} onPress={() => setFilter(f)} />)}
+            </View>
+            {!list.length ? <Text style={t.footnote}>Nothing matches.</Text> : null}
+          </>
+        ) : null}
+        {all.length && view === 'month' ? (
+          <>
+            <Month entries={all} pick={pick} onPick={setPick} />
+            {pick && !list.length ? <Text style={t.footnote}>{`${nightLabel(pick)}: nothing written.`}</Text> : null}
+          </>
+        ) : null}
+        {list.length ? (
+          <Group>
+            {list.slice(0, shown).map((e) => <EntryRow key={e.id} e={e} onPress={() => nav.openEntry(e)} />)}
+          </Group>
+        ) : null}
+        {list.length > shown ? <View style={s.self}><Button label="Show more" kind="quiet" small onPress={() => setShown((n) => n + 20)} /></View> : null}
+      </Block>
 
-      <JournalRead reading={d?.reading ?? null} />
+      {d && d.stats.entries ? (
+        <Block title="Your journal">
+          <Group pad>
+            <Metrics>
+              <Metric size="s" label="Written" value={String(d.stats.days)} unit={days(d.stats.days)} />
+              <Metric size="s" label="This week" value={String(d.stats.week)} unit={days(d.stats.week)} />
+              <Metric size="s" label="In a row" value={String(d.stats.streak.current)} unit={days(d.stats.streak.current)} />
+            </Metrics>
+            <Text style={[t.micro, t.num]}>{`${plural(d.stats.words, 'word')} this year. Longest run ${plural(d.stats.streak.best, 'day')}.`}</Text>
+          </Group>
+        </Block>
+      ) : null}
+
+      <Block title="Nora's reading">
+        <Group>
+          <Item title="The last four weeks" chevron onPress={() => setReading(true)}
+            sub={d?.reading ? `Read ${ago(d.reading.at).toLowerCase()} from ${plural(d.reading.n ?? 0, 'entry', 'entries')}. Open to see it.` : 'What went well, what keeps coming back, lines worth keeping.'}
+            left={<View style={s.glyph}><Gl k="sparkles" size={16} color={C.textSoft} /></View>} lines={3} />
+        </Group>
+      </Block>
       <Reminder />
-    </Screen>
+      <ReadingSheet open={reading} onClose={() => setReading(false)} reading={d?.reading ?? null} />
+    </>
   );
 }
 
-// ── things from today: suggestions from his day and prompts ────────────────────────────────────────────────────
-function Today({ d, onWrite }: { d: JournalDay; onWrite: (seed: Seed) => void }) {
+// ── tonight ──
+function TonightLead({ mine, d }: { mine: Entry[]; d: JournalDay | null }) {
+  const a = useAspect();
+  const nav = useNav();
+  const words = mine.reduce((n, e) => n + wordsOf(e), 0);
+  const mood = mine.map((e) => moodWord(e.p)).find(Boolean) ?? null;
+  const streak = d?.stats.streak.current ?? 0;
+  return (
+    <Lead>
+      <View style={s.gap4}>
+        <Text style={[t.footnote, { color: a.color }]}>{"Tonight's entry"}</Text>
+        <Text style={t.title3}>{mine.length ? 'Written today' : 'Two lines about today'}</Text>
+        <Text style={[t.footnote, t.num]}>
+          {mine.length ? `${plural(words, 'word')}${mood ? `, feeling ${mood.toLowerCase()}` : ''}${streak > 1 ? `. ${streak} days in a row` : ''}.` : streak ? `${plural(streak, 'day')} in a row so far.` : 'Typed or spoken. It saves as you go.'}
+        </Text>
+      </View>
+      <View style={s.row}>
+        {mine.length ? (
+          <Button label="Open it" kind="accent" onPress={() => nav.openEntry(mine[0])} wrap={s.flex} icon={<Gl k="book" size={16} color="#14161C" />} />
+        ) : (
+          <Button label="Write" kind="accent" onPress={() => nav.write({})} wrap={s.flex} icon={<Icon name="pencil" size={16} color="#14161C" />} />
+        )}
+        <Button label={mine.length ? 'Another' : 'Speak'} kind="quiet" onPress={() => nav.write(mine.length ? {} : { speak: true })}
+          icon={mine.length ? <Icon name="plus" size={16} /> : <Icon name="mic" size={16} />} />
+      </View>
+    </Lead>
+  );
+}
+
+// ── things from today: his day, then prompts ──
+function Ideas({ d }: { d: JournalDay }) {
   const { color, notice } = useAspect();
+  const nav = useNav();
   const [at, setAt] = useState(0);
   const [ai, setAi] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
-  const bank = d.prompts.length ? [0, 1, 2].map((i) => d.prompts[(at + i) % d.prompts.length]).filter((x, i, a) => a.findIndex((y) => y.id === x.id) === i) : [];
+  const bank = d.prompts.length ? [0, 1, 2].map((i) => d.prompts[(at + i) % d.prompts.length]).filter((x, i, arr) => arr.findIndex((y) => y.id === x.id) === i) : [];
   const more = async () => {
     setBusy(true);
     try {
@@ -93,46 +159,44 @@ function Today({ d, onWrite }: { d: JournalDay; onWrite: (seed: Seed) => void })
   return (
     <>
       {d.suggestions.length ? (
-        <Section title="From your day">
-          {d.suggestions.map((x) => (
-            <Row key={x.id} title={x.title} sub={x.detail} chevron onPress={() => onWrite({ prompt: x.prompt })}
-              left={<View style={[s.sug, { backgroundColor: tint(color, 0.14) }]}><Gl k={x.kind === 'yesterday' ? 'book' : 'leaf'} size={16} color={color} /></View>} />
-          ))}
-        </Section>
+        <Block title="From your day">
+          <Group inset={60}>
+            {d.suggestions.map((x) => (
+              <Item key={x.id} title={x.title} sub={x.kind === 'yesterday' ? null : x.detail} chevron onPress={() => nav.write({ prompt: x.prompt })}
+                left={<View style={[s.glyph, { backgroundColor: tint(color, 0.14) }]}><Gl k={x.kind === 'yesterday' ? 'book' : 'leaf'} size={16} color={color} /></View>} />
+            ))}
+          </Group>
+        </Block>
       ) : null}
-      <Section title="Prompts" action="Shuffle" onAction={() => setAt((n) => n + 3)}>
-        {bank.map((p) => (
-          <Press key={p.id} label={p.text} onPress={() => onWrite({ prompt: p.text })} style={s.prompt}><Text style={t.strong}>{p.text}</Text></Press>
-        ))}
-        {ai.map((p) => (
-          <Press key={p} label={p} onPress={() => onWrite({ prompt: p })} style={[s.prompt, { borderColor: tint(color, 0.3), borderWidth: 1 }]}>
-            <Text style={t.strong}>{p}</Text>
-          </Press>
-        ))}
+      <Block title="Prompts" action="Shuffle" onAction={() => setAt((n) => n + 3)}>
+        <Group>
+          {bank.map((p) => <Item key={p.id} title={p.text} lines={3} chevron onPress={() => nav.write({ prompt: p.text })} />)}
+          {ai.map((p) => <Item key={p} title={p} lines={3} chevron onPress={() => nav.write({ prompt: p })} left={<Gl k="sparkles" size={16} color={color} />} />)}
+        </Group>
         {!ai.length ? (
-          <Button label={busy ? 'Thinking' : 'Prompts from my entries'} kind="soft" small busy={busy} onPress={more} wrap={s.self}
-            icon={<Gl k="sparkles" size={14} color={color} />} />
+          <View style={s.self}>
+            <Button label={busy ? 'Thinking' : 'Prompts from my entries'} kind="soft" small busy={busy} onPress={() => { void more(); }} icon={<Gl k="sparkles" size={14} color={color} />} />
+          </View>
         ) : null}
-      </Section>
+      </Block>
     </>
   );
 }
 
-function EntryCard({ e, onPress }: { e: Entry; onPress: () => void }) {
+function EntryRow({ e, onPress }: { e: Entry; onPress: () => void }) {
   const { color } = useAspect();
   const mood = moodWord(e.p);
+  const n = wordsOf(e);
   return (
-    <Card onPress={onPress} label={`Entry, ${nightLabel(e.date)}`}>
-      <View style={s.cardHead}>
-        <Text style={t.label}>{nightLabel(e.date)}{mood ? ` · ${mood}` : ''}</Text>
+    <Item title={nightLabel(e.date)} label={`Entry, ${nightLabel(e.date)}. Open`} onPress={onPress} chevron
+      sub={[n ? plural(n, 'word') : e.photos?.length ? 'A photo' : null, mood ? mood.toLowerCase() : null].filter(Boolean).join(', ') || null}
+      right={(
         <View style={s.icons}>
           {e.kind === 'voice' ? <Gl k="wave" size={14} color={C.muted} /> : null}
           {e.photos?.length ? <Gl k="photo" size={14} color={C.muted} /> : null}
           {e.bookmark ? <Gl k="bookmarkOn" size={14} color={color} /> : null}
         </View>
-      </View>
-      <Text numberOfLines={3} style={[t.body, s.gap4]}>{e.text?.trim() || 'A photo'}</Text>
-    </Card>
+      )} />
   );
 }
 
@@ -143,12 +207,12 @@ function Search({ value, onChange }: { value: string; onChange: (v: string) => v
       <Gl k="search" size={16} color={C.muted} />
       <TextInput value={value} onChangeText={onChange} placeholder="Search entries" placeholderTextColor={C.faint} selectionColor={color}
         keyboardAppearance="dark" returnKeyType="search" accessibilityLabel="Search entries" style={s.searchInput} />
-      {value ? <IconButton label="Clear search" size={28} plain onPress={() => onChange('')}><Icon name="close" size={12} color={C.muted} /></IconButton> : null}
+      {value ? <IconButton label="Clear search" size={44} plain onPress={() => onChange('')}><Icon name="close" size={12} color={C.muted} /></IconButton> : null}
     </View>
   );
 }
 
-// ── the month calendar ──────────────────────────────────────────────────────────────────────────────────────────
+// ── the month: written days filled, brighter for a better mood ──
 function Month({ entries, pick, onPick }: { entries: Entry[]; pick: string | null; onPick: (d: string | null) => void }) {
   const { color } = useAspect();
   const [month, setMonth] = useState(() => myDay().slice(0, 7));
@@ -166,32 +230,34 @@ function Month({ entries, pick, onPick }: { entries: Entry[]; pick: string | nul
   const now = myDay();
   const count = cells.filter((c) => c && written.has(c)).length;
   return (
-    <Card>
+    <Group pad>
       <View style={s.monthHead}>
-        <IconButton label="Previous month" size={32} plain onPress={() => step(-1)}><Icon name="left" size={14} /></IconButton>
-        <Text style={[t.strong, s.flexC]}>{MONTHS[Number(month.slice(5, 7)) - 1]} {month.slice(0, 4)}</Text>
-        <IconButton label="Next month" size={32} plain onPress={() => step(1)} disabled={month >= now.slice(0, 7)}><Icon name="right" size={14} /></IconButton>
+        <IconButton label="Previous month" size={44} plain onPress={() => step(-1)}><Icon name="left" size={14} /></IconButton>
+        <Text style={[t.headline, s.flexC]}>{`${MONTHS[Number(month.slice(5, 7)) - 1]} ${month.slice(0, 4)}`}</Text>
+        <IconButton label="Next month" size={44} plain onPress={() => step(1)} disabled={month >= now.slice(0, 7)}><Icon name="right" size={14} /></IconButton>
       </View>
-      <View style={s.weekHead}>{['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((l, i) => <Text key={i} style={[t.caption, s.cellText]}>{l}</Text>)}</View>
-      <View style={s.grid}>
-        {cells.map((c, i) => {
-          if (!c) return <View key={i} style={s.cell} />;
-          const has = written.has(c), on = pick === c, future = c > now;
-          return (
-            <Press key={c} label={`${nightLabel(c)}${has ? ', written' : ''}`} onPress={() => onPick(on ? null : c)} disabled={future} feel="tick" scale={0.9} wrap={s.cell}
-              style={[s.dayBox, has && { backgroundColor: tint(color, 0.22 + 0.1 * ((written.get(c) ?? 3) - 1)) }, on && { borderColor: color, borderWidth: 1.5 }, c === now && !has && s.todayBox]}>
-              <Text style={[s.dayNum, has && { color: C.text }]}>{Number(c.slice(8))}</Text>
-            </Press>
-          );
-        })}
+      <View>
+        <View style={s.weekHead}>{['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((l, i) => <Text key={i} style={[t.micro, s.cellText]}>{l}</Text>)}</View>
+        <View style={s.grid}>
+          {cells.map((c, i) => {
+            if (!c) return <View key={i} style={s.cell} />;
+            const has = written.has(c), on = pick === c, future = c > now;
+            return (
+              <Press key={c} label={`${nightLabel(c)}${has ? ', written' : ''}`} onPress={() => onPick(on ? null : c)} disabled={future} feel="tick" scale={0.9} wrap={s.cell}
+                style={[s.dayBox, has && { backgroundColor: tint(color, 0.22 + 0.1 * ((written.get(c) ?? 3) - 1)) }, on && { borderColor: color }, c === now && !has && s.todayBox]}>
+                <Text style={[s.dayNum, has && { color: C.text }]}>{Number(c.slice(8))}</Text>
+              </Press>
+            );
+          })}
+        </View>
       </View>
-      <Text style={[t.caption, s.gap8]}>{plural(count, 'day')} written this month. Brighter days had a better mood.</Text>
-    </Card>
+      <Text style={t.micro}>{`${plural(count, 'day')} written this month. Brighter days had a better mood. Tap a day to see its entries.`}</Text>
+    </Group>
   );
 }
 
-// ── the periodic AI reading ─────────────────────────────────────────────────────────────────────────────────────
-function JournalRead({ reading }: { reading: Reading<JournalOut> | null }) {
+// ── the periodic AI reading, behind a tap ──
+function ReadingSheet({ open, onClose, reading }: { open: boolean; onClose: () => void; reading: Reading<JournalOut> | null }) {
   const { color } = useAspect();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -205,40 +271,39 @@ function JournalRead({ reading }: { reading: Reading<JournalOut> | null }) {
     } catch (e) { setErr(errText(e)); } finally { setBusy(false); }
   };
   return (
-    <Section title="Nora’s reading of the last four weeks" action={r && !busy ? 'Read again' : undefined} onAction={() => read(true)}>
+    <Sheet open={open} onClose={onClose} title="Nora's reading">
       {busy ? <Loading label="Nora is reading your entries" /> : null}
       {!busy && r ? (
-        <Card>
-          <Text style={t.lead}>{r.out.headline}</Text>
-          {r.out.good ? <Text style={[t.body, s.gap8]}>{r.out.good}</Text> : null}
-          {r.out.returning.length ? (
-            <View style={[s.wrap, s.gap8]}>{r.out.returning.map((x) => <Chip key={x} label={x} />)}</View>
-          ) : null}
-          {r.out.noticed ? <Text style={[t.body, s.gap8]}>{r.out.noticed}</Text> : null}
+        <>
+          <Text style={t.headline}>{r.out.headline}</Text>
+          {r.out.good ? <Text style={t.subhead}>{r.out.good}</Text> : null}
+          {r.out.returning.length ? <View style={s.wrap}>{r.out.returning.map((x) => <Chip key={x} label={x} />)}</View> : null}
+          {r.out.noticed ? <Text style={t.subhead}>{r.out.noticed}</Text> : null}
           {r.out.quotes.map((x) => (
             <View key={x.date + x.text} style={[s.quote, { borderLeftColor: tint(color, 0.5) }]}>
-              <Text style={t.body}>{x.text}</Text>
-              <Text style={t.caption}>{nightLabel(x.date)}</Text>
+              <Text style={t.subhead}>{x.text}</Text>
+              <Text style={t.micro}>{nightLabel(x.date)}</Text>
             </View>
           ))}
-          <Text style={[t.caption, s.gap8]}>Read {ago(r.at).replace(/^Y/, 'y')} from {plural(r.n ?? 0, 'entry', 'entries')}.</Text>
-        </Card>
+          <Text style={t.footnote}>{`Read ${ago(r.at).toLowerCase()} from ${plural(r.n ?? 0, 'entry', 'entries')}.`}</Text>
+          <Button label="Read again" kind="quiet" onPress={() => { void read(true); }} />
+        </>
       ) : null}
       {!busy && !r ? (
-        <Card>
-          <Text style={t.body}>
+        <>
+          <Text style={t.subhead}>
             {need != null ? `Write ${plural(need, 'more entry', 'more entries')} in these four weeks first.`
-              : 'Nora reads your last four weeks: what went well, what keeps coming back, and lines worth keeping. Saved here until the next one.'}
+              : 'Nora reads your last four weeks: what went well, what keeps coming back, and lines worth keeping. It stays here until the next one.'}
           </Text>
-          <Button label="Read my entries" kind="soft" small onPress={() => read(false)} wrap={[s.self, s.gap8]} icon={<Gl k="sparkles" size={14} color={color} />} />
-        </Card>
+          <Button label="Read my entries" kind="soft" onPress={() => { void read(false); }} icon={<Gl k="sparkles" size={14} color={color} />} />
+        </>
       ) : null}
-      {err ? <Text style={[t.small, { color: C.danger }]}>{err}</Text> : null}
-    </Section>
+      {err ? <Text style={[t.footnote, { color: C.danger }]}>{err}</Text> : null}
+    </Sheet>
   );
 }
 
-// ── the evening reminder ────────────────────────────────────────────────────────────────────────────────────────
+// ── the evening reminder ──
 function Reminder() {
   const settings = useCollection<Settings>('soul', 'settings');
   const { notice } = useAspect();
@@ -248,38 +313,36 @@ function Reminder() {
     try { await settings.put({ id: 'journal', remind: v }); } catch (e) { notice(errText(e)); }
   };
   return (
-    <Section title="Evening reminder">
+    <Block title="Evening reminder" sub="One quiet notification, skipped on days you have already written.">
       <View style={s.wrap}>
-        {REMIND.map((r) => <Chip key={r} label={r} selected={value === r} onPress={() => set(r)} icon={value === r ? <Gl k="bell" size={12} /> : undefined} />)}
-        <Chip label="Off" selected={value == null} onPress={() => set(null)} />
+        {REMIND.map((r) => <Chip key={r} label={r} selected={value === r} onPress={() => { void set(r); }} icon={value === r ? <Gl k="bell" size={12} /> : undefined} />)}
+        <Chip label="Off" selected={value == null} onPress={() => { void set(null); }} />
       </View>
-      <Text style={t.caption}>One quiet notification, skipped on days you have already written.</Text>
-    </Section>
+    </Block>
   );
 }
 
 const s = StyleSheet.create({
-  two: { flexDirection: 'row', gap: 12 },
-  flex: { flex: 1 },
+  flex: { flex: 1, minWidth: 0 },
   flexC: { flex: 1, textAlign: 'center' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   self: { alignSelf: 'flex-start' },
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  figs: { flexDirection: 'row', gap: 8 },
-  gap4: { marginTop: 4 },
-  gap8: { marginTop: 8 },
-  sug: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  prompt: { padding: 16, borderRadius: 16, backgroundColor: SURF.row, borderCurve: 'continuous' },
-  cardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  gap4: { gap: 4 },
+  glyph: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: SURF.raised },
   icons: { flexDirection: 'row', gap: 8 },
-  search: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44, borderRadius: 22, paddingLeft: 14, paddingRight: 6, backgroundColor: SURF.card },
+  search: {
+    flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44, borderRadius: 22, paddingLeft: 14,
+    backgroundColor: SURF.group, borderWidth: StyleSheet.hairlineWidth, borderColor: SURF.hair,
+  },
   searchInput: { flex: 1, minHeight: 40, color: C.text, fontFamily: F.regular, fontSize: 16, outlineWidth: 0 },
-  monthHead: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  monthHead: { flexDirection: 'row', alignItems: 'center', marginHorizontal: -8, marginTop: -8 },
   weekHead: { flexDirection: 'row', marginBottom: 4 },
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
   cell: { width: `${100 / 7}%`, aspectRatio: 1, padding: 2 },
   cellText: { width: `${100 / 7}%`, textAlign: 'center' },
   dayBox: { flex: 1, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: 'transparent' },
-  todayBox: { borderColor: SURF.line },
+  todayBox: { borderColor: SURF.edge },
   dayNum: { fontFamily: F.medium, fontSize: 13, lineHeight: 16, color: C.muted, fontVariant: ['tabular-nums'] },
-  quote: { borderLeftWidth: 2, paddingLeft: 12, marginTop: 12, gap: 2 },
+  quote: { borderLeftWidth: 2, paddingLeft: 12, gap: 2 },
 });

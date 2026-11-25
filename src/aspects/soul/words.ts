@@ -25,7 +25,7 @@ export const PATTERNS: Pattern[] = [
   { key: 'box', label: 'Box', line: 'In 4, hold 4, out 4, hold 4.', inhale: 4, hold: 4, exhale: 4, rest: 4 },
 ];
 export const patternOf = (k?: string | null) => PATTERNS.find((p) => p.key === k) ?? PATTERNS[0];
-export const SIT_LENGTHS = [2, 5, 10];
+export const SIT_LENGTHS = [2, 5, 10, 15, 20];
 
 export const MOODS = [{ p: 1, label: 'Rough' }, { p: 2, label: 'Low' }, { p: 3, label: 'Okay' }, { p: 4, label: 'Good' }, { p: 5, label: 'Great' }];
 export const moodWord = (p?: number | null) => MOODS.find((m) => m.p === p)?.label ?? null;

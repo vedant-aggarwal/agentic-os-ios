@@ -3,7 +3,7 @@ import { Image } from 'expo-image';
 import { useCallback, useEffect, useRef, useState, type ComponentRef, type ReactNode } from 'react';
 import { Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 import {
-  addDays, Button, Card, Chip, Field, haptic, Icon, IconButton, myDay, Press, Screen, SURF, t, tint, useAspect,
+  addDays, Button, Chip, Field, Group, haptic, Icon, IconButton, myDay, Press, Screen, SURF, t, tint, useAspect,
 } from '@/aspects/kit';
 import { gptAvailable, useGptRecorder } from '@/lib/gpt';
 import { call, collection, fileSource, newId, upload } from '@/lib/mod';
@@ -170,7 +170,7 @@ export function Editor({ open, onClose, entry, seed }: { open: boolean; onClose:
             <Chip label="Yesterday" selected={date === addDays(myDay(), -1)} onPress={() => { setDate(addDays(myDay(), -1)); touch(); }} />
           </>
         ) : null}
-        <Text style={[t.caption, s.status]}>{status}</Text>
+        <Text style={[t.footnote, s.status]}>{status}</Text>
       </View>
 
       <View style={s.moods} accessibilityRole="radiogroup" accessibilityLabel="Mood">
@@ -181,8 +181,8 @@ export function Editor({ open, onClose, entry, seed }: { open: boolean; onClose:
 
       {prompt ? (
         <View style={[s.prompt, { borderColor: tint(color, 0.35) }]}>
-          <Text style={[t.strong, s.flex]}>{prompt}</Text>
-          <IconButton label="Clear prompt" size={28} plain onPress={() => { setPrompt(null); touch(); }}><Icon name="close" size={12} color={C.muted} /></IconButton>
+          <Text style={[t.callout, s.flex]}>{prompt}</Text>
+          <IconButton label="Clear prompt" size={44} plain onPress={() => { setPrompt(null); touch(); }}><Icon name="close" size={12} color={C.muted} /></IconButton>
         </View>
       ) : null}
 
@@ -191,12 +191,12 @@ export function Editor({ open, onClose, entry, seed }: { open: boolean; onClose:
         selectionColor={color} keyboardAppearance="dark" textAlignVertical="top" accessibilityLabel="Entry" style={s.input} />
 
       {busy === 'listen' ? (
-        <Card tone={color}>
-          <Text style={t.caption}>Listening</Text>
-          <Text style={[t.body, s.gap4]}>{rec.live || 'Speak freely. Hinglish is fine.'}</Text>
-          {rec.offline ? <Text style={[t.caption, s.gap4]}>The PC isn&apos;t getting the audio right now. It&apos;s kept on this phone.</Text> : null}
-          <Button label="Done speaking" kind="accent" small onPress={stopListening} wrap={[s.self, s.gap8]} icon={<Gl k="stop" size={14} color="#14161C" />} />
-        </Card>
+        <Group pad tone={color}>
+          <Text style={[t.footnote, { color }]}>Listening</Text>
+          <Text style={t.body}>{rec.live || 'Speak freely. Hinglish is fine.'}</Text>
+          {rec.offline ? <Text style={t.footnote}>The PC isn&apos;t getting the audio right now. It&apos;s kept on this phone.</Text> : null}
+          <Button label="Done speaking" kind="accent" small onPress={stopListening} wrap={s.self} icon={<Gl k="stop" size={14} color="#14161C" />} />
+        </Group>
       ) : null}
 
       <View style={s.tools}>
@@ -206,14 +206,14 @@ export function Editor({ open, onClose, entry, seed }: { open: boolean; onClose:
           <Gl k="sparkles" size={18} />
         </Tool>
       </View>
-      {busy === 'ask' ? <Text style={t.caption}>Thinking of a question…</Text> : null}
-      {busy === 'photo' ? <Text style={t.caption}>Sending the photo…</Text> : null}
-      {n > 0 && n < 8 && !asked.length ? <Text style={t.caption}>After a few more words, Ask me offers one question about what you wrote.</Text> : null}
+      {busy === 'ask' ? <Text style={t.footnote}>Thinking of a question…</Text> : null}
+      {busy === 'photo' ? <Text style={t.footnote}>Sending the photo…</Text> : null}
+      {n > 0 && n < 8 && !asked.length ? <Text style={t.footnote}>After a few more words, Ask me offers one question about what you wrote.</Text> : null}
 
       {asked.map((x, i) => (
         <View key={x.at} style={s.ask}>
-          <Text style={[t.strong, { color }]}>{x.q}</Text>
-          {x.a ? <Text style={t.small}>Your answer is in the entry.</Text> : x.a === '' ? <Text style={t.small}>Skipped.</Text> : i === asked.length - 1 ? (
+          <Text style={[t.callout, { color }]}>{x.q}</Text>
+          {x.a ? <Text style={t.footnote}>Your answer is in the entry.</Text> : x.a === '' ? <Text style={t.footnote}>Skipped.</Text> : i === asked.length - 1 ? (
             <>
               <Field value={answer} onChangeText={setAnswer} placeholder="Answer, or leave it" multiline />
               <View style={s.row}>
@@ -229,18 +229,18 @@ export function Editor({ open, onClose, entry, seed }: { open: boolean; onClose:
         <Button label={busy === 'tidy' ? 'Tidying' : 'Tidy what I said'} kind="quiet" small onPress={askTidy} busy={busy === 'tidy'} wrap={s.self} />
       ) : null}
       {offer ? (
-        <Card>
-          <Text style={t.caption}>Tidied version</Text>
-          <Text style={[t.body, s.gap4]}>{offer}</Text>
-          <View style={[s.row, s.gap8]}>
+        <Group pad>
+          <Text style={t.footnote}>Tidied version</Text>
+          <Text style={t.body}>{offer}</Text>
+          <View style={s.row}>
             <Button label="Use this" kind="soft" small onPress={() => { setText(offer); setOffer(null); touch(); }} />
             <Button label="Keep mine" kind="quiet" small onPress={() => { setOffer(null); }} />
           </View>
-        </Card>
+        </Group>
       ) : null}
       {raw && tidy && text !== raw && !offer ? (
-        <Press label="Show my spoken words" onPress={() => { setText(raw); touch(); }} style={s.self}>
-          <Text style={t.label}>Back to my spoken words</Text>
+        <Press label="Show my spoken words" onPress={() => { setText(raw); touch(); }} style={s.link}>
+          <Text style={t.subhead}>Back to my spoken words</Text>
         </Press>
       ) : null}
 
@@ -249,9 +249,9 @@ export function Editor({ open, onClose, entry, seed }: { open: boolean; onClose:
           {photos.map((ph) => (
             <View key={ph.file} style={s.photo}>
               <Image source={fileSource(ph.path)} style={StyleSheet.absoluteFill} contentFit="cover" accessibilityLabel="Photo" />
-              <IconButton label="Remove photo" size={28} wrap={s.photoX} onPress={() => { setPhotos((xs) => xs.filter((y) => y.file !== ph.file)); touch(); }}>
+              <Press label="Remove photo" hitSlop={6} wrap={s.photoX} style={s.photoXDisc} onPress={() => { setPhotos((xs) => xs.filter((y) => y.file !== ph.file)); touch(); }}>
                 <Icon name="close" size={12} />
-              </IconButton>
+              </Press>
             </View>
           ))}
         </View>
@@ -279,13 +279,13 @@ const s = StyleSheet.create({
   flex: { flex: 1 },
   input: { minHeight: 200, color: C.text, fontFamily: F.regular, fontSize: 18, lineHeight: 28, padding: 0, outlineWidth: 0, outlineStyle: 'none' } as never,
   tools: { flexDirection: 'row', gap: 8 },
-  tool: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 40, paddingHorizontal: 14, borderRadius: 20, backgroundColor: SURF.card },
+  tool: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 44, paddingHorizontal: 16, borderRadius: 22, backgroundColor: SURF.card },
   toolText: { fontFamily: F.medium, fontSize: 14, lineHeight: 20, color: C.textSoft },
   ask: { gap: 8, paddingLeft: 12, borderLeftWidth: 2, borderLeftColor: SURF.line },
   self: { alignSelf: 'flex-start' },
-  gap4: { marginTop: 4 },
-  gap8: { marginTop: 8 },
+  link: { alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center' },
   photos: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   photo: { width: 104, height: 104, borderRadius: 16, overflow: 'hidden', backgroundColor: SURF.card },
-  photoX: { position: 'absolute', top: 4, right: 4 },
+  photoX: { position: 'absolute', top: 6, right: 6 },
+  photoXDisc: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.55)' },
 });

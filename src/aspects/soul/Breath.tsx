@@ -70,8 +70,8 @@ export function Breath({ pattern, running, color, size = 240, haptics = true, co
       <View style={[s.ring, { width: size, height: size, borderRadius: size / 2, borderColor: tint(color, 0.22) }]} />
       <Animated.View style={[s.disc, { width: size, height: size, borderRadius: size / 2, backgroundColor: tint(color, 0.14), borderColor: tint(color, 0.55) }, disc]} />
       <View style={s.label} pointerEvents="none">
-        <Text style={[compact ? t.strong : t.heading, { color: C.text }]}>{word}</Text>
-        {ph ? <Text style={[compact ? t.small : t.label, t.num]}>{left}</Text> : null}
+        <Text style={[compact ? t.callout : t.title3, { color: C.text }]}>{word}</Text>
+        {ph ? <Text style={[compact ? t.footnote : t.subhead, t.num]}>{left}</Text> : null}
       </View>
     </View>
   );

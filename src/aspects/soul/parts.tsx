@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { AppState, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Chip, Glyph, IconButton, Icon, Press, SURF, t, tint, useAspect } from '@/aspects/kit';
+import { Chip, Glyph, Group, IconButton, Icon, Item, Press, SURF, t, tint, useAspect } from '@/aspects/kit';
 import { C, F } from '@/theme';
 import type { CleanNow } from './data';
 import { G } from './words';
@@ -114,24 +114,27 @@ export function Lines({ items, onChange, placeholder, max = 12, limit = 400, sug
     if (!x || items.includes(x) || items.length >= max) return;
     onChange([...items, x]); setDraft('');
   };
-  const left = suggestions.filter((x) => !items.includes(x)).slice(0, 8);
+  const left = suggestions.filter((x) => !items.includes(x)).slice(0, 4);
   return (
-    <View style={{ gap: 8 }}>
-      {chips ? (
+    <View style={{ gap: 10 }}>
+      {chips && items.length ? (
         <View style={s.wrap}>
           {items.map((x) => (
             <View key={x} style={[s.mine, { backgroundColor: tint(color, 0.14), borderColor: tint(color, 0.4) }]}>
               <Text style={[s.mineText, { color }]}>{x}</Text>
-              <IconButton label={`Remove ${x}`} size={28} plain onPress={() => onChange(items.filter((y) => y !== x))}><Icon name="close" size={12} color={color} /></IconButton>
+              <Press label={`Remove ${x}`} hitSlop={8} onPress={() => onChange(items.filter((y) => y !== x))} style={s.mineX}><Icon name="close" size={12} color={color} /></Press>
             </View>
           ))}
         </View>
-      ) : items.map((x) => (
-        <View key={x} style={s.line}>
-          <Text style={[t.body, s.lineText]}>{x}</Text>
-          <IconButton label={`Remove ${x}`} size={32} plain onPress={() => onChange(items.filter((y) => y !== x))}><Icon name="close" size={14} color={C.muted} /></IconButton>
-        </View>
-      ))}
+      ) : null}
+      {!chips && items.length ? (
+        <Group>
+          {items.map((x) => (
+            <Item key={x} title={x} lines={4}
+              action={<IconButton label={`Remove ${x}`} size={44} plain onPress={() => onChange(items.filter((y) => y !== x))}><Icon name="close" size={14} color={C.muted} /></IconButton>} />
+          ))}
+        </Group>
+      ) : null}
       {items.length < max ? <AddLine value={draft} onChange={setDraft} onAdd={() => add(draft)} placeholder={placeholder} limit={limit} /> : null}
       {left.length ? (
         <View style={s.wrap}>
@@ -149,7 +152,7 @@ function AddLine({ value, onChange, onAdd, placeholder, limit }: { value: string
       <TextInput value={value} onChangeText={onChange} placeholder={placeholder} placeholderTextColor={C.faint} maxLength={limit}
         selectionColor={color} keyboardAppearance="dark" returnKeyType="done" onSubmitEditing={onAdd} accessibilityLabel={placeholder}
         style={s.addInput} />
-      <Press label="Add" onPress={onAdd} disabled={!value.trim()} style={[s.addBtn, { backgroundColor: tint(color, 0.16) }]}>
+      <Press label="Add" onPress={onAdd} disabled={!value.trim()} hitSlop={4} style={[s.addBtn, { backgroundColor: tint(color, 0.16) }]}>
         <Icon name="plus" size={16} color={color} />
       </Press>
     </View>
@@ -181,7 +184,7 @@ export function PrivacyCover() {
   return <View style={[StyleSheet.absoluteFill, s.cover]} pointerEvents="none" />;
 }
 
-export const pct = (k: { kept: number; of: number }) => (k.of ? `${Math.round((k.kept / k.of) * 100)}%` : '–');
+export const pct = (k: { kept: number; of: number }) => (k.of ? `${Math.round((k.kept / k.of) * 100)}%` : 'None yet');
 export const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 const s = StyleSheet.create({
@@ -193,13 +196,12 @@ const s = StyleSheet.create({
   hours: { flexDirection: 'row', alignItems: 'flex-end', gap: 2 },
   hourCol: { flex: 1, justifyContent: 'flex-end' },
   hourLabels: { flexDirection: 'row', justifyContent: 'space-between' },
-  line: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 16, paddingRight: 4, minHeight: 48, borderRadius: 16, backgroundColor: SURF.row },
-  lineText: { flex: 1, paddingVertical: 12 },
-  add: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 48, borderRadius: 16, paddingLeft: 16, paddingRight: 6, backgroundColor: SURF.card, borderWidth: StyleSheet.hairlineWidth, borderColor: SURF.line },
+  add: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 52, borderRadius: 22, borderCurve: 'continuous', paddingLeft: 16, paddingRight: 8, backgroundColor: SURF.group, borderWidth: StyleSheet.hairlineWidth, borderColor: SURF.hair },
   addInput: { flex: 1, minHeight: 44, color: C.text, fontFamily: F.regular, fontSize: 16, outlineWidth: 0 },
   addBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   fig: { flex: 1, gap: 2 },
-  mine: { flexDirection: 'row', alignItems: 'center', height: 36, borderRadius: 18, paddingLeft: 12, paddingRight: 4, borderWidth: 1 },
+  mine: { flexDirection: 'row', alignItems: 'center', gap: 4, height: 36, borderRadius: 18, paddingLeft: 12, paddingRight: 4, borderWidth: 1 },
+  mineX: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   mineText: { fontFamily: F.medium, fontSize: 14, lineHeight: 20 },
   cover: { backgroundColor: C.scene },
 });

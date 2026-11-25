@@ -40,7 +40,8 @@ export type FeedItem = {
   id: string; at: string; time: string; kind: FeedKind; app: string | null; title: string; text: string | null;
   source: string; from?: string; status: string; urgency: number; undo: boolean; undone: boolean;
   ask: { yes: string; no: string; question?: boolean; request?: string | null; draft?: string | null } | null;
-  ladder: { rung: number; ceiling: number; next: string | null } | null;
+  /** `seen`: he has seen it (the climb has stopped) */
+  ladder: { rung: number; ceiling: number; next: string | null; seen?: boolean } | null;
 };
 export type NoraMood = { stress: number; energy: number; valence: number; label: string; line: string; overloaded: boolean };
 export type NoraHome = {
@@ -103,6 +104,8 @@ export const nora = {
   answerItem: (id: string, b: { choice: 'yes' | 'no'; text?: string }) => post<{ error?: string }>(`/nora/feed/${enc(id)}/answer`, b, 60_000),
   undoItem: (id: string) => post(`/nora/feed/${enc(id)}/undo`),
   snoozeItem: (id: string, minutes = 10) => post(`/nora/feed/${enc(id)}/snooze`, { minutes }),
+  /** He has seen these items (Home, her page, a tapped push): they stop climbing toward an alarm or a call. */
+  seen: (ids: string[]) => post('/nora/seen', { ids }),
   voiceMode: () => noraReq<VoiceMode>('/nora/voice-mode', { timeout: 8000 }),
   startCall: (b: { sdp: string; incomingId?: string | null; reason?: string; engine?: string }) =>
     post<{ callId: string; sdp: string }>('/nora/call', b, 90_000),
@@ -113,6 +116,17 @@ export const nora = {
   decline: (incomingId: string) => post(`/nora/incoming/${enc(incomingId)}/decline`),
   snooze: (incomingId: string, minutes?: number) => post(`/nora/incoming/${enc(incomingId)}/snooze`, { minutes }),
 };
+
+// what this phone has told the PC he saw, so a page that reads again every minute doesn't say it again
+const told = new Map<string, number>();
+/** Tells the PC he has seen the open items among `items` that are still climbing (at most once a minute each). */
+export function markSeen(items: Pick<FeedItem, 'id' | 'status' | 'ladder'>[]) {
+  const now = Date.now();
+  const ids = items.filter((x) => x.ladder && !x.ladder.seen && x.status === 'open' && now - (told.get(x.id) ?? 0) > 60_000).map((x) => x.id);
+  if (!ids.length) return;
+  for (const id of ids) told.set(id, now);
+  nora.seen(ids).catch(() => { for (const id of ids) told.delete(id); });
+}
 
 /** "calendar" -> "Calendar". */
 export const appName = (app: string | null | undefined) => (app ? app.charAt(0).toUpperCase() + app.slice(1) : 'Nora');

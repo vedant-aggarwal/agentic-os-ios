@@ -13,12 +13,14 @@ export type CallAsk = { incomingId?: string | null; reason?: string; follow?: bo
 /** The list Home should show when it opens: a Life aspect, 'none' (no aspect) or null (all). `seq` makes a repeat ask
  * apply again after he changed the filter by hand. */
 export type HomeList = { list: AspectKey | 'none' | null; seq: number };
+/** One of her items Home should open on, on her page (a tapped push about it). */
+export type HomeFocus = { item: string; seq: number };
 type S = {
   home: boolean; chat: boolean; mic: number; micSend: number; call: CallAsk | null; replyTo: { id: string; from: string } | null;
-  homeList: HomeList | null;
+  homeList: HomeList | null; homeFocus: HomeFocus | null;
 };
 
-let s: S = { home: false, chat: false, mic: 0, micSend: 0, call: null, replyTo: null, homeList: null };
+let s: S = { home: false, chat: false, mic: 0, micSend: 0, call: null, replyTo: null, homeList: null, homeFocus: null };
 let seq = 0;
 const subs = new Set<() => void>();
 const set = (p: Partial<S>) => {
@@ -45,6 +47,8 @@ let createWaiting = false;
 export const noraUi = {
   /** Home; with `list`, showing that aspect's tasks (Today's "N more on Home"). */
   openHome: (list?: AspectKey | 'none' | null) => set(list === undefined ? { home: true } : { home: true, homeList: { list, seq: ++seq } }),
+  /** Her page on Home, with feed item `id` first (a push about it was tapped). */
+  openItem: (id: string) => set({ home: true, chat: false, replyTo: null, homeFocus: { item: id, seq: ++seq } }),
   /** Home with the create sheet up. */
   openCreate: () => {
     set({ home: true });

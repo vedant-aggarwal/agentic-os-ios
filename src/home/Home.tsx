@@ -9,7 +9,7 @@ import { haptic, SURF, t, tint } from '@/aspects/kit/tokens';
 import { Chip, Toast } from '@/capture/parts';
 import { ASPECT_KEYS, ASPECT_NAME, aspectOfArea } from '@/lib/aspects';
 import { DEMO } from '@/lib/demo';
-import { nora as noraApi, type FeedItem, type NoraHome } from '@/lib/nora';
+import { markSeen, nora as noraApi, type FeedItem, type NoraHome } from '@/lib/nora';
 import type { Task } from '@/lib/today';
 import { Ball, useTurn } from '@/nora/Sphere';
 import { Composer } from '@/nora/parts';
@@ -46,12 +46,24 @@ export function HomeBody({ open }: { open: boolean }) {
   const insets = useSafeAreaInsets();
   const d = useHomeData(open);
   const { toast, say, hide } = useSay();
-  const [page, setPage] = useState<'home' | 'nora'>('home');
+  // a tapped push about one of her items opens her page with that item first (a later tap, by its seq, again)
+  const focus = useNora().homeFocus;
+  const [page, setPage] = useState<'home' | 'nora'>(focus ? 'nora' : 'home');
+  const [focusSeen, setFocusSeen] = useState(focus?.seq ?? 0);
+  const [focusItem, setFocusItem] = useState<string | null>(focus?.item ?? null);
+  if (focus && focus.seq !== focusSeen) { setFocusSeen(focus.seq); setPage('nora'); setFocusItem(focus.item); }
+  // What Home shows counts as seen, so it stops climbing toward an alarm or a call: the questions in her cards on
+  // Home (the first three cards), everything on her page.
+  const h = d.home;
+  useEffect(() => {
+    if (!open || !h || DEMO) return;
+    markSeen(page === 'nora' ? [...h.asks, ...h.items, ...h.older] : h.asks.slice(0, 3));
+  }, [open, page, h]);
   return (
     <View style={{ flex: 1 }}>
       {page === 'home'
         ? <HomePage d={d} say={say} hide={hide} onNora={() => setPage('nora')} />
-        : <NoraPage d={d} say={say} onBack={() => setPage('home')} />}
+        : <NoraPage d={d} say={say} focus={focusItem} onBack={() => { setPage('home'); setFocusItem(null); }} />}
       <View pointerEvents="box-none" style={[st.toast, { bottom: dockClear(insets.bottom) + 8 }]}>
         <Toast text={toast?.text ?? null} action={toast?.action} />
       </View>
@@ -541,7 +553,7 @@ function dueAgo(at: string) {
 }
 
 // ── Nora's page ──────────────────────────────────────────────────────────────────────────────────────────────────
-function NoraPage({ d, say, onBack }: { d: HomeData; say: Say; onBack: () => void }) {
+function NoraPage({ d, say, focus, onBack }: { d: HomeData; say: Say; focus: string | null; onBack: () => void }) {
   const insets = useSafeAreaInsets();
   const h = d.home;
   const tasks = d.today?.tasks ?? [];
@@ -560,6 +572,8 @@ function NoraPage({ d, say, onBack }: { d: HomeData; say: Say; onBack: () => voi
   const items = h ? [...h.items, ...h.older.filter((x) => !h.items.some((y) => y.id === x.id))] : [];
   const did = items.filter((x) => x.kind === 'did');
   const noticed = items.filter((x) => x.kind !== 'did' && x.kind !== 'ask' && x.status !== 'expired');
+  // the item a tapped push was about: a question is marked where it waits; anything else is pinned on top
+  const pinned = focus && !h?.asks.some((x) => x.id === focus) ? items.find((x) => x.id === focus) ?? null : null;
   const answer = (x: FeedItem, choice: 'yes' | 'no', text?: string) => {
     setAnswered((a) => ({ ...a, [x.id]: choice === 'no' ? 'Not now' : text ? `Sent to ${x.from ?? 'them'}` : 'Done' }));
     if (!DEMO) noraApi.answerItem(x.id, text ? { choice, text } : { choice }).catch((e) => {
@@ -574,10 +588,16 @@ function NoraPage({ d, say, onBack }: { d: HomeData; say: Say; onBack: () => voi
       refreshControl={<RefreshControl refreshing={d.refreshing} onRefresh={() => void d.load(false)} tintColor={C.muted} />}>
       <Header h={h} tags={d.tags} onBack={onBack} />
 
+      {pinned ? (
+        <PageSection title="From your notification">
+          <PageRow first title={pinned.title} sub={pinned.text ?? pinned.time} />
+        </PageSection>
+      ) : null}
+
       {h?.asks.length ? (
         <PageSection title="Waiting on you">
           {h.asks.map((x, i) => (
-            <View key={x.id} style={[st.pageRow, i > 0 && st.rule, { flexDirection: 'column', alignItems: 'stretch', gap: 8 }]}>
+            <View key={x.id} style={[st.pageRow, i > 0 && st.rule, { flexDirection: 'column', alignItems: 'stretch', gap: 8 }, x.id === focus && { backgroundColor: tint(NORA, 0.12) }]}>
               <Text style={st.taskTitle}>{x.title}</Text>
               {x.text ? <Text style={t.small} numberOfLines={4}>{x.text}</Text> : null}
               {answered[x.id] ? <Text style={t.caption}>{answered[x.id]}</Text> : answering === x.id ? (

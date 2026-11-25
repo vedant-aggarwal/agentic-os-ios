@@ -58,11 +58,14 @@ export const noraUi = {
   },
   closeHome: () => set({ home: false }),
   toggleHome: () => set({ home: !s.home }),
-  /** `mic`: start dictating as it opens. `replyTo`: the composer answers that agent's question. */
+  /** `mic`: start dictating as it opens. `replyTo`: the composer answers that agent's question (`from` '' when not
+   *  known yet: the chat finds it on the question's message). Answer mode lasts only while chat stays open. */
   openChat: (o: { mic?: boolean; replyTo?: { id: string; from: string } } = {}) =>
-    set({ chat: true, mic: o.mic ? s.mic + 1 : s.mic, replyTo: o.replyTo ?? s.replyTo }),
-  closeChat: () => set({ chat: false }),
+    set({ chat: true, mic: o.mic ? s.mic + 1 : s.mic, replyTo: o.replyTo ?? (s.chat ? s.replyTo : null) }),
+  closeChat: () => set({ chat: false, replyTo: null }),
   clearReply: () => set({ replyTo: null }),
+  /** The answer to `id` reached the PC: answer mode ends, unless he has moved on to answering another question. */
+  answered: (id: string) => { if (s.replyTo?.id === id) set({ replyTo: null }); },
   /**
    * Joins the call `incomingId` rang with, or rings her. `follow`: show the call that is already on (its audio runs
    * elsewhere, as when he answered on the lock screen). Without call audio on this build, ringing her opens chat to talk.

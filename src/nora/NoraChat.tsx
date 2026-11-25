@@ -58,6 +58,10 @@ export function ChatBody({ open, mic, micSend = 0, replyTo, onClose = noraUi.clo
   const dict = useDictate();
   const [draft, setDraft] = useState('');
   const [rowError, setRowError] = useState<{ id: number; text: string } | null>(null);
+  // an answer that didn't reach the PC: answer mode stays on, the words go back in the box, and this says why
+  const [answerError, setAnswerError] = useState<string | null>(null);
+  if (!replyTo && answerError) setAnswerError(null);
+  const replyName = replyTo ? replyTo.from || th.messages.find((m) => m.meta?.askState?.id === replyTo.id)?.meta?.askState?.from || 'them' : '';
   const attach = useAttach(open);
   const kb = useAnimatedKeyboard();
   const lift = useAnimatedStyle(() => ({ paddingBottom: Math.max(kb.height.value + 8, insets.bottom + 8) }));
@@ -92,8 +96,12 @@ export function ChatBody({ open, mic, micSend = 0, replyTo, onClose = noraUi.clo
   const send = (text: string) => {
     if (replyTo) {
       const to = replyTo;
-      noraUi.clearReply();
-      void th.answer(to.id, text).then((e) => { if (e) setDraft(text); });
+      setAnswerError(null);
+      void th.answer(to.id, text).then((e) => {
+        if (!e) { noraUi.answered(to.id); return; }
+        setDraft(text);
+        setAnswerError(e);
+      });
       return;
     }
     void th.send(text, attach.ids.length ? { ids: attach.ids, uris: attach.pics.filter((p) => p.id).map((p) => p.uri) } : undefined);
@@ -177,12 +185,19 @@ export function ChatBody({ open, mic, micSend = 0, replyTo, onClose = noraUi.clo
       <Animated.View style={[s.pad, lift]}>
         {replyTo ? (
           <View style={s.replying}>
-            <Text style={[t.small, s.flex]} numberOfLines={1}>Answering {replyTo.from}</Text>
+            <Text style={[t.small, s.flex]} numberOfLines={1}>Answering {replyName}</Text>
             <Press label="Stop answering" onPress={noraUi.clearReply} hitSlop={8} style={s.replyX}><Text style={t.label}>Cancel</Text></Press>
           </View>
         ) : null}
+        {replyTo && answerError ? (
+          <View style={s.replying} accessibilityLiveRegion="polite">
+            <Text style={[t.caption, s.flex, { color: C.danger }]} numberOfLines={2}>Not sent to {replyName}: {answerError}</Text>
+            <Press label="Send the answer again" hitSlop={8} style={s.replyX}
+              onPress={() => { const v = draft.trim(); if (v) { setDraft(''); send(v); } }}><Text style={t.label}>Retry</Text></Press>
+          </View>
+        ) : null}
         <Composer draft={draft} setDraft={setDraft} onSend={send} dict={dict} attach={replyTo ? undefined : attach}
-          placeholder={replyTo ? `Your answer for ${replyTo.from}` : `Message ${th.name}`} />
+          placeholder={replyTo ? `Your answer for ${replyName}` : `Message ${th.name}`} />
       </Animated.View>
       {attach.dragging ? (
         <View pointerEvents="none" style={s.drop}>

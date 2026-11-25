@@ -1,13 +1,14 @@
 import { StyleSheet, Text, View } from 'react-native';
-import { useCollection, type Read } from '@/lib/mod';
+import { dayAhead, streakWords, trainedWords } from '@/lib/body';
+import type { Read } from '@/lib/mod';
 import { C } from '@/theme';
 import {
-  addDays, Block, Button, Failed, Group, Item, Lead, num, Press, Skeleton, Tag, t, undoable, useAspect, WeekStrip, weekStart, type DayMark,
+  Block, Button, Failed, Group, Item, Lead, num, Press, Skeleton, Tag, t, undoable, useAspect,
 } from '@/aspects/kit';
 import { agoDays, goalOf, logWater, useGym, type Home } from '../api';
-import type { WorkoutDoc } from '../gym/workout';
 import { useNav } from '../nav';
 import { minutesFor, Progress, s as u, Trend } from '../parts';
+import { Week as TrainWeek } from '../train/Train';
 import { Linked } from '@/aspects/_linked/Linked';
 
 const DIM: Record<string, string> = { pace: 'pace', pitch: 'pitch variation', loudness: 'steady loudness', pauses: 'pauses', clarity: 'clarity', fillers: 'fewer fillers' };
@@ -143,10 +144,12 @@ function LeadCard({ h }: { h: Home }) {
   }
   // everything for today is done, or there is nothing planned
   const trained = g.trained[0];
+  const next = g.next && g.next.date > h.today ? g.next : null;
   return (
     <Lead>
       <Text style={[t.footnote, { color: a.color }]}>{trained ? 'Trained today' : g.state === 'rest' ? 'Rest day' : 'Today'}</Text>
-      <Text style={t.title3}>{trained ? `${trained.name}, ${trained.sets} sets` : 'Nothing left to do for the body today.'}</Text>
+      <Text style={t.title3}>{trained ? `${trained.name}, ${trainedWords(trained)}${g.trained.length > 1 ? `, and ${g.trained.length - 1} more` : ''}` : 'Nothing left to do for the body today.'}</Text>
+      {next ? <Text style={t.subhead}>{`Next: ${next.name}, ${dayAhead(next.date, h.today)}.`}</Text> : null}
       {!trained && g.state === 'rest' ? <Text style={t.subhead}>A walk or a round of boxing still counts. One tap logs it.</Text> : null}
       {!trained ? <Button label="Log other training" kind="quiet" onPress={() => nav.openSheet({ kind: 'quick', quick: 'boxing' })} /> : null}
     </Lead>
@@ -154,17 +157,14 @@ function LeadCard({ h }: { h: Home }) {
 }
 
 // ── this week ──
+/** Train's week block, from the same read, so the two tabs (and Home's gym card) show one count and one streak. */
 function Week({ h }: { h: Home }) {
-  // the days come from the workouts themselves (the page already holds them), so a mark is a real session
-  const col = useCollection<WorkoutDoc>('body', 'workouts');
-  const mon = weekStart(h.today);
-  const days = Array.from({ length: 7 }, (_, i) => addDays(mon, i));
-  const trained = new Set((col.items ?? []).filter((w) => w.status === 'done').map((w) => w.date));
-  const mark = (d: string): DayMark => (trained.has(d) ? 'done' : d === h.today && (h.gym.state === 'planned' || h.gym.state === 'live') ? 'planned' : 'none');
-  const count = days.filter((d) => trained.has(d)).length;
+  const gym = useGym();
+  if (gym.data) return <TrainWeek g={gym.data} />;
+  const w = h.gym.week;
   return (
-    <Block title="This week" right={<Text style={[t.subhead, t.num, { color: C.muted }]}>{`${col.items ? count : h.gym.week.days} of ${h.gym.week.target} days`}</Text>}>
-      <WeekStrip days={days.map((d) => ({ day: d, mark: mark(d), today: d === h.today }))} />
+    <Block title="This week" sub={streakWords(w.streak)} right={<Text style={[t.subhead, t.num, { color: C.muted }]}>{`${w.days} of ${w.target} days`}</Text>}>
+      <Skeleton height={88} radius={22} />
     </Block>
   );
 }
@@ -181,7 +181,7 @@ function Rest({ h }: { h: Home }) {
       rows.push(<Item key="gym" title={g.plan.name} sub={`${g.plan.items.length} exercises, about ${minutesFor(g.plan)} min`} left={<Glyphless done={false} />}
         action={<Button label="Start" kind="soft" small onPress={start} />} onPress={() => nav.openTab('train')} />);
     } else if (g.state === 'done' && g.trained[0]) {
-      rows.push(<Item key="gym" title={`Trained: ${g.trained[0].name}`} sub={`${g.trained[0].sets} sets`} left={<Progress done={1} total={1} label="" />} onPress={() => nav.openTab('train')} />);
+      rows.push(<Item key="gym" title={`Trained: ${g.trained.map((x) => x.name).join(', ')}`} sub={g.trained.map(trainedWords).join(', ')} left={<Progress done={1} total={1} label="" />} onPress={() => nav.openTab('train')} />);
     } else if (g.state === 'rest') {
       rows.push(<Item key="gym" title="Rest day" sub="Boxing, a run or a walk logs in one tap" left={<Glyphless done={false} />}
         action={<Button label="Log" kind="soft" small onPress={() => nav.openSheet({ kind: 'quick', quick: 'boxing' })} />} />);

@@ -1,5 +1,4 @@
 import { Platform } from 'react-native';
-import type { BodyToday } from './body';
 import type { Area, LifePayload, Task, TodayPayload } from './today';
 
 /**
@@ -46,23 +45,5 @@ export function demoData(): { today: TodayPayload; life: LifePayload; areas: Are
       { slug: 'health', name: 'Health' }, { slug: 'learning', name: 'Learning' }, { slug: 'norrita', name: 'Norrita' },
       { slug: 'finance', name: 'Finance' }, { slug: 'family', name: 'Family' }, { slug: 'friends', name: 'Friends' },
     ],
-  };
-}
-
-/** Dev-only sample body plan for `?demo`: a generic push day, nobody's real numbers. */
-export function demoBody(): BodyToday {
-  const today = new Date(Date.now() + 5.5 * 3600_000).toISOString().slice(0, 10);
-  const l = (ex: string, name: string, sets: number, r: number | null, t: number | null = null) => ({ ex, name, sets, target: { r, t } });
-  return {
-    today, live: null, trained: [],
-    next: {
-      id: `plan-${today}`, date: today, name: 'Push', at: null,
-      items: [
-        l('bench', 'Bench press', 3, 8), l('ohp', 'Overhead press', 3, 10), l('incline-db', 'Incline dumbbell press', 3, 10),
-        l('lat-raise', 'Lateral raise', 3, 15), l('pushdown', 'Triceps pushdown', 3, 12), l('plank', 'Plank', 3, null, 45),
-      ],
-    },
-    week: { days: 2, target: 5, streak: 1 },
-    food: { protein: 60, protein_target: 140, water: 3, water_target: 8 },
   };
 }

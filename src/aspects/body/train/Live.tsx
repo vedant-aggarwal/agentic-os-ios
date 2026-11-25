@@ -7,7 +7,7 @@ import {
   Block, Button, CheckRing, Chip, Empty, Failed, Field, Group, haptic, Icon, IconButton, Item, Keypad, Metric, Metrics, num, Press, R, Screen, Sheet,
   shortDay, Skeleton, SURF, t, Tag, timer, tint, useAspect, useKeepAwake, type KeyField,
 } from '@/aspects/kit';
-import { B, useGym, useLibrary, usePrev, useSession, type LibItem, type Prev, type SetRow } from '../api';
+import { B, gymChanged, useGym, useLibrary, usePrev, useSession, type LibItem, type Prev, type SetRow } from '../api';
 import { allSets, doneSets, itemFrom, restFor, startSet, volumeOf, type WItem, type WorkoutDoc } from '../gym/workout';
 import { e1rm, muscleWords, platesFor, s as u, volumeText } from '../parts';
 import { alertRestEnd, cancelRestAlert } from './restAlert';
@@ -19,6 +19,9 @@ import { alertRestEnd, cancelRestAlert } from './restAlert';
 
 type Edit = { i: number; j: number; field: number; tick?: boolean } | null;
 type Live = WorkoutDoc & { rest_until?: number | null; rest_total?: number | null };
+
+/** The time now, for what a tap writes (a rest's end, a hold's end); drawing reads the time through a ticking clock. */
+const tapTime = () => Date.now();
 
 export function LiveWorkout({ open, onClose }: { open: boolean; onClose: () => void }) {
   const a = useAspect();
@@ -38,10 +41,12 @@ export function LiveWorkout({ open, onClose }: { open: boolean; onClose: () => v
 
   // his best estimated max per lift, so a set that beats it can say so as it is ticked
   const best = useMemo(() => new Map((gym.data?.lifts ?? []).filter((l) => l.est).map((l) => [l.ex, l.est as number])), [gym.data]);
-  const rest = live?.rest_until && live.rest_until > Date.now() && live.rest_until !== restGone ? { until: live.rest_until, total: live.rest_total ?? 90 } : null;
+  // a rest that ran out while the workout was closed ends quietly as the bar mounts (RestBar)
+  const rest = live?.rest_until && live.rest_until !== restGone ? { until: live.rest_until, total: live.rest_total ?? 90 } : null;
 
-  const save = async (next: Live) => {
-    try { await col.put(next); } catch (e) { a.notice(`Not saved: ${(e as Error).message}`); }
+  // every change goes to the PC as the whole record; Home's gym card and Body's Today and Train read it again after
+  const save = async (next: Live, now = false) => {
+    try { await col.put(next); gymChanged(now); } catch (e) { a.notice(`Not saved: ${(e as Error).message}`); }
   };
   const withSet = (w: Live, i: number, j: number, change: Partial<SetRow>, follow = false): Live => {
     const old = w.items[i].sets[j];
@@ -55,14 +60,14 @@ export function LiveWorkout({ open, onClose }: { open: boolean; onClose: () => v
     const r = restFor(it);
     if (last || r <= 0) return { ...w, rest_until: null, rest_total: null };
     void alertRestEnd(r);
-    return { ...w, rest_until: Date.now() + r * 1000, rest_total: r };
+    return { ...w, rest_until: tapTime() + r * 1000, rest_total: r };
   };
   const tickSet = (i: number, j: number) => {
     if (!live) return;
     const it = live.items[i]; const st = it.sets[j];
     const holding = !!hold && hold.i === i && hold.j === j;
     if (!st.done && !holding && it.kind === 'weight' && st.w == null) { setEdit({ i, j, field: 0, tick: true }); return; } // a set without a weight is no data
-    if (!st.done && !holding && it.kind === 'time') { setHold({ i, j, until: Date.now() + (st.t ?? 60) * 1000 }); return; }
+    if (!st.done && !holding && it.kind === 'time') { setHold({ i, j, until: tapTime() + (st.t ?? 60) * 1000 }); return; }
     if (holding) setHold(null);
     const on = !st.done;
     let next = withSet(live, i, j, { done: on, at: on ? new Date().toISOString() : null });
@@ -82,9 +87,10 @@ export function LiveWorkout({ open, onClose }: { open: boolean; onClose: () => v
   };
   const changeRest = (d: number) => {
     if (!live || !rest) return;
-    const until = Math.max(Date.now() + 1000, rest.until + d * 1000);
-    void alertRestEnd((until - Date.now()) / 1000);
-    void save({ ...live, rest_until: until, rest_total: Math.max(rest.total, Math.round((until - Date.now()) / 1000)) });
+    const at = tapTime();
+    const until = Math.max(at + 1000, rest.until + d * 1000);
+    void alertRestEnd((until - at) / 1000);
+    void save({ ...live, rest_until: until, rest_total: Math.max(rest.total, Math.round((until - at) / 1000)) });
   };
   const skipRest = () => { if (!live) return; void cancelRestAlert(); void save({ ...live, rest_until: null, rest_total: null }); };
   const finish = async () => {
@@ -92,7 +98,7 @@ export function LiveWorkout({ open, onClose }: { open: boolean; onClose: () => v
     setEnding(false);
     const id = live.id;
     void cancelRestAlert();
-    await save({ ...live, status: 'done', ended_at: new Date().toISOString(), rest_until: null, rest_total: null });
+    await save({ ...live, status: 'done', ended_at: new Date().toISOString(), rest_until: null, rest_total: null }, true);
     setHold(null);
     setFinished(id);
     haptic.success();
@@ -104,12 +110,13 @@ export function LiveWorkout({ open, onClose }: { open: boolean; onClose: () => v
     try {
       if (live.id.startsWith('plan-')) await col.put({ ...live, status: 'planned', started_at: null, rest_until: null, items: live.items.map((it) => ({ ...it, sets: it.sets.map((x) => ({ ...x, done: false, at: null })) })) });
       else await col.remove(live.id);
+      gymChanged(true);
       onClose();
     } catch (e) { a.notice((e as Error).message); }
   };
   const setItems = (items: WItem[]) => { if (live) void save({ ...live, items }); };
 
-  const started = live?.started_at ? Date.parse(live.started_at) : Date.now();
+  const started = live?.started_at ? Date.parse(live.started_at) : null;
   return (
     <>
       <Screen open={open} onClose={onClose} title={finished ? 'Saved' : live?.name ?? 'Workout'} immersive
@@ -171,10 +178,12 @@ export function LiveWorkout({ open, onClose }: { open: boolean; onClose: () => v
   );
 }
 
-/** The session clock: redraws itself each second, nothing else. */
-function Elapsed({ since }: { since: number }) {
+/** The session clock: redraws itself each second, nothing else. Without a start time it counts from when it showed. */
+function Elapsed({ since: from }: { since: number | null }) {
   const { open } = useAspect();
   const [now, setNow] = useState(() => Date.now());
+  const [shown] = useState(() => Date.now());
+  const since = from ?? shown;
   useEffect(() => {
     if (!open) return;
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -187,6 +196,8 @@ function Elapsed({ since }: { since: number }) {
 function RestBar({ until, total, bottom, onAdd, onSkip, onEnd }: { until: number; total: number; bottom: number; onAdd: (d: number) => void; onSkip: () => void; onEnd: () => void }) {
   const a = useAspect();
   const [now, setNow] = useState(() => Date.now());
+  // over before it showed (the workout was closed while it ran out): it ends without a buzz and never draws
+  const [over] = useState(() => until <= Date.now());
   const rang = useRef(false);
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 250);
@@ -196,9 +207,10 @@ function RestBar({ until, total, bottom, onAdd, onSkip, onEnd }: { until: number
   useEffect(() => {
     if (left > 0 || rang.current) return;
     rang.current = true;
-    haptic.success();
+    if (!over) haptic.success();
     onEnd();
-  }, [left, onEnd]);
+  }, [left, onEnd, over]);
+  if (over) return null;
   return (
     <View style={[s.restWrap, { paddingBottom: Math.max(bottom, 12) + 8 }]}>
       <View style={[s.rest, { borderColor: tint(a.color, 0.35) }]}>

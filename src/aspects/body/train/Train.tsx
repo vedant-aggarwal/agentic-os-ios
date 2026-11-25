@@ -4,6 +4,7 @@ import { C } from '@/theme';
 import {
   Block, Button, Failed, Glyph, Group, haptic, Item, Lead, num, QuickAction, Sheet, shortDay, Skeleton, Tag, t, undoable, useAspect, WeekStrip, type DayMark,
 } from '@/aspects/kit';
+import { dayAhead, streakWords, trainedWords } from '@/lib/body';
 import { agoDays, goalOf, planAgain, quickLog, removeDoc, useGym, type Gym, type HistoryRow } from '../api';
 import { useNav } from '../nav';
 import { minutesFor, s as u, Trend, volumeText } from '../parts';
@@ -73,15 +74,26 @@ function Session({ g }: { g: Gym }) {
       </Lead>
     );
   }
-  if (!s0) {
-    const trained = g.trained[0];
+  // the server's one answer for today (the same as Home's gym card and Body's Today); an older server leaves it out
+  const state = g.state ?? (g.trained.length ? 'done' : s0 ? 'planned' : 'rest');
+  if (state === 'done' || !s0) {
+    const trained = g.trained;
+    const next = g.next && g.next.date > g.today ? g.next : null;
     return (
       <Lead>
-        <Text style={[t.footnote, { color: a.color }]}>{trained ? 'Trained today' : 'No session planned'}</Text>
-        <Text style={t.title3}>{trained ? `${trained.name}, ${trained.sets} sets, ${volumeText(trained.volume)}` : g.next ? `Next: ${g.next.name}` : 'A free day'}</Text>
+        <Text style={[t.footnote, { color: a.color }]}>{trained.length ? 'Trained today' : 'No session planned'}</Text>
+        {trained.length ? trained.map((x) => (
+          <Text key={x.id} style={t.title3}>{`${x.name}, ${trainedWords(x)}${!x.quick && x.volume ? `, ${volumeText(x.volume)}` : ''}`}</Text>
+        )) : <Text style={t.title3}>{next ? `Next: ${next.name}, ${dayAhead(next.date, g.today)}` : 'A free day'}</Text>}
+        {trained.length && next ? <Text style={t.subhead}>{`Next: ${next.name}, ${dayAhead(next.date, g.today)}`}</Text> : null}
+        {/* today's plan is still there after a quick log or another session: start it if he still wants it */}
+        {trained.length && s0 ? (
+          <Item title={`${s0.name} is still planned for today`} sub={`${s0.items.length} exercises`} style={s.pending}
+            action={<Button label="Start" kind="soft" small onPress={() => { void nav.startWorkout(s0); }} />} />
+        ) : null}
         <View style={u.row}>
-          <Button label="Empty workout" kind={trained ? 'quiet' : 'accent'} onPress={() => { void nav.startWorkout(null); }} wrap={u.flex} />
-          {!trained ? <Button label="Plan one" kind="quiet" busy={busy === 'again'} onPress={() => { void again({}, 'again'); }} /> : null}
+          <Button label="Empty workout" kind={trained.length ? 'quiet' : 'accent'} onPress={() => { void nav.startWorkout(null); }} wrap={u.flex} />
+          {!trained.length ? <Button label="Plan one" kind="quiet" busy={busy === 'again'} onPress={() => { void again({}, 'again'); }} /> : null}
         </View>
       </Lead>
     );
@@ -155,15 +167,20 @@ function Quick({ g }: { g: Gym }) {
 }
 
 // ── this week ──
-function Week({ g }: { g: Gym }) {
+/**
+ * The week: each day trained, planned or missed, the count against his target and the streak. Body's Today shows this
+ * same block (from the same read), and Home's gym card the same count and streak.
+ */
+export function Week({ g }: { g: Gym }) {
   const nav = useNav();
   const days = g.week.days.map((d) => ({
     day: d.d, today: d.today, label: `${d.d}, ${d.trained ? d.names.join(' and ') : d.planned ? 'planned' : d.missed ? 'missed' : 'rest'}`,
     mark: (d.trained ? 'done' : d.planned ? 'planned' : d.missed ? 'missed' : 'none') as DayMark,
   }));
   const trainedNames = g.week.days.filter((d) => d.trained).flatMap((d) => d.names);
+  const streak = streakWords(g.week.streak);
   return (
-    <Block title="This week" right={<Text style={[t.subhead, t.num, { color: C.muted }]}>{`${g.week.count} of ${g.week.target} days`}</Text>}>
+    <Block title="This week" sub={streak} right={<Text style={[t.subhead, t.num, { color: C.muted }]}>{`${g.week.count} of ${g.week.target} days`}</Text>}>
       <Group pad>
         <WeekStrip days={days} onPress={(d) => { const h = g.history.find((x) => x.date === d); if (h) nav.openDetail({ kind: 'session', id: h.id }); }} />
         {trainedNames.length ? <Text style={t.footnote} numberOfLines={2}>{trainedNames.join(', ')}</Text> : <Text style={t.footnote}>Nothing logged yet this week.</Text>}
@@ -259,6 +276,7 @@ function BodyWeight({ g }: { g: Gym }) {
 const s = StyleSheet.create({
   planList: { marginHorizontal: -16, borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.08)' },
   planRow: { minHeight: 56 },
+  pending: { marginHorizontal: -16, borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.08)' },
   quick: { flexDirection: 'row', gap: 8 },
   whyLink: { alignSelf: 'flex-start', paddingTop: 4 },
   dim: { opacity: 0.6 },

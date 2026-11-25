@@ -17,12 +17,17 @@ export type ShortPlan = { id: string; date: string; name: string; at: string | n
 export type Quick = { kind: string; name: string; min: number; last: string | null; week: number; month: number };
 export type Weight = { now: number | null; date: string | null; days: number | null; goal: { goal: number; by: string | null } | number | null; trail: { date: string; v: number }[] };
 export const goalOf = (w: Weight | null | undefined) => (w?.goal == null ? null : typeof w.goal === 'number' ? w.goal : w.goal.goal ?? null);
+/** live: a session is running. done: he trained today (a quick log counts). planned: today's session waits. rest. */
+export type GymState = 'live' | 'done' | 'planned' | 'rest';
+/** A session done today. minutes and quick: boxing, a run, a walk or a ride logged in one tap (servers from Nov 2026). */
+export type Trained = { id: string; name: string; sets: number; volume: number; minutes?: number | null; quick?: string | null };
 
 // ── home ──
 export type Home = {
   today: string; now: string; lead: Part | 'done'; order: Part[];
-  gym: { state: 'live' | 'done' | 'planned' | 'rest'; session: { id: string; name: string; sets: number } | null; plan: ShortPlan | null;
-    trained: { id: string; name: string; sets: number; volume: number }[]; next: ShortPlan | null; week: { days: number; target: number; streak: number }; quick: Quick[] };
+  // gym: the server's one answer for today's training (body.ts gymToday), the same in /home, /gym and /today
+  gym: { state: GymState; session: { id: string; name: string; sets: number; items?: ShortPlan['items'] } | null; plan: ShortPlan | null;
+    trained: Trained[]; next: ShortPlan | null; week: { days: number; target: number; streak: number }; quick: Quick[] };
   diet: { protein: number; protein_target: number; kcal: number; kcal_target: number; meals: number; water: number; water_target: number; behind: boolean };
   face: { am: { done: number; total: number }; pm: { done: number; total: number }; half: 'am' | 'pm'; total: number; done: number; scanned: string | null;
     open: { id: string; status: string } | null; due: Due };
@@ -43,8 +48,9 @@ export type Lift = { ex: string; name: string; kind: string; date: string; set: 
 export type HistoryRow = { id: string; date: string; name: string; status: string; split: string | null; sets: number; volume: number; minutes: number | null; records: number; quick: string | null };
 export type Gym = {
   today: string; readiness: { score: number | null; word: string; partial: boolean; parts: { k: string; name: string; v: string; word: string; note: string }[] };
-  session: FullSession | null; sessionSource: 'live' | 'planned' | 'auto' | null; next: ShortPlan | null; trained: { id: string; name: string; sets: number; volume: number }[];
-  week: { days: { d: string; trained: boolean; names: string[]; planned: boolean; missed: boolean; today: boolean; past: boolean }[]; count: number; target: number };
+  // state and week.streak come from servers since Nov 2026; an older one leaves them out
+  state?: GymState; session: FullSession | null; sessionSource: 'live' | 'planned' | 'auto' | null; next: ShortPlan | null; trained: Trained[];
+  week: { days: { d: string; trained: boolean; names: string[]; planned: boolean; missed: boolean; today: boolean; past: boolean }[]; count: number; target: number; streak?: number };
   recovery: Muscle[]; weight: Weight; lifts: Lift[]; history: HistoryRow[]; quick: Quick[];
 };
 export type SessionDetail = { id: string; date: string; name: string; status: string; split: string | null; started_at: string | null; ended_at: string | null;
@@ -139,6 +145,19 @@ export function usePoll(refresh: () => Promise<void>, active: boolean, ms = 4000
 // A tick, a log or a meal counts for his day (`myDay`: before 04:00 IST it is still yesterday), as the PC counts it.
 const stamp = () => new Date().toISOString();
 const done = <T,>(p: Promise<T>) => p.then((r) => { invalidate(`${B}/`); return r; });
+
+/**
+ * A workout record changed on the phone (a set ticked, the workout finished or thrown away): the reads that show
+ * today's training answer again, so Home's gym card and Body's Today and Train move with it. Set ticks come in
+ * bursts, so those wait for a quiet moment; `now` for a start or a finish.
+ */
+let gymTimer: ReturnType<typeof setTimeout> | null = null;
+export function gymChanged(now = false) {
+  if (gymTimer) clearTimeout(gymTimer);
+  gymTimer = null;
+  const run = () => { gymTimer = null; for (const p of ['home', 'gym', 'today']) invalidate(`${B}/${p}`); };
+  if (now) run(); else gymTimer = setTimeout(run, 1500);
+}
 
 /** A record in one of the module's collections (the whole record is replaced). */
 export const putDoc = <T,>(coll: string, id: string, doc: Record<string, unknown>) =>

@@ -106,6 +106,27 @@ const session = (): FullSession => ({
       prev: prev ? { date: prev.date, sets: prev.items.find((i) => i.ex === ex)!.sets.map((x) => ({ ...x, t: null, min: null })) } : null };
   }),
 });
+// what comes after today in the sample: the next split in the rotation
+const tomorrowPlan = () => ({
+  id: `plan-${addDays(day, 1)}`, date: addDays(day, 1), name: 'Legs and speed', at: null, plan_by: 'rules', why: 'Legs are recovered and they come next.', reasons: [],
+  items: ([['squat', 4, 72.5, 6], ['rdl', 3, 62.5, 8]] as const).map(([ex, sets, w, r]) => ({ ex, name: exOf(ex).name, sets, target: { w, r }, note: '' })),
+});
+// today's training in the sample, worked out from the workout records the way the PC does (body.ts gymToday): a live
+// record is live, anything done today (a quick log too) is done, else today's plan waits
+const workouts = () => collection<WorkoutDoc>('body', 'workouts').get() ?? [];
+const liveDoc = () => workouts().find((w) => w.status === 'live') ?? null;
+const trainedToday = () => history().filter((h) => h.date === day).map((h) => ({ id: h.id, name: h.name, sets: h.sets, volume: h.volume, minutes: h.minutes, quick: h.quick }));
+const gymToday = () => {
+  const live = liveDoc();
+  const trained = trainedToday();
+  const state = live ? 'live' as const : trained.length ? 'done' as const : 'planned' as const;
+  return { live, trained, state, next: state === 'planned' ? plan() : tomorrowPlan(), week: { days: weekDays().filter((d) => d.trained).length, target: st.targets.days, streak: 3 } };
+};
+const liveSession = (w: WorkoutDoc): FullSession => ({
+  id: w.id, date: w.date, status: 'live', name: w.name, split: w.split ?? null, why: w.why ?? '', reasons: w.reasons ?? [], plan_by: w.plan_by ?? 'rules', started_at: w.started_at ?? null, dur: null,
+  items: w.items.map((it) => ({ ex: it.ex, name: it.name, kind: it.kind, equip: it.equip ?? exOf(it.ex).equip, step: it.step ?? exOf(it.ex).step, bar: exOf(it.ex).bar, p: exOf(it.ex).p,
+    note: it.note ?? '', target: it.target ?? null, sets: it.sets, prev: null })),
+});
 const MUSCLES: [string, string, number][] = [
   ['chest', 'Chest', 64], ['shoulders', 'Shoulders', 71], ['triceps', 'Triceps', 68], ['quads', 'Quads', 82], ['glutes', 'Glutes', 85], ['hamstrings', 'Hamstrings', 79],
   ['biceps', 'Biceps', 100], ['forearms', 'Forearms', 96], ['upperback', 'Upper back', 100], ['lowerback', 'Lower back', 92], ['traps', 'Traps', 98], ['abs', 'Abs', 90],
@@ -187,9 +208,14 @@ demoSource({
     'body/workouts': pastDocs(),
   },
   gets: {
-    [`${B}/home`]: (): Home => ({
-      today: day, now: '17:40', lead: 'gym', order: ['diet', 'face', 'voice'],
-      gym: { state: 'planned', session: null, plan: plan(), trained: [], next: plan(), week: { days: weekDays().filter((d) => d.trained).length, target: st.targets.days, streak: 3 }, quick: quick() },
+    [`${B}/home`]: (): Home => {
+      const g = gymToday();
+      const lead = g.state === 'done' ? 'diet' : 'gym';
+      return {
+      today: day, now: '17:40', lead, order: (['gym', 'diet', 'face', 'voice'] as const).filter((k) => k !== lead),
+      gym: { state: g.state, session: g.live ? { id: g.live.id, name: g.live.name, sets: g.live.items.reduce((n, it) => n + it.sets.filter((x) => x.done).length, 0),
+        items: g.live.items.map((it) => ({ ex: it.ex, name: it.name, sets: it.sets.length, target: it.target ?? null, note: it.note ?? '' })) } : null,
+        plan: g.state === 'planned' ? plan() : null, trained: g.trained, next: g.next, week: g.week, quick: quick() },
       diet: { protein: protein(), protein_target: st.targets.protein, kcal: kcal(), kcal_target: st.targets.kcal, meals: st.meals.length, water: st.water, water_target: st.targets.water, behind: false },
       face: { am: { done: routine().am.filter((x) => x.done).length, total: 3 }, pm: { done: routine().pm.filter((x) => x.done).length, total: 4 }, half: 'pm', total: 7, done: routine().done, scanned: addDays(day, -9), open: null, due: { date: addDays(day, 5), days: 5 } },
       voice: { minutes: 4, done: 1, total: 3, focus: 'pitch', sampled: addDays(day, -6), open: null },
@@ -198,15 +224,20 @@ demoSource({
         face: { v: 64, margin: 4, date: addDays(day, -9), days: 9, delta: 3, trend: [58, 61, 64], measured: 13, of: 13, partial: false },
         voice: { v: 71, date: addDays(day, -6), days: 6, delta: 5, trend: [62, 66, 71], measured: 6, of: 6 },
       },
-    }),
-    [`${B}/gym`]: (): Gym => ({
-      today: day,
+      };
+    },
+    [`${B}/gym`]: (): Gym => {
+      const g = gymToday();
+      return {
+      today: day, state: g.state,
       readiness: { score: 78, word: 'Ready', partial: false, parts: [{ k: 'sleep', name: 'Sleep', v: '7 h 10 min', word: 'Good', note: '' }, { k: 'load', name: 'Recent load', v: 'Moderate', word: 'Fine', note: '' }] },
-      session: session(), sessionSource: 'auto', next: plan(), trained: [],
-      week: { days: weekDays(), count: weekDays().filter((d) => d.trained).length, target: st.targets.days },
+      // the rules plan moves to tomorrow once anything is done today, as on the PC
+      session: g.live ? liveSession(g.live) : g.trained.length ? null : session(), sessionSource: g.live ? 'live' : g.trained.length ? null : 'auto', next: g.next, trained: g.trained,
+      week: { days: weekDays(), count: g.week.days, target: g.week.target, streak: g.week.streak },
       recovery: MUSCLES.map(([m, name, pct]) => ({ m, name, pct, ready_in: pct < 70 ? Math.round((70 - pct) * 1.6) + 6 : 0 })).sort((a, b) => a.pct - b.pct),
       weight: weight(), lifts: lifts(), history: history(), quick: quick(),
-    }),
+      };
+    },
     [`${B}/session/*`]: (path: string): SessionDetail => {
       const id = decodeURIComponent(path.split('/').pop() ?? '');
       const live = (collection<WorkoutDoc>('body', 'workouts').get() ?? []).find((w) => w.id === id);

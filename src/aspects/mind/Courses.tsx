@@ -3,10 +3,11 @@ import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import {
   Bar, Block, Button, CheckRing, Chip, Failed, Field, Group, Icon, IconButton, Item, Lead, Sheet, Skeleton, Tag,
-  haptic, shortDay, t, undoable, useAspect,
+  haptic, shortDay, t, tint, undoable, useAspect,
 } from '@/aspects/kit';
 import { call, invalidate, useGet } from '@/lib/mod';
 import { C } from '@/theme';
+import { openAcademy, useAcademy } from './academy';
 import { useNav } from './nav';
 import type { CourseView, Lesson, Shelf, TakeSpec } from './types';
 import { Sym, durWords, minutes, useLast } from './ui';
@@ -64,6 +65,7 @@ export function LearnTab({ active }: { active: boolean }) {
           <Text style={t.subhead}>Add a course with its lesson list. One is active at a time; the rest wait on a shelf with their progress kept.</Text>
           <Button label="Add a course" kind="accent" onPress={() => setAdding(true)} />
         </Group>
+        <AcademyBlock active={active} />
         {sheets}
       </>
     );
@@ -121,6 +123,8 @@ export function LearnTab({ active }: { active: boolean }) {
           <Text style={t.footnote}>Pick one from the shelf below. The others keep their progress.</Text>
         </Group>
       )}
+
+      <AcademyBlock active={active} />
 
       {doneToday.length ? (
         <Block title="Done today" sub="The best test of a lesson is saying it back.">
@@ -183,6 +187,35 @@ export function LearnTab({ active }: { active: boolean }) {
       <Button label="Add a course" kind="quiet" onPress={() => setAdding(true)} icon={<Icon name="plus" size={18} />} />
       {sheets}
     </>
+  );
+}
+
+/** Stage Academy, the course on his PC: the lesson he was on, opened in Safari inside the app where it plays. */
+function AcademyBlock({ active }: { active: boolean }) {
+  const a = useAspect();
+  const [seen, setSeen] = useState(active);
+  if (active && !seen) setSeen(true);
+  const g = useAcademy(a.open && seen);
+  const v = g.data;
+  const [opening, setOpening] = useState(false);
+  if (g.error && !v) return null;
+  const open = () => {
+    setOpening(true);
+    void openAcademy(a.notice, v).finally(() => setOpening(false));
+  };
+  const l = v?.lesson ?? null;
+  const p = v?.progress ?? null;
+  const sub = !v ? 'On your PC' : !v.up ? (v.why ?? 'Not answering on your PC right now') : l
+    ? `${l.module ? `${l.module}, ` : ''}${l.watched && l.seconds > 30 ? `stopped at ${Math.floor(l.seconds / 60)}:${String(l.seconds % 60).padStart(2, '0')}` : 'next up'}`
+    : 'Open the classroom';
+  return (
+    <Block title={v?.title && v.title !== 'Stage Academy' ? v.title : 'Stage Academy'} sub={p ? `On your PC, ${p.done} of ${p.total} lessons` : 'On your PC'}>
+      <Group inset={64}>
+        <Item title={l ? l.title : 'Stage Academy'} sub={sub} lines={2} onPress={open} label={l ? `Continue ${l.title} in Stage Academy` : 'Open Stage Academy'}
+          left={<View style={[s.disc, { backgroundColor: tint(a.color, 0.16) }]}><Sym name="course" size={18} color={a.color} /></View>}
+          action={<Button label={l?.watched ? 'Continue' : 'Open'} kind="soft" small busy={opening} onPress={open} />} />
+      </Group>
+    </Block>
   );
 }
 
@@ -332,4 +365,5 @@ const s = StyleSheet.create({
   buttons: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   next: { gap: 2, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.08)' },
+  disc: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
 });

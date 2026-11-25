@@ -19,12 +19,17 @@ import { type DictateTo, gptAvailable, micMoving, useGptRecorder } from './gpt';
 // steps stopping: QUIET_FIRST after a lone step, QUIET_REPEAT once repeats have started.
 // A call owns the mic and the volume buttons (lib/calls.ts): while one is up nothing here listens or starts, so the
 // buttons set the call's volume, and a call starting stops whatever was going.
+// A take says "Sent to PC" only once the PC has answered each of its key presses ("Sending" until then). A press
+// that doesn't get there, or isn't answered within ANSWER_IN, ends the take as "PC not reached" with an error buzz,
+// at once even mid-hold: the keep-alive stops and the PC is told to let go.
 const QUIET_FIRST = 650;
 const QUIET_REPEAT = 320;
 const BEAT = 2000; // keep-alive while holding; the PC lets go by itself after 6 s without one
 const SENT_FOR = 1600; // how long "Sent" stays up
+const FAILED_FOR = 4000; // how long "PC not reached" stays up
+const ANSWER_IN = 6000; // a key press the PC hasn't answered by then didn't reach it
 
-export type Phase = 'idle' | 'listening' | 'handsfree' | 'sent' | 'command' | 'transcribing';
+export type Phase = 'idle' | 'listening' | 'handsfree' | 'sending' | 'sent' | 'failed' | 'command' | 'transcribing';
 export type MicSource = 'pc' | 'phone';
 type Native = { start(): void; stop(): void; addListener(e: 'onPress', cb: (p: { button: 'up' | 'down' }) => void): { remove(): void } };
 const native = Platform.OS === 'ios' ? requireOptionalNativeModule<Native>('VolumeButtons') : null;
@@ -32,6 +37,7 @@ export const volumeButtonsAvailable = !!native;
 
 type Action = 'ptt-down' | 'ptt-up' | 'handsfree' | 'stop' | 'beat' | 'cmd-down' | 'cmd-up' | 'say-down' | 'say-up' | 'cmd-lock' | 'cmd-toggle';
 const haptic = (s: Haptics.ImpactFeedbackStyle) => { if (Platform.OS !== 'web') Haptics.impactAsync(s).catch(() => {}); };
+const buzz = () => { if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {}); };
 
 /** What volume down does: a press calls Nora, a hold records a voice note to her (holdStart, then holdEnd). */
 export type NoraKeys = { tap: () => void; holdStart: () => void; holdEnd: () => void };
@@ -51,22 +57,42 @@ export function useWispr(enabled: boolean, nora?: NoraKeys) {
     mode: 'idle' as 'idle' | 'ptt' | 'hfHeld' | 'handsfree' | 'stopHeld' | 'cmd' | 'cmdHf' | 'noraWait' | 'noraHold',
     ticks: [] as number[], t0: 0, // this press sequence's step times, ms from its first step
     steps: 0, quiet: null as ReturnType<typeof setTimeout> | null, beat: null as ReturnType<typeof setInterval> | null,
-    sent: null as ReturnType<typeof setTimeout> | null,
+    sent: null as ReturnType<typeof setTimeout> | null, // ends "Sent" or "PC not reached"
+    // the take: which one (an answer that comes late belongs to the take it was for), whether one of its presses
+    // didn't reach the PC, how many still wait for the PC's answer, and whether its last press has gone
+    take: 0, dead: false, pending: 0, over: false,
   });
 
-  const show = useCallback((p: Phase) => { setPhase(p); setSince(Date.now()); }, []);
+  const show = useCallback((p: Phase) => {
+    const st = g.current;
+    if (st.sent) { clearTimeout(st.sent); st.sent = null; } // a new phase is never cut short by the last one's timer
+    setPhase(p); setSince(Date.now());
+  }, []);
   const rec = useGptRecorder();
   const gpt = useRef(false); // GPT is the source: record here instead of pressing Wispr's keys
   const recording = useRef(false);
 
-  const send = useCallback(async (action: Action, ticks?: number[]) => {
+  // Presses a key on the PC: null once it got there, else why not (no answer within ANSWER_IN counts as not).
+  const reach = useCallback(async (action: Action, ticks?: number[]): Promise<string | null> => {
+    let late: ReturnType<typeof setTimeout> | undefined;
     try {
-      await api('/pc/keys', { method: 'POST', body: ticks ? { action, ticks } : { action } });
-      if (action !== 'beat') setError(null);
+      await Promise.race([
+        api('/pc/keys', { method: 'POST', body: ticks ? { action, ticks } : { action } }),
+        new Promise((_, no) => { late = setTimeout(() => no(new ApiError(0, "Your PC didn't answer in time.")), ANSWER_IN); }),
+      ]);
+      return null;
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Couldn't reach your PC.");
+      return e instanceof ApiError ? e.message : "Couldn't reach your PC.";
+    } finally {
+      if (late) clearTimeout(late);
     }
   }, []);
+  // A press outside a take's own (the keep-alive, command mode, letting go): its error shows under the orb.
+  const send = useCallback(async (action: Action, ticks?: number[]) => {
+    const e = await reach(action, ticks);
+    if (e) setError(e);
+    else if (action !== 'beat' && !g.current.dead) setError(null); // a failed take keeps saying why
+  }, [reach]);
 
   const clearTimers = useCallback(() => {
     const st = g.current;
@@ -75,33 +101,72 @@ export function useWispr(enabled: boolean, nora?: NoraKeys) {
     st.quiet = null; st.beat = null;
   }, []);
 
-  const toIdle = useCallback((sent: boolean) => {
+  // How the take went, for a moment.
+  const outcome = useCallback((p: 'sent' | 'failed') => {
+    show(p);
+    g.current.sent = setTimeout(() => show('idle'), p === 'sent' ? SENT_FOR : FAILED_FOR);
+  }, [show]);
+
+  // Back to idle, showing `after` first: "Sending" waits for the PC's answers to the take's presses; anything else
+  // settles the take, so answers still on their way no longer show.
+  const toIdle = useCallback((after: 'idle' | 'sending' | 'sent' | 'failed' = 'idle') => {
     const st = g.current;
     clearTimers();
     st.mode = 'idle'; st.steps = 0;
+    if (after !== 'sending') st.take += 1;
     setLocked(false);
-    if (st.sent) clearTimeout(st.sent);
-    if (sent) {
-      show('sent');
-      st.sent = setTimeout(() => show('idle'), SENT_FOR);
-    } else show('idle');
-  }, [clearTimers, show]);
+    if (after === 'sent' || after === 'failed') outcome(after); else show(after);
+  }, [clearTimers, show, outcome]);
+
+  // ---- a take's key presses ----
+  // A new take: answers still on their way for an earlier one no longer show.
+  const begin = useCallback(() => { const st = g.current; st.take += 1; st.dead = false; st.pending = 0; st.over = false; }, []);
+  // Lets go of whatever the PC may still hold for a take that is over, quietly.
+  const letGo = useCallback(() => { api('/pc/keys', { method: 'POST', body: { action: 'stop' } }).catch(() => {}); }, []);
+  // A press of this take didn't reach the PC: "PC not reached" and an error buzz now. A hold still going ends when it
+  // is let go (endTalk, or the hands-free hold's quiet); hands-free ends here.
+  const lost = useCallback(() => {
+    const st = g.current;
+    if (st.dead) return;
+    st.dead = true;
+    buzz();
+    if (st.beat) { clearInterval(st.beat); st.beat = null; }
+    letGo();
+    if (st.over || st.mode === 'idle') { st.over = false; outcome('failed'); }
+    else if (st.mode === 'handsfree') toIdle('failed');
+    else show('failed');
+  }, [letGo, outcome, toIdle, show]);
+  // Sends a press of this take. `last`: it ends the take, which says "Sent to PC" once the PC has answered them all.
+  const press = useCallback((action: Action, ticks?: number[], last = false) => {
+    const st = g.current, n = st.take;
+    st.pending += 1;
+    if (last) st.over = true;
+    void reach(action, ticks).then((e) => {
+      if (n !== st.take) return;
+      st.pending -= 1;
+      if (st.dead) return; // it has said so, with the first press's reason
+      if (e) { setError(e); lost(); return; }
+      setError(null);
+      if (st.over && !st.pending) { st.over = false; outcome('sent'); }
+    });
+  }, [reach, lost, outcome]);
 
   // ---- GPT: record here, the PC transcribes ----
   const gptStart = useCallback(() => {
     recording.current = true;
-    rec.start().catch((e) => { recording.current = false; setError(String(e?.message ?? e)); toIdle(false); });
+    rec.start().catch((e) => { recording.current = false; setError(String(e?.message ?? e)); toIdle(); });
   }, [rec, toIdle]);
   const gptFinish = useCallback((to: DictateTo) => {
-    if (!recording.current) { toIdle(false); return; }
+    if (!recording.current) { toIdle(); return; }
     recording.current = false;
     clearTimers();
     g.current.mode = 'idle';
     setLocked(false);
     show('transcribing');
+    // a failure here is saved on the phone (gpt.ts says so), so it is no "PC not reached"
     rec.finish(to)
-      .then((r) => { setError(r.text || to === 'agent' ? null : "Didn't catch that."); toIdle(!!r.text && to === 'type'); })
-      .catch((e) => { setError(e instanceof ApiError ? e.message : String(e?.message ?? "Couldn't reach your PC.")); toIdle(false); });
+      .then((r) => { setError(r.text || to === 'agent' ? null : "Didn't catch that."); toIdle(r.text && to === 'type' ? 'sent' : 'idle'); })
+      .catch((e) => { setError(e instanceof ApiError ? e.message : String(e?.message ?? "Couldn't reach your PC.")); toIdle(); });
   }, [rec, toIdle, clearTimers, show]);
 
   // ---- the actions, shared by the volume buttons and the on-screen controls ----
@@ -109,44 +174,52 @@ export function useWispr(enabled: boolean, nora?: NoraKeys) {
     const st = g.current;
     if (st.mode !== 'idle' || callHoldsMic()) return;
     st.mode = 'ptt';
+    begin();
     if (gpt.current) { gptStart(); show('listening'); haptic(Haptics.ImpactFeedbackStyle.Medium); return; }
-    send('ptt-down');
+    press('ptt-down');
     st.beat = setInterval(() => send('beat'), BEAT);
     show('listening');
     haptic(Haptics.ImpactFeedbackStyle.Medium);
-  }, [send, show, gptStart]);
+  }, [begin, press, send, show, gptStart]);
 
   const endTalk = useCallback(() => {
-    if (g.current.mode !== 'ptt') return;
-    if (gpt.current) { haptic(Haptics.ImpactFeedbackStyle.Light); gptFinish('type'); return; }
-    send('ptt-up', g.current.ticks.length ? g.current.ticks : undefined);
+    const st = g.current;
+    if (st.mode !== 'ptt') return;
     haptic(Haptics.ImpactFeedbackStyle.Light);
-    toIdle(true);
-  }, [send, toIdle, gptFinish]);
+    if (gpt.current) { gptFinish('type'); return; }
+    if (st.dead) { toIdle('failed'); return; } // it said so when the press failed, and told the PC to let go
+    press('ptt-up', st.ticks.length ? st.ticks : undefined, true);
+    toIdle('sending');
+  }, [press, toIdle, gptFinish]);
 
   const handsFree = useCallback((held: boolean) => {
     const st = g.current;
     if (callHoldsMic()) return;
+    // a hold the PC never got doesn't become hands-free: a volume hold ends when let go, one locked on screen ends now
+    if (st.mode === 'ptt' && st.dead) { if (!held) toIdle('failed'); return; }
     clearTimers();
+    if (st.mode === 'idle') begin();
     if (gpt.current) { if (!recording.current) gptStart(); }
-    else send('handsfree');
+    else press('handsfree');
     st.mode = held ? 'hfHeld' : 'handsfree';
     show('handsfree');
     haptic(Haptics.ImpactFeedbackStyle.Heavy);
-  }, [clearTimers, send, show, gptStart]);
+  }, [clearTimers, toIdle, begin, press, show, gptStart]);
 
   const stopHandsFree = useCallback((held: boolean) => {
     const st = g.current;
     haptic(Haptics.ImpactFeedbackStyle.Light);
     if (gpt.current) gptFinish('type');
-    else { send('stop'); toIdle(true); }
+    else if (st.dead) toIdle('failed');
+    else { press('stop', undefined, true); toIdle('sending'); }
     if (held) st.mode = 'stopHeld'; // swallow the rest of this press
-  }, [send, toIdle, gptFinish]);
+  }, [press, toIdle, gptFinish]);
 
   // ---- command mode ----
   const startCommand = useCallback((follow: boolean) => {
     const st = g.current;
     if ((st.mode !== 'idle' && st.mode !== 'ptt') || callHoldsMic()) return;
+    begin(); // a command is its own take (its errors show in the command view)
     st.mode = 'cmd';
     if (gpt.current) { if (!recording.current) gptStart(); }
     else {
@@ -156,7 +229,7 @@ export function useWispr(enabled: boolean, nora?: NoraKeys) {
     setCommand(true);
     show('command');
     haptic(Haptics.ImpactFeedbackStyle.Heavy);
-  }, [send, show, gptStart]);
+  }, [begin, send, show, gptStart]);
 
   const endCommand = useCallback((follow: boolean) => {
     const st = g.current;
@@ -164,7 +237,7 @@ export function useWispr(enabled: boolean, nora?: NoraKeys) {
     if (gpt.current) { haptic(Haptics.ImpactFeedbackStyle.Light); gptFinish('agent'); return; }
     send(follow ? 'say-up' : 'cmd-up', st.ticks.length ? st.ticks : undefined);
     haptic(Haptics.ImpactFeedbackStyle.Light);
-    toIdle(false);
+    toIdle();
   }, [send, toIdle, gptFinish]);
 
   // ---- volume steps ----
@@ -183,6 +256,8 @@ export function useWispr(enabled: boolean, nora?: NoraKeys) {
       if (st.quiet) clearTimeout(st.quiet);
       st.quiet = setTimeout(() => { st.quiet = null; fn(); }, ms);
     };
+    // the hold that turned into hands-free is let go: hands-free goes on, unless the PC never got it
+    const heldHf = () => { if (st.dead) toIdle('failed'); else st.mode = 'handsfree'; };
     switch (st.mode) {
       case 'idle':
         st.steps = 1;
@@ -208,7 +283,7 @@ export function useWispr(enabled: boolean, nora?: NoraKeys) {
         quietAfter(QUIET_REPEAT, () => { st.mode = 'idle'; st.steps = 0; haptic(Haptics.ImpactFeedbackStyle.Light); noraRef.current?.holdEnd(); });
         break;
       case 'ptt':
-        if (button === 'down') { handsFree(true); quietAfter(QUIET_FIRST, () => { st.mode = 'handsfree'; }); }
+        if (button === 'down') { handsFree(true); quietAfter(QUIET_FIRST, heldHf); }
         else quietAfter(st.steps > 1 ? QUIET_REPEAT : QUIET_FIRST, endTalk);
         break;
       case 'cmdHf':
@@ -217,7 +292,7 @@ export function useWispr(enabled: boolean, nora?: NoraKeys) {
         if (button === 'up') quietAfter(st.steps > 1 ? QUIET_REPEAT : QUIET_FIRST, () => endCommand(false));
         break;
       case 'hfHeld':
-        quietAfter(QUIET_REPEAT, () => { st.mode = 'handsfree'; });
+        quietAfter(QUIET_REPEAT, heldHf);
         break;
       case 'handsfree':
         stopHandsFree(true);
@@ -227,7 +302,7 @@ export function useWispr(enabled: boolean, nora?: NoraKeys) {
         quietAfter(QUIET_REPEAT, () => { st.mode = 'idle'; st.steps = 0; });
         break;
     }
-  }, [startTalk, endTalk, handsFree, stopHandsFree, endCommand]);
+  }, [startTalk, endTalk, handsFree, stopHandsFree, endCommand, toIdle]);
 
   // A call started: let go of whatever was going (a GPT take is still saved), and stop listening until it ends.
   const [callUp, setCallUp] = useState(false);
@@ -238,7 +313,7 @@ export function useWispr(enabled: boolean, nora?: NoraKeys) {
     const st = g.current;
     if (recording.current) { recording.current = false; recCancel(); }
     else if (st.mode === 'ptt' || st.mode === 'hfHeld' || st.mode === 'handsfree' || st.mode === 'cmd' || st.mode === 'cmdHf') send('stop');
-    if (st.mode !== 'idle') toIdle(false);
+    toIdle(); // and a take still waiting for the PC's answer no longer shows it
   }), [recCancel, send, toIdle]);
 
   // Listen only while asked to, the app is in front and no call is up.
@@ -288,20 +363,21 @@ export function useWispr(enabled: boolean, nora?: NoraKeys) {
       haptic(Haptics.ImpactFeedbackStyle.Light);
       if (gpt.current) { gptFinish('agent'); return; }
       send('cmd-toggle');
-      toIdle(false);
+      toIdle();
     } else if (st.mode === 'idle' && !callHoldsMic()) {
+      begin();
       st.mode = 'cmdHf';
       if (gpt.current) gptStart(); else send('cmd-toggle');
       setLocked(true); setCommand(true); show('command');
       haptic(Haptics.ImpactFeedbackStyle.Heavy);
     }
-  }, [send, show, toIdle, gptFinish, gptStart]);
+  }, [begin, send, show, toIdle, gptFinish, gptStart]);
   // The PC took the command (or it was stopped elsewhere): a locked one is over.
-  const settle = useCallback(() => { if (!gpt.current && g.current.mode === 'cmdHf') toIdle(false); }, [toIdle]);
+  const settle = useCallback(() => { if (!gpt.current && g.current.mode === 'cmdHf') toIdle(); }, [toIdle]);
   // Stop: drop a GPT recording without sending it, or end a locked PC command.
   const cancel = useCallback(() => {
-    if (recording.current) { recording.current = false; rec.cancel(); toIdle(false); return; }
-    if (g.current.mode === 'cmdHf') toIdle(false);
+    if (recording.current) { recording.current = false; rec.cancel(); toIdle(); return; }
+    if (g.current.mode === 'cmdHf') toIdle();
   }, [rec, toIdle]);
   const closeCommand = useCallback(() => setCommand(false), []);
   const openCommand = useCallback(() => setCommand(true), []);

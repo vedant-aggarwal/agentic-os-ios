@@ -27,11 +27,13 @@ const CLOSE = { duration: 440, dampingRatio: 1, reduceMotion: ReduceMotion.Syste
 const ICON = 44; // the button it grows from
 
 const TONE: Record<Phase, string> = {
-  idle: C.muted, listening: ASPECT_COLOR.body, handsfree: ASPECT_COLOR.mission, sent: ASPECT_COLOR.friends, command: ASPECT_COLOR.growth,
-  transcribing: ASPECT_COLOR.friends,
+  idle: C.muted, listening: ASPECT_COLOR.body, handsfree: ASPECT_COLOR.mission, sending: ASPECT_COLOR.friends, sent: ASPECT_COLOR.friends,
+  failed: C.danger, command: ASPECT_COLOR.growth, transcribing: ASPECT_COLOR.friends,
 };
+// "Sent to PC" only once the PC has answered; a key press that didn't get there says "PC not reached" (lib/wispr.ts)
 const TITLE: Record<Phase, string> = {
-  idle: 'Ready', listening: 'Listening', handsfree: 'Hands-free', sent: 'Sent to PC', command: 'Command', transcribing: 'Transcribing',
+  idle: 'Ready', listening: 'Listening', handsfree: 'Hands-free', sending: 'Sending', sent: 'Sent to PC', failed: 'PC not reached',
+  command: 'Command', transcribing: 'Transcribing',
 };
 const SEG = { duration: 380, dampingRatio: 0.86, reduceMotion: ReduceMotion.System } as const;
 const clamp01 = (v: number) => { 'worklet'; return Math.min(Math.max(v, 0), 1); };

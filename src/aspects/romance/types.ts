@@ -34,15 +34,19 @@ export type Debrief = Doc & {
 };
 
 export type Step = { what: string; due: string | null };
+/** A step he did. `kind: 'plan'` is a plan that happened, moved here when he plans the next one. */
+export type Done = { what: string; at: string; kind?: 'plan' | null };
+/** A plan to meet someone: the idea, its small steps, the day, and the debrief made after it (its id). */
+export type Plan = { title: string; steps: { text: string; done: boolean }[]; date?: string | null; debrief?: string | null };
 export type Follow = Doc & {
   person: string;
   met?: { day: string; place: Place | null; session: string | null } | null;
   talked?: string | null;
   next?: Step | null;
-  done?: { what: string; at: string }[];
+  done?: Done[];
   line?: { options: string[]; by: 'ai' | 'rules'; v: string; at: string } | null;
   ideas?: { budget: Budget; items: Idea[]; by: 'ai' | 'rules'; v: string; at: string } | null;
-  plan?: { title: string; steps: { text: string; done: boolean }[]; date?: string | null } | null;
+  plan?: Plan | null;
   archived?: boolean;
 };
 export type Budget = 'free' | 'low' | 'mid';
@@ -61,4 +65,17 @@ export type Primer = {
   places: { key: Place; label: string }[];
   last_place: Place | null;
   respect: string[];
+};
+
+// ── read from People (server/modules/people.ts, shared with Family and Friends) ──
+/** Time together: a meet, a call or a chat (Nora files calendar events and chats here). Romance reads its people's. */
+export type Moment = Doc & { date: string; at?: string | null; people: string[]; aspect?: string | null; kind?: string | null; title?: string | null };
+/** An idea in People's bank. Romance keeps its own (aspect romance); `person` null is an idea for anyone. */
+export type IdeaRec = Doc & {
+  person: string | null; aspect: string; kind: 'gift' | 'plan' | 'showup'; title: string; from?: string | null;
+  done: boolean; done_on?: string | null; by?: string;
+};
+/** A plan in People (Nora's people_plan tool makes these). `debrief` is the debrief made after it. */
+export type SharedPlan = Doc & {
+  title: string; people: string[]; aspect?: string | null; date?: string | null; slot?: string | null; state?: string | null; debrief?: string | null;
 };

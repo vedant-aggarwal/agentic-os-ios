@@ -1,16 +1,17 @@
 import { requireOptionalNativeModule } from 'expo';
 import { useEffect, useSyncExternalStore } from 'react';
 import { AppState, Platform } from 'react-native';
-import { api, ApiError } from '@/lib/api';
+import { ApiError } from '@/lib/api';
 import { DEMO } from '@/lib/demo';
-import { collection, invalidate, upload } from '@/lib/mod';
+import { call, collection, invalidate, upload } from '@/lib/mod';
 import type { Outing, Primer } from './types';
 
 // What Romance keeps on the phone, so going out works with the PC unreachable: the outing that is running, the
 // writes still on their way to the PC (an outbox, oldest first, one entry per record), and the last primer the PC
 // sent. Saved to a file in the app's documents (localStorage in the web preview) on every change, so a closed app or
 // a dead battery loses nothing. The outbox is sent in order whenever the PC answers: on a timer while the page is
-// open, when the app comes back to the front, and right after each write.
+// open, when the app comes back to the front, and right after each write. It goes through `call`, so the sample
+// preview (`?demo`) answers it the way the PC would.
 type FS = typeof import('expo-file-system');
 /* eslint-disable @typescript-eslint/no-require-imports */
 const fs: FS | null = requireOptionalNativeModule('FileSystem') ? require('expo-file-system') : null;
@@ -97,14 +98,14 @@ export const outboxError = () => lastError;
 
 /** Send what is waiting, oldest first. Stops at the first sign the PC is away and keeps the rest for later. */
 export function flush(): Promise<void> {
-  if (DEMO || flushing || !state.outbox.length) return flushing ?? Promise.resolve();
+  if (flushing || !state.outbox.length) return flushing ?? Promise.resolve();
   flushing = (async () => {
     const touched = new Set<string>();
     for (const p of [...state.outbox]) {
       try {
         const path = `/mod/romance/${p.coll}/${encodeURIComponent(p.id)}`;
-        if (p.kind === 'put') await api(path, { method: 'PUT', body: p.doc });
-        else if (p.kind === 'del') await api(path, { method: 'DELETE' });
+        if (p.kind === 'put') await call(path, p.doc, 'PUT');
+        else if (p.kind === 'del') await call(path, {}, 'DELETE');
         else {
           await upload(`/mod/romance/debriefs/audio?${p.query}`, p.uri, p.type);
           if (fs && Platform.OS !== 'web' && p.uri.includes('/romance/')) try { new fs.File(p.uri).delete(); } catch {}

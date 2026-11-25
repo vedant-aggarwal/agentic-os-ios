@@ -1,7 +1,7 @@
 import { requireOptionalNativeModule } from 'expo';
 import { useEffect, useState } from 'react';
-import { Platform, StyleSheet, Text, View } from 'react-native';
-import { daysBetween, dayLabel, shortDay, SURF, t, today, tint, weekLetter } from '@/aspects/kit';
+import { AppState, Platform, StyleSheet, View } from 'react-native';
+import { CheckRing, daysBetween, dayLabel, Glyph, Press, shortDay, today } from '@/aspects/kit';
 import { C } from '@/theme';
 import { PLACE } from './copy';
 import type { Place } from './types';
@@ -51,7 +51,7 @@ export function sinceDay(day: string) {
   if (n < 14) return `${n} days ago`;
   return shortDay(day);
 }
-/** A due date as a short phrase: "today", "tomorrow", "Sat 29 Nov", "2 days late" stays gentle as "since Thu". */
+/** A due date as a short phrase: "today", "tomorrow", "Sat 29 Nov"; a day gone by stays gentle as "since Thu 20 Nov". */
 export function dueWords(due: string | null | undefined) {
   if (!due) return null;
   const n = daysBetween(today(), due);
@@ -60,47 +60,54 @@ export function dueWords(due: string | null | undefined) {
   if (n < 0) return `since ${dayLabel(due)}`;
   return dayLabel(due);
 }
+/** A plan's day as a short phrase: "today", "yesterday", "Sat 29 Nov", or "no day yet". */
+export const planDay = (day: string | null) => (day ? (whenIn(day).startsWith('on ') ? dayLabel(day) : whenIn(day)) : 'no day yet');
+export const capital = (x: string) => x.charAt(0).toUpperCase() + x.slice(1);
+export const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
-/**
- * The week as one dot per conversation, a column per day, Monday first. Every conversation is the same dot whatever
- * came of it. Today's letter is brighter; a day with none shows a faint ring so the week still reads as seven days.
- */
-export function DotWeek({ days, color, max = 5 }: { days: { day: string; n: number }[]; color: string; max?: number }) {
-  const now = today();
-  const tall = Math.max(2, Math.min(max, Math.max(...days.map((d) => d.n)))) + (days.some((d) => d.n > max) ? 1 : 0);
+// ── Romance's own icons (SF Symbols on the phone; these paths on the web preview) ──
+const G = {
+  scope: ['scope', 'M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18zM12 8a4 4 0 1 0 0 8a4 4 0 0 0 0-8zM12 11.5v1'],
+  note: ['note.text', 'M6 4h12a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zM8 9h8M8 13h8M8 17h5'],
+  face: ['face.smiling', 'M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18zM9 10h.01M15 10h.01M8.5 14.5a5 5 0 0 0 7 0'],
+  speak: ['waveform', 'M4 12h2M8 8v8M12 5v14M16 8v8M20 12h-2'],
+  walk: ['figure.walk', 'M13 4a1.5 1.5 0 1 0 0 3a1.5 1.5 0 0 0 0-3zM10 21l2-6 2 2v4M9 11l3-2.5 3 2.5 2 1M12 8.5V13'],
+  bubble: ['bubble.left', 'M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H10l-4 3v-3H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z'],
+  bulb: ['lightbulb', 'M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z'],
+  copy: ['doc.on.doc', 'M9 9h10v10H9zM5 15V5h10'],
+  lock: ['lock', 'M7 11V8a5 5 0 0 1 10 0v3M6 11h12v9H6z'],
+  plus: ['plus.bubble', 'M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H10l-4 3v-3H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zM12 8v5M9.5 10.5h5'],
+} as const;
+export type GlyphKey = keyof typeof G;
+export const Gl = ({ k, size = 20, color = C.text }: { k: GlyphKey; size?: number; color?: string }) => (
+  <Glyph sf={G[k][0] as never} d={G[k][1]} size={size} color={color} />
+);
+
+/** A ring that ticks something done: a 24 pt ring with a 44 pt target. */
+export function CheckButton({ done = false, label, onPress }: { done?: boolean; label: string; onPress: () => void }) {
   return (
-    <View style={s.week} accessibilityRole="image"
-      accessibilityLabel={days.map((d) => `${dayLabel(d.day)}: ${d.n}`).join(', ')}>
-      {days.map((d) => {
-        const shown = Math.min(d.n, max);
-        const future = d.day > now;
-        return (
-          <View key={d.day} style={s.col}>
-            <View style={[s.stack, { height: tall * 14 }]}>
-              {d.n > max ? <Text style={[t.caption, t.num, { color }]}>+{d.n - max}</Text> : null}
-              {Array.from({ length: shown }, (_, i) => <View key={i} style={[s.dot, { backgroundColor: color }]} />)}
-              {d.n === 0 ? <View style={[s.dot, s.none, future && s.future]} /> : null}
-            </View>
-            <Text style={[t.caption, d.day === now && { color: C.text }, d.day === now && { fontFamily: t.strong.fontFamily }]}>{weekLetter(d.day)}</Text>
-          </View>
-        );
-      })}
-    </View>
+    <Press label={label} role="checkbox" state={{ checked: done }} onPress={onPress} feel="none" hitSlop={10} style={s.check}>
+      <CheckRing done={done} />
+    </Press>
   );
 }
 
-/** A small label above a value inside a card. */
-export function Label({ children, color }: { children: string; color?: string }) {
-  return <Text style={[t.label, color ? { color } : null]}>{children}</Text>;
+/**
+ * While the app is in the app switcher, the page is covered: nothing of it shows in the snapshot iOS takes.
+ * The web preview has no switcher, so it never covers there.
+ */
+export function PrivacyCover() {
+  const [hidden, setHidden] = useState(false);
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    const sub = AppState.addEventListener('change', (st) => setHidden(st !== 'active'));
+    return () => sub.remove();
+  }, []);
+  if (!hidden) return null;
+  return <View style={[StyleSheet.absoluteFill, s.cover]} pointerEvents="none" />;
 }
 
-export const soft = (color: string) => tint(color, 0.16);
-
 const s = StyleSheet.create({
-  week: { flexDirection: 'row', justifyContent: 'space-between' },
-  col: { width: 36, alignItems: 'center', gap: 8 },
-  stack: { justifyContent: 'flex-end', alignItems: 'center', gap: 4 },
-  dot: { width: 10, height: 10, borderRadius: 5 },
-  none: { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: SURF.line },
-  future: { borderColor: SURF.track },
+  cover: { backgroundColor: C.scene },
+  check: { width: 24, height: 24, alignItems: 'center', justifyContent: 'center' },
 });

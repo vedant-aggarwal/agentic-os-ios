@@ -97,7 +97,7 @@ let calls: (LineCall & { missed?: boolean })[] = [
 
 const live: LiveLineCall = {
   id: LIVE_ID, number: '+919833344455', name: 'Courier, Delhivery', direction: 'forwarded', category: 'delivery', phase: 'ringing',
-  startedAt: new Date().toISOString(), endedAt: null, seconds: 0, headline: 'Delivery, live', needsYou: false, blocked: false,
+  startedAt: new Date().toISOString(), endedAt: null, seconds: 0, headline: '', needsYou: false, blocked: false,
   handledBy: 'nora', recording: { status: 'recording', seconds: 0 }, action: 'Answering', listeners: 1, takenOverBy: null,
 };
 let liveOn = mode() !== 'quiet' && mode() !== 'empty';
@@ -248,7 +248,7 @@ function openDemoLive(emit: (m: unknown) => void) {
     else if (m.type === 'instruct' && m.text) { step('Following your note'); say('nora', 'Sure. One moment, let me sort that out for you.', 1400); }
     else if (m.type === 'takeover') { Object.assign(live, { phase: 'you', takenOverBy: 'app', needsYou: false, handledBy: 'both', action: 'Listening while you talk' }); state(); }
     else if (m.type === 'release') { Object.assign(live, { phase: 'nora', takenOverBy: null, action: 'Taking it from here' }); state(); say('nora', "Thanks, I'm back. Anything else I can help with?", 800); }
-    else if (m.type === 'hangup') { liveOn = false; live.phase = 'ended'; emit({ type: 'ended', callId: LIVE_ID }); state(); }
+    else if (m.type === 'hangup') { liveOn = false; Object.assign(live, { phase: 'ended', endedAt: new Date().toISOString() }); emit({ type: 'ended', callId: LIVE_ID }); state(); }
   };
   return () => { timers.forEach(clearTimeout); demoSend = null; };
 }

@@ -110,7 +110,7 @@ export function LineSetup() {
         <View>
           <GroupHead>Unknown numbers</GroupHead>
           <Group style={st.card}>
-            <Text style={t.body}>Silence unknown callers and numbers that aren&apos;t in your contacts go to Nora. Your contacts still ring you.</Text>
+            <Text style={t.body}>Set Screen Unknown Callers to Silence and calls from numbers that aren&apos;t in your contacts go straight to Nora. Your contacts still ring you.</Text>
             <Text style={[t.small, st.path]}>Settings › Apps › Phone › Screen Unknown Callers › Silence</Text>
           </Group>
         </View>

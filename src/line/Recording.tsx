@@ -27,7 +27,7 @@ const useStatusHook: (p: PlayerLike | null) => Status = audio
 export function Recording({ rec, src }: { rec: LineRecording; src: { uri: string } | null }) {
   if (rec.status === 'none') return null;
   if (rec.status === 'recording' || rec.status === 'encoding') {
-    return <Note text={rec.status === 'recording' ? 'Recording while the call is on.' : 'Saving the recording. It plays here in a minute.'} busy />;
+    return <Note text="Saving the recording. It plays here in a minute." busy />; // the call's page only shows calls that ended
   }
   if (rec.status === 'failed') return <Note text="This call's recording didn't save." />;
   return <Player src={src} seconds={rec.seconds} />;

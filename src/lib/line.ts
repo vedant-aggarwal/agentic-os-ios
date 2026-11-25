@@ -131,11 +131,15 @@ export const CATEGORY: Record<LineCategory, { label: string; sf: string; d: stri
 };
 export const categoryOf = (c: string): (typeof CATEGORY)[LineCategory] => CATEGORY[c as LineCategory] ?? CATEGORY.unknown;
 
-/** "+91 98123 45678" for an Indian mobile, the number as sent otherwise. */
+/** "+91 98123 45678" for an Indian mobile, "+91 22 6160 6161" for a landline, the number as sent otherwise. */
 export function formatNumber(n: string) {
   const d = n.replace(/[^\d+]/g, '');
-  const m = /^(?:\+?91)?([6-9]\d{4})(\d{5})$/.exec(d);
-  if (m && (d.startsWith('+91') || d.startsWith('91') || d.length === 10)) return `+91 ${m[1]} ${m[2]}`;
+  const m = /^(?:\+91|91)?(\d{10})$/.exec(d);
+  if (!m || (d.length !== 10 && !d.startsWith('+91') && !d.startsWith('91'))) return n;
+  const x = m[1];
+  if (/^[6-9]/.test(x)) return `+91 ${x.slice(0, 5)} ${x.slice(5)}`; // mobile
+  if (/^(11|20|22|33|40|44|79|80)/.test(x)) return `+91 ${x.slice(0, 2)} ${x.slice(2, 6)} ${x.slice(6)}`; // a metro's landline
+  if (/^[1-5]/.test(x)) return `+91 ${x.slice(0, 3)} ${x.slice(3, 6)} ${x.slice(6)}`; // other landlines and the 140 sales series
   return n;
 }
 

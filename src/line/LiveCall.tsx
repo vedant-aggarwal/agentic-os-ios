@@ -148,6 +148,7 @@ export function LiveCall({ call, start, onEnded }: { call: LineCall; start?: 'ta
             {live.lines.length ? (
               <ScrollView ref={scroll} showsVerticalScrollIndicator={false} contentContainerStyle={st.wordsList}
                 onContentSizeChange={() => { if (pinned) scroll.current?.scrollToEnd({ animated: true }); }}
+                onLayout={() => { if (pinned) scroll.current?.scrollToEnd({ animated: false }); }}
                 onScroll={(e) => { const n = e.nativeEvent; setPinned(n.contentOffset.y + n.layoutMeasurement.height >= n.contentSize.height - 40); }}
                 scrollEventThrottle={100} accessibilityLabel="What's being said">
                 <Turns lines={live.lines} caller={callerShort(c.name)} />

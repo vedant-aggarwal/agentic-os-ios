@@ -41,7 +41,7 @@ export function CallRoute() {
     setCall((was) => {
       const c = fresh ?? was;
       if (!c) return c;
-      return c.phase === 'ended' ? c : { ...c, phase: 'ended', endedAt: c.endedAt ?? at };
+      return { ...c, phase: 'ended', endedAt: c.endedAt ?? at };
     });
   }, [id]);
 

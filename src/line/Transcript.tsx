@@ -9,8 +9,14 @@ import { NORA_TEXT } from './parts';
 
 export type TurnLine = { id?: string; who: 'caller' | 'nora' | 'you'; text: string; final?: boolean };
 
-/** The caller's name over their turns: the first word of the name Nora has ("Raju"), else "Caller". */
-export const callerShort = (name: string | null) => name?.trim().split(/\s+/)[0] || 'Caller';
+/** The caller's label over their lines: "Raju" for "Raju from Blue Dart", "Courier" for "Courier, Delhivery". */
+export function callerShort(name: string | null) {
+  const head = name?.trim().split(/,| from | - /i)[0].trim();
+  if (!head) return 'Caller';
+  if (head.length <= 18) return head;
+  const w = head.split(/\s+/);
+  return w.slice(0, w[0].endsWith('.') ? 2 : 1).join(' '); // "Dr. Mehta", not "Dr."
+}
 
 export function Turns({ lines, caller }: { lines: TurnLine[]; caller: string }) {
   return <View style={s.list}>{lines.map((l, i) => <Turn key={l.id ?? i} l={l} caller={caller} />)}</View>;

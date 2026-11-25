@@ -1,7 +1,7 @@
 {
   "platforms": ["apple"],
   "apple": {
-    "modules": ["AosCallsModule", "NoraRelayModule"],
-    "appDelegateSubscribers": ["AosCallsAppDelegate"]
+    "modules": ["AosCallsModule", "NoraRelayModule", "AosLineModule"],
+    "appDelegateSubscribers": ["AosCallsAppDelegate", "AosLineAppDelegate"]
   }
 }

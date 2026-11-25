@@ -12,7 +12,9 @@ import { DEMO } from '@/lib/demo';
 import { nora as noraApi, type FeedItem, type NoraHome } from '@/lib/nora';
 import type { Task } from '@/lib/today';
 import { Ball, useTurn } from '@/nora/Sphere';
+import { Composer } from '@/nora/parts';
 import { noraUi, useNora } from '@/nora/state';
+import { useDictate } from '@/nora/useDictate';
 import { ASPECT_COLOR, C, F, type AspectKey } from '@/theme';
 import { Chevron, Dots, NORA, NORA_TEXT, Tick } from '@/today2/parts';
 import { openTask, type TaskFocus } from '@/work/bus';
@@ -551,13 +553,22 @@ function NoraPage({ d, say, onBack }: { d: HomeData; say: Say; onBack: () => voi
   };
   const tags = Object.values(d.tags);
   const [answered, setAnswered] = useState<Record<string, string>>({});
+  // an agent's question is answered in his words: its first button opens this field, with her draft in it
+  const [answering, setAnswering] = useState<string | null>(null);
+  const [draft, setDraft] = useState('');
+  const dict = useDictate();
   const items = h ? [...h.items, ...h.older.filter((x) => !h.items.some((y) => y.id === x.id))] : [];
   const did = items.filter((x) => x.kind === 'did');
   const noticed = items.filter((x) => x.kind !== 'did' && x.kind !== 'ask' && x.status !== 'expired');
-  const answer = (x: FeedItem, choice: 'yes' | 'no') => {
-    setAnswered((a) => ({ ...a, [x.id]: choice === 'yes' ? 'Done' : 'Not now' }));
-    if (!DEMO) noraApi.answerItem(x.id, { choice }).catch((e) => { setAnswered((a) => { const n = { ...a }; delete n[x.id]; return n; }); say(msg(e)); });
+  const answer = (x: FeedItem, choice: 'yes' | 'no', text?: string) => {
+    setAnswered((a) => ({ ...a, [x.id]: choice === 'no' ? 'Not now' : text ? `Sent to ${x.from ?? 'them'}` : 'Done' }));
+    if (!DEMO) noraApi.answerItem(x.id, text ? { choice, text } : { choice }).catch((e) => {
+      setAnswered((a) => { const n = { ...a }; delete n[x.id]; return n; });
+      say(msg(e));
+      if (text && choice === 'yes') { setDraft(text); setAnswering(x.id); } // the words come back to send again
+    });
   };
+  const openAnswer = (x: FeedItem) => { dict.cancel(); setDraft(x.ask?.draft ?? ''); setAnswering(x.id); };
   return (
     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[st.content, { paddingTop: insets.top + 8, paddingBottom: dockClear(insets.bottom) + 24, gap: 28 }]}
       refreshControl={<RefreshControl refreshing={d.refreshing} onRefresh={() => void d.load(false)} tintColor={C.muted} />}>
@@ -569,11 +580,19 @@ function NoraPage({ d, say, onBack }: { d: HomeData; say: Say; onBack: () => voi
             <View key={x.id} style={[st.pageRow, i > 0 && st.rule, { flexDirection: 'column', alignItems: 'stretch', gap: 8 }]}>
               <Text style={st.taskTitle}>{x.title}</Text>
               {x.text ? <Text style={t.small} numberOfLines={4}>{x.text}</Text> : null}
-              {answered[x.id] ? <Text style={t.caption}>{answered[x.id]}</Text> : (
+              {answered[x.id] ? <Text style={t.caption}>{answered[x.id]}</Text> : answering === x.id ? (
+                <View style={{ gap: 8 }}>
+                  <Composer draft={draft} setDraft={setDraft} dict={dict} autoFocus inset placeholder="Your answer" label={`Your answer for ${x.from ?? 'them'}`}
+                    onSend={(text) => { setAnswering(null); answer(x, 'yes', text); }} />
+                  <Pressable accessibilityRole="button" accessibilityLabel="Cancel answering" hitSlop={8} style={st.cancelAnswer}
+                    onPress={() => { dict.cancel(); setAnswering(null); }}><Text style={t.label}>Cancel</Text></Pressable>
+                </View>
+              ) : (
                 <View style={st.nbActs}>
-                  <Chip text={x.ask?.yes ?? 'Yes'} on={false} color={NORA} onPress={() => answer(x, 'yes')} />
-                  <Chip text={x.ask?.no ?? 'Not now'} on={false} color={C.text} onPress={() => answer(x, 'no')} />
-                  <Chip text="Answer in chat" on={false} color={C.text} onPress={() => noraUi.openChat()} />
+                  <Chip text={x.ask?.yes ?? 'Yes'} on={false} color={NORA} onPress={() => (x.ask?.question ? openAnswer(x) : answer(x, 'yes'))} />
+                  <Chip text={x.ask?.no ?? 'Not now'} on={false} color={C.text} onPress={() => answer(x, 'no', x.ask?.question ? 'Not now' : undefined)} />
+                  <Chip text="Answer in chat" on={false} color={C.text}
+                    onPress={() => noraUi.openChat(x.ask?.question ? { replyTo: { id: x.ask.request ?? x.id, from: x.from ?? '' } } : {})} />
                 </View>
               )}
             </View>
@@ -699,6 +718,7 @@ const st = StyleSheet.create({
   nbHead: { fontFamily: F.regular, fontSize: 12, lineHeight: 16, color: C.muted },
   nbBody: { fontFamily: F.regular, fontSize: 14, lineHeight: 20, color: C.textSoft },
   nbActs: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 },
+  cancelAnswer: { alignSelf: 'flex-start', minHeight: 36, justifyContent: 'center', paddingHorizontal: 4 },
   replyRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 6, borderRadius: 17, backgroundColor: 'rgba(255,255,255,0.06)', paddingHorizontal: 12 },
   replyInput: { flex: 1, fontFamily: F.regular, fontSize: 15, lineHeight: 20, color: C.text, paddingVertical: 8 },
   dropLine: { position: 'absolute', left: 16, right: 16, height: 2, borderRadius: 1, backgroundColor: NORA },

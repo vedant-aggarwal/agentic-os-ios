@@ -59,6 +59,7 @@ export const COLUMNS: { aspect: AspectKey; label: string; ticks: TickId[] }[] = 
   { aspect: 'soul', label: 'Soul', ticks: ['journal', 'meditate', 'clean'] },
 ];
 export const tickOf = (id: TickId) => TICKS.find((t) => t.id === id)!;
+const GAMES: TickId[] = ['chess', 'sudoku', 'matiks'];
 export const frameOf = (id: FrameId) => FRAMES.find((f) => f.id === id)!;
 
 // ── Now: up to three actions that fit this hour, nearest the thumb ──────────────────────────────────────────────────
@@ -88,8 +89,11 @@ export function nowItems(o: { now: number; doneFrames: Set<FrameId>; doneTicks: 
     if (v != null) scored.push({ item: { kind: 'frame', id: f.id }, v: v + 0.15 });
   }
   const drinkPhoto = scored.some((x) => x.item.kind === 'frame' && x.item.id === 'drink');
+  // one brain game keeps the day: once one is played, the other two are extras, not something left to do
+  const gamePlayed = GAMES.some((g) => o.doneTicks.has(g));
   for (const t of TICKS) {
     if (o.doneTicks.has(t.id)) continue;
+    if (gamePlayed && GAMES.includes(t.id)) continue;
     if (t.id === 'drink' && drinkPhoto) continue; // the drink's photo ticks it too: one card, not two
     const v = fit(t.win, o.now);
     if (v != null) scored.push({ item: { kind: 'tick', id: t.id }, v: v + (t.weight ?? 0) });

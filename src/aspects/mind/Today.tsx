@@ -8,6 +8,7 @@ import { call, invalidate, type Read } from '@/lib/mod';
 import { C } from '@/theme';
 import { Linked } from '@/aspects/_linked/Linked';
 import { useOpenLink } from './Courses';
+import { BrainGames } from './BrainGames';
 import { useNav } from './nav';
 import { Cover, Elapsed, startReading } from './Read';
 import { takeWord } from './Speak';
@@ -16,8 +17,8 @@ import { Sym, durWords, minutes as minWords } from './ui';
 
 /**
  * Mind today: learn it, then say it. The lead is the next step of today's loop (the book in hand or the next lesson,
- * then saying what went in), the rest of today is one list of rows each doable from here, then the week and whether
- * the speaking is getting sharper.
+ * then saying what went in), the rest of today is one list of rows each doable from here, then the day's brain game,
+ * the week and whether the speaking is getting sharper.
  */
 export function TodayTab({ read }: { read: Read<HomeView> }) {
   const { data: v, error, refresh } = read;
@@ -26,6 +27,7 @@ export function TodayTab({ read }: { read: Read<HomeView> }) {
     <>
       <LeadCard v={v} />
       <Rest v={v} />
+      <BrainGames />
       <Week v={v} />
       <Sharper v={v} />
       <Linked />
@@ -340,7 +342,6 @@ function Week({ v }: { v: HomeView }) {
 
 // ── is the speaking getting sharper ──
 function Sharper({ v }: { v: HomeView }) {
-  const a = useAspect();
   const nav = useNav();
   const tr = v.sharper.trend;
   if (tr.length < 2) {

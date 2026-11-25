@@ -185,7 +185,8 @@ export function routineFlags(d: FlagSrc, hasBody: boolean) {
     body: [woke, ...(woke || drink ? keep('wake-drink', drink) : []), ...(hasBody ? [d.gymDone] : []), ...ons(d.routines.morning.map((m) => m.id)),
       ...ons(['voice']), ...ons(d.routines.night.map((n) => n.id))],
     diet: [d.cap.water >= d.cap.waterTarget, ...keep('no-sugar', tk.has('nosugar')), ...MEALS.map((m) => d.mealDone(m.id))],
-    mind: [tk.has('chess'), tk.has('sudoku'), tk.has('matiks'), ...keep('practice-speak', d.practice('speak')),
+    // the brain game: any one of chess, sudoku and maths keeps it; the other two are extras that count for nothing
+    mind: [tk.has('chess') || tk.has('sudoku') || tk.has('matiks'), ...keep('practice-speak', d.practice('speak')),
       ...keep('practice-course', d.practice('course')), ...keep('book', tk.has('book'))],
     mission: ons(['mission-norrita']),
     money: ons(['money-channels', 'money-social', 'money-brand']),

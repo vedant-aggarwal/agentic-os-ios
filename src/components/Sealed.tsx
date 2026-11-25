@@ -1,5 +1,5 @@
 import { Image } from 'expo-image';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, AppState, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -31,11 +31,14 @@ export function SealedTile({ width, height, radius = 10, label, onPress }: { wid
 }
 
 function Photo({ p, width, height, fill }: { p: SealedPhoto; width?: number; height?: number; fill?: boolean }) {
+  const [failed, setFailed] = useState(false);
   return (
     <View style={fill ? st.flex : { width, height }}>
-      <View style={[StyleSheet.absoluteFill, st.wait]}><ActivityIndicator color={C.faint} /></View>
-      {p.source ? (
-        <Image source={p.source} style={StyleSheet.absoluteFill} contentFit={fill ? 'contain' : 'cover'} transition={120}
+      <View style={[StyleSheet.absoluteFill, st.wait]}>
+        {failed || !p.source ? <Text style={st.waitText}>{"Couldn't load it from your PC."}</Text> : <ActivityIndicator color={C.faint} />}
+      </View>
+      {p.source && !failed ? (
+        <Image source={p.source} style={StyleSheet.absoluteFill} contentFit={fill ? 'contain' : 'cover'} transition={120} onError={() => setFailed(true)}
           accessibilityLabel={p.label ?? p.caption ?? 'Sealed photo'} accessibilityIgnoresInvertColors />
       ) : null}
     </View>
@@ -134,6 +137,7 @@ const st = StyleSheet.create({
   wait: { alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: 12 },
   pair: { flexDirection: 'row', gap: 8 },
   caption: { fontFamily: F.regular, fontSize: 13, lineHeight: 18, color: C.muted },
+  waitText: { fontFamily: F.regular, fontSize: 13, lineHeight: 18, color: C.faint, textAlign: 'center', paddingHorizontal: 12 },
   foot: { paddingHorizontal: 16, paddingTop: 12, gap: 12 },
   note: { fontFamily: F.regular, fontSize: 13, lineHeight: 18, color: C.faint, textAlign: 'center' },
   btns: { flexDirection: 'row', gap: 10 },

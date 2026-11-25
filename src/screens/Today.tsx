@@ -23,9 +23,13 @@ import { micCenter, pillCenter, TOP_GAP, TOP_H, TopBar } from '@/components/TopB
 import { api, signOut } from '@/lib/api';
 import { gazeTouch } from '@/lib/gaze';
 import { type Offline, useToday } from '@/lib/useToday';
-import { clock, dayLabel, myDay } from '@/aspects/kit/time';
+import { addDays, clock, dayLabel, myDay } from '@/aspects/kit/time';
+import { haptic } from '@/aspects/kit/tokens';
 import { deriveToday } from '@/lib/today';
-import { payloadFor, useMyDay, useWeekEvents } from '@/today2/when';
+import { dayPhrase, dayWord, payloadFor, stampOn, useMyDay, useWeekEvents } from '@/today2/when';
+import { DaySwipe } from '@/today2/DaySwipe';
+import { DayHead, DayPill, HEAD_H, PickDay } from '@/today2/DayHead';
+import { WeekView } from '@/today2/Week';
 import { useBody } from '@/lib/body';
 import { startContactSync } from '@/lib/contacts';
 import { TodayPlan, TodayToast, useTodayToast } from '@/today2/TodayPlan';
@@ -107,25 +111,58 @@ function PhoneToday() {
   const [remoteOpen, setRemoteOpen] = useState(false); // the top bar's Remote PC button: the PC's screen, full screen
   const [pcTab, setPcTab] = useState<PcTab | null>(null); // hold Remote PC: media remote and power
   const [heroOn, setHeroOn] = useState(true); // the 3D hero renders only while some of it is on screen
+  // The page opens on the plan (the hero's last 40 pt peek under the top bar), the day's head just above it. Once the
+  // head's middle is under the bar, a pill there says which day the sheet is on (only while it isn't today).
+  const startY = insets.top + HERO_H - 40 + HEAD_H + 24;
+  const headGone = insets.top + HERO_H + 20 + HEAD_H / 2 - (insets.top + TOP_GAP + TOP_H);
+  const [headOff, setHeadOff] = useState(() => Platform.OS !== 'web' && startY > headGone);
   // His day rolls at 04:00, as capture, mood and the routines count it: at 01:30 Today is still the evening's, its
   // tasks due that day and everything it ticks lands there (GET /today's date is the calendar's).
   const liveDay = useMyDay();
+  // The day on screen: today unless he swiped or picked another (null follows today, so 04:00 turns it over). The
+  // whole sheet moves to it: its plan, its ticks (they land on that day) and the hero's count. Pinched in, the week.
+  const [shown, setShown] = useState<string | null>(null);
+  const D = shown ?? liveDay;
+  const away = D !== liveDay;
+  const [zoom, setZoom] = useState<'day' | 'week'>('day');
+  const [picking, setPicking] = useState(false);
+  const goTo = useCallback((d: string) => setShown(d === liveDay ? null : d), [liveDay]);
+  const step = useCallback((n: -1 | 1) => goTo(addDays(D, zoom === 'week' ? 7 * n : n)), [goTo, D, zoom]);
+  const backToToday = useCallback(() => { setShown(null); setZoom('day'); }, []);
   const ready = t.state.status === 'ready' ? t.state : null;
   const events = useWeekEvents(liveDay, ready?.today.date ?? null);
-  const dayToday = useMemo(() => (ready ? payloadFor(ready.today, liveDay, events) : null), [ready, liveDay, events]);
+  const liveToday = useMemo(() => (ready ? payloadFor(ready.today, liveDay, events) : null), [ready, liveDay, events]);
+  const dayToday = useMemo(() => (ready && liveToday ? (away ? payloadFor(ready.today, D, null) : liveToday) : null), [ready, liveToday, away, D]);
   const dayView = useMemo(() => (ready && dayToday ? deriveToday(dayToday, ready.life, ready.areas, myDay) : null), [ready, dayToday]);
-  // Today's routine ticks per aspect (shower, meals, habits...), reported by the plan. The crystals and the orb's
-  // arcs count them on top of the tasks, so every tick on Today fills its crystal.
-  const [routine, setRoutine] = useState<AspectProgress | null>(null);
-  const reach = useMemo(() => (dayView ? addReach(dayView.reach, routine) : {}), [dayView, routine]);
-  const planned = useMemo(() => (dayView ? addReach(dayView.aspects, routine) : {}), [dayView, routine]);
+  // the life pages read today's rows from here, whichever day the sheet is on
+  const liveView = useMemo(() => (ready && liveToday ? (away ? deriveToday(liveToday, ready.life, ready.areas, myDay) : dayView) : null), [ready, liveToday, away, dayView]);
+  // Each day's routine ticks per aspect (shower, meals, habits...), reported by the plan on screen. The crystals count
+  // the shown day's on top of its tasks, so every tick on Today fills its crystal; the orb's arcs stay on today's.
+  const [routines, setRoutines] = useState<Record<string, AspectProgress>>({});
+  const onRoutine = useCallback((r: AspectProgress) =>
+    setRoutines((m) => (JSON.stringify(m[D]) === JSON.stringify(r) ? m : { ...m, [D]: r })), [D]);
+  const reach = useMemo(() => (dayView ? addReach(dayView.reach, routines[D] ?? null) : {}), [dayView, routines, D]);
+  // today's count as the hero says it (tasks plus routine ticks): the week's row for today reads it, so the two agree
+  // (today's gym and meals come from live reads the week's records don't hold)
+  const liveCount = useMemo(() => {
+    const r = routines[liveDay];
+    if (!liveView || !r) return null;
+    const ticks = Object.values(r).reduce((a, p) => ({ done: a.done + (p?.done ?? 0), total: a.total + (p?.total ?? 0) }), { done: 0, total: 0 });
+    return { done: liveView.done + ticks.done, total: liveView.total + ticks.total };
+  }, [liveView, routines, liveDay]);
+  const planned = useMemo(() => (liveView ? addReach(liveView.aspects, routines[liveDay] ?? null) : {}), [liveView, routines, liveDay]);
   // A page pushed over Today (Work, a job, a project) leaves Today mounted underneath: both WebGL scenes stop then,
   // else they keep drawing every frame behind the page and the whole app stutters.
   const focused = useIsFocused();
-  // dev, web sample mode only: window.__mood() opens the mood logger (for driving it from a test browser)
+  // dev, web sample mode only: window.__mood() opens the mood logger (for driving it from a test browser); __day(n)
+  // moves the sheet n days (the swipe), __week() pinches in or out
   useEffect(() => {
-    if (DEMO) (window as unknown as { __mood?: (x?: number, y?: number) => void }).__mood = (x, y) => setMoodFrom({ x: x ?? width - 102, y: y ?? insets.top + 32 });
-  }, [width, insets.top]);
+    if (!DEMO) return;
+    const w = window as unknown as { __mood?: (x?: number, y?: number) => void; __day?: (n: number) => void; __week?: () => void };
+    w.__mood = (x, y) => setMoodFrom({ x: x ?? width - 102, y: y ?? insets.top + 32 });
+    w.__day = (n) => goTo(addDays(D, n));
+    w.__week = () => setZoom((z) => (z === 'week' ? 'day' : 'week'));
+  }, [width, insets.top, goTo, D]);
   // volume up drives Wispr on the PC while Today is up; volume down is Nora's (a press calls, a hold is a voice note)
   const native = Platform.OS !== 'web'; // the web app has no PC controls: no Wispr, no PC agent
   const mic = useWispr(!!t.view && native, NORA_KEYS);
@@ -157,6 +194,13 @@ function PhoneToday() {
   // Ticking a task here moves the goal it serves: Mission and Growth read it again.
   const { toggle: toggleTask, cancel: cancelTask, restore: restoreTask } = t;
   const toggle = useCallback(async (id: string) => { await toggleTask(id); invalidate('/mod/mission/'); invalidate('/mod/growth/'); }, [toggleTask]);
+  // a tick on an earlier day counts as done that day; a later day hasn't started, so it waits
+  const { say } = tt;
+  const toggleOnDay = useCallback(async (id: string) => {
+    if (D > liveDay) { haptic.warn(); say(`${dayWord(D, liveDay)} hasn't started yet`); return; }
+    await toggleTask(id, away ? stampOn(D) : undefined);
+    invalidate('/mod/mission/'); invalidate('/mod/growth/');
+  }, [D, liveDay, away, toggleTask, say]);
   // cancelling one for today (a repeating one skips to its next) or bringing it back moves its goal the same way
   const cancel = useCallback(async (id: string) => { await cancelTask(id); invalidate('/mod/mission/'); invalidate('/mod/growth/'); }, [cancelTask]);
   const restore = useCallback(async (id: string) => { await restoreTask(id); invalidate('/mod/mission/'); invalidate('/mod/growth/'); }, [restoreTask]);
@@ -188,23 +232,41 @@ function PhoneToday() {
   const v = dayView;
   const day = ready;
   const orb = orbFromBottom(insets.bottom);
+  const savedUp = !!day && (!!day.from || !!t.offline || !!unsent);
+  const openDay = (d: string) => { goTo(d); setZoom('day'); };
   return (
     // every touch on Today is passed to the smiley, which looks toward the finger
     <View style={s.screen} {...gazeTouch}>
       <Backdrop orb={orb} />
       {v && day ? (<ScrollView
         contentContainerStyle={{ flexGrow: 1 }}
-        contentOffset={{ x: 0, y: insets.top + HERO_H - 40 }}
+        contentOffset={{ x: 0, y: startY }}
         showsVerticalScrollIndicator={false}
         scrollEventThrottle={100}
-        onScroll={(e) => { const on = e.nativeEvent.contentOffset.y < insets.top + HERO_H; if (on !== heroOn) setHeroOn(on); }}
+        onScroll={(e) => {
+          const y = e.nativeEvent.contentOffset.y;
+          const on = y < insets.top + HERO_H; if (on !== heroOn) setHeroOn(on);
+          const off = y > headGone; if (off !== headOff) setHeadOff(off);
+        }}
         refreshControl={<RefreshControl refreshing={t.refreshing} onRefresh={() => { t.refresh(); reloadBody(); }} tintColor={C.muted} />}>
-        <Hero view={v} reach={reach} top={insets.top} topBar={TOP_GAP + TOP_H} active={focused && heroOn && !aspect && !moodFrom} />
+        <Hero view={v} reach={reach} top={insets.top} topBar={TOP_GAP + TOP_H} active={focused && heroOn && !aspect && !moodFrom}
+          when={dayPhrase(D, liveDay)} ahead={D > liveDay} />
 
         <View style={[s.sheet, { paddingBottom: insets.bottom + 140 }]}>
-          <TodayPlan today={dayToday ?? day.today} life={day.life} areas={day.areas} body={b.body} say={tt.say} hide={tt.hide}
-            onOpen={openLink} onToggleTask={(id) => { void toggle(id); }} onCancelTask={(id) => { void cancel(id); }} onRestoreTask={(id) => { void restore(id); }}
-            onHome={(list) => noraUi.openHome(list)} onRoutine={setRoutine} />
+          {/* a sideways swipe moves the sheet a day (a week, on the week); a pinch in shows the week */}
+          <DaySwipe day={D} zoom={zoom} onDay={step} onZoom={setZoom}>
+            {zoom === 'week' ? (
+              <WeekView day={D} live={liveDay} liveCount={liveCount} tasks={day.today.tasks} waterTarget={b.body?.food.water_target ?? 20} todayHasBody={!!b.body}
+                onOpen={openDay} onShift={(n) => goTo(addDays(D, 7 * n))} />
+            ) : (
+              <View style={s.day}>
+                <DayHead day={D} live={liveDay} onDay={goTo} onToday={backToToday} onPick={() => setPicking(true)} onWeek={() => setZoom('week')} />
+                <TodayPlan key={D} today={dayToday ?? day.today} life={day.life} areas={day.areas} body={b.body} say={tt.say} hide={tt.hide}
+                  onOpen={openLink} onToggleTask={(id) => { void toggleOnDay(id); }} onCancelTask={(id) => { void cancel(id); }} onRestoreTask={(id) => { void restore(id); }}
+                  onHome={(list) => noraUi.openHome(list)} onRoutine={onRoutine} />
+              </View>
+            )}
+          </DaySwipe>
           <Pressable accessibilityRole="button" onPress={async () => { await signOut(); t.reload(); }} style={s.more}>
             <Text style={[s.moreText, { color: C.faint }]}>Sign out</Text>
           </Pressable>
@@ -231,14 +293,17 @@ function PhoneToday() {
       {native || !noraOpen ? <TopBar top={insets.top} width={width} live={live} petActive={focused && !aspect} onMic={() => { setClosedLive(false); setMicOpen(true); }}
         onRemote={() => setRemoteOpen(true)} onRemoteHold={() => setPcTab('media')}
         onVoices={() => setVoicesOpen(true)} onFiles={() => setFilesOpen(true)} onAccount={() => setAccountOpen(true)} onMood={setMoodFrom} /> : null}
-      {day && (day.from || t.offline || unsent) ? (
+      {savedUp ? (
         <SavedCopy top={insets.top + TOP_GAP + TOP_H + 10} from={day.from} offline={t.offline} unsent={unsent} busy={t.retrying}
           onRetry={() => { void flushOutbox(); void t.retry(); }} />
+      ) : null}
+      {v && day && away && headOff && !aspect ? (
+        <DayPill top={insets.top + TOP_GAP + TOP_H + 10 + (savedUp ? 44 : 0)} day={D} live={liveDay} onToday={backToToday} onPick={() => setPicking(true)} />
       ) : null}
       {/* an aspect page grows out of the orb, over Today and its top bar; the dock stays above it */}
       {/* the pages read today's rows and tick them through Today, so a tick shows on both at once; with no day drawn
           they have their own saved copies */}
-      <LifeContext value={v && day ? { sections: v.sections, areaAspects: day.life.areaAspects, toggle } : null}>
+      <LifeContext value={liveView && day ? { sections: liveView.sections, areaAspects: day.life.areaAspects, toggle } : null}>
         <AspectHost aspect={aspect} origin={{ x: width / 2, y: height - orb }} dock={immersive ? insets.bottom : dockClearance(insets.bottom)}
           entry={entry} onEntryDone={doneEntry} onClose={closeAspect} onOpen={openAspect} onNotice={setLocal} onImmersive={setImmersive} />
       </LifeContext>
@@ -262,7 +327,9 @@ function PhoneToday() {
       <AccountSheet open={accountOpen} onClose={() => setAccountOpen(false)} onSignedOut={t.reload} />
       <RemoteDesktop open={remoteOpen} onClose={() => setRemoteOpen(false)} />
       <PcControls tab={pcTab} onTab={setPcTab} onClose={() => setPcTab(null)} />
-      {moodFrom ? <MoodLogger from={moodFrom} onClose={() => setMoodFrom(null)} /> : null}
+      {/* on an earlier day the smiley logs that day's mood */}
+      {moodFrom ? <MoodLogger from={moodFrom} day={D < liveDay ? { date: D, when: dayPhrase(D, liveDay) } : undefined} onClose={() => setMoodFrom(null)} /> : null}
+      <PickDay open={picking} day={D} onClose={() => setPicking(false)} onPick={(d) => { setPicking(false); openDay(d); }} />
     </View>
   );
 }
@@ -300,6 +367,7 @@ const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: C.scene },
   fill: { flex: 1 },
   center: { alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
+  day: { gap: 24 },
   sheet: {
     flexGrow: 1, backgroundColor: C.sheet, borderTopLeftRadius: 28, borderTopRightRadius: 28,
     paddingTop: 20, paddingHorizontal: 16, gap: 24, borderTopWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.08)',

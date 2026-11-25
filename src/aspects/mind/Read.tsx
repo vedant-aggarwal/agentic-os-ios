@@ -1,11 +1,11 @@
 import { Image } from 'expo-image';
 import { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import {
-  Bar, Block, Button, Chip, Failed, Field, Group, Icon, IconButton, Item, Keypad, Press, Sheet, Skeleton, SURF,
-  dayLabel, haptic, myDay, shortDay, t, timer, tint, undoable, useAspect,
+  Bar, Block, Button, Chip, Failed, Field, Group, Icon, IconButton, Item, Keypad, Lead, Metric, Metrics, Press, Sheet, Skeleton, SURF,
+  WeekStrip, dayLabel, haptic, lastDays, myDay, shortDay, t, timer, tint, undoable, useAspect,
 } from '@/aspects/kit';
-import { call, collection, invalidate, useGet, type Doc } from '@/lib/mod';
+import { call, collection, invalidate, useCollection, useGet, type Doc } from '@/lib/mod';
 import { C } from '@/theme';
 import { Dictate } from './Dictate';
 import { useNav } from './nav';
@@ -44,15 +44,10 @@ export function Elapsed({ since, style }: { since: string; style?: object }) {
   return <Text style={[t.title3, t.num, style]} accessibilityLabel={`Reading for ${Math.floor(secs / 60)} minutes`}>{timer(secs)}</Text>;
 }
 
-/** Pace in one line, honest about what it doesn't know yet. */
-function paceLine(p: Pace) {
-  if (p.finish) return `About ${Math.max(1, Math.round(p.ppd))} pages a day, done around ${shortDay(p.finish)}`;
-  return p.why ?? '';
-}
-
 /**
- * Read: the books in hand, each a sitting away (start the timer, or log pages after the fact), the lines that stuck
- * and the questions made from them, what is next and what is finished.
+ * Read: the book in hand first (where he is, the pace, one tap to log pages read, or the timer), his reading week,
+ * the other books on the go, the questions made from his notes, the notes themselves, what is next and what is
+ * finished.
  */
 export function ReadTab({ active }: { active: boolean }) {
   const a = useAspect();
@@ -72,7 +67,7 @@ export function ReadTab({ active }: { active: boolean }) {
         <Group pad>
           <Sym name="book" size={28} color={C.muted} />
           <Text style={t.title3}>No books yet</Text>
-          <Text style={t.subhead}>Add the book you are reading. After that, a sitting takes two taps and the lines that stick come back as questions.</Text>
+          <Text style={t.subhead}>Add the book you are reading. After that, logging pages takes one tap and the lines that stick come back as questions.</Text>
           <Button label="Add a book" kind="accent" onPress={() => setAdding(true)} />
         </Group>
         <AddBookSheet open={adding} onClose={() => setAdding(false)} hasReading={false} />
@@ -80,16 +75,32 @@ export function ReadTab({ active }: { active: boolean }) {
     );
   }
   const due = v.recall.due.length;
+  // the book with a sitting running leads; else the first in hand
+  const lead = v.reading.find((b) => b.sitting_since) ?? v.reading[0] ?? null;
+  const also = v.reading.filter((b) => b !== lead);
   return (
     <>
-      <Block title="In hand" action="Add a book" onAction={() => setAdding(true)}>
-        {v.reading.length ? v.reading.map((b, i) => <BookCard key={b.id} book={b} lit={i === 0} onEdit={() => setEditing(b)} />) : (
-          <Group pad>
-            <Text style={t.callout}>Nothing on the go</Text>
-            <Text style={t.footnote}>Pick one from next up below, or add the one in your hands.</Text>
+      {lead ? <NowReading book={lead} onEdit={() => setEditing(lead)} /> : (
+        <Group pad>
+          <Text style={t.callout}>Nothing on the go</Text>
+          <Text style={t.footnote}>Pick one from next up below, or add the one in your hands.</Text>
+          <Button label="Add a book" kind="soft" small onPress={() => setAdding(true)} wrap={s.start} />
+        </Group>
+      )}
+
+      {lead ? <ReadingWeek book={lead} /> : null}
+
+      {also.length ? (
+        <Block title="Also reading" action="Add a book" onAction={() => setAdding(true)}>
+          <Group inset={64}>
+            {also.map((b) => (
+              <Item key={b.id} title={b.title} onPress={() => setEditing(b)} label={`${b.title}: pages, on hold, finished or remove`} left={<Cover book={b} w={32} />}
+                sub={b.sitting_since ? 'Reading now' : b.pages ? `Page ${b.page} of ${b.pages}` : `Page ${b.page}`}
+                action={<Button label={b.sitting_since ? 'Done' : 'Log'} kind="quiet" small onPress={() => nav.logSitting(b.id)} />} />
+            ))}
           </Group>
-        )}
-      </Block>
+        </Block>
+      ) : null}
 
       {due || v.recall.total ? (
         <Block title="Bring it back" sub="Questions made from your own lines. A miss only brings one back sooner.">
@@ -106,7 +117,7 @@ export function ReadTab({ active }: { active: boolean }) {
         </Block>
       ) : null}
 
-      <Block title="What stuck" sub={v.takeaways.length ? 'Tap the microphone to say one in a minute.' : null} action={v.reading.length || v.done.length ? 'Add a line' : undefined} onAction={() => setNote(true)}>
+      <Block title="Your notes" sub={v.takeaways.length ? 'What stuck, in your words. Tap the microphone to say one in a minute.' : null} action={v.reading.length || v.done.length ? 'Add a note' : undefined} onAction={() => setNote(true)}>
         {v.takeaways.length ? (
           <Group>
             {v.takeaways.slice(0, 6).map((k) => (
@@ -120,12 +131,14 @@ export function ReadTab({ active }: { active: boolean }) {
           </Group>
         ) : (
           <Group pad>
-            <Text style={t.footnote}>After a sitting, one line on what stuck lands here. Recall questions are made from these, two days later.</Text>
+            <Text style={t.footnote}>After a sitting, one line on what stuck lands here. Recall questions are made from your notes, two days later.</Text>
           </Group>
         )}
       </Block>
 
-      {v.next.length || v.paused.length ? <NextUp books={[...v.paused, ...v.next]} onEdit={setEditing} /> : null}
+      {/* Add a book sits on Also reading when there is one, else here (with nothing on the go, it is the first card) */}
+      {v.next.length || v.paused.length || (lead && !also.length)
+        ? <NextUp books={[...v.paused, ...v.next]} onEdit={setEditing} onAdd={lead && !also.length ? () => setAdding(true) : undefined} /> : null}
       {v.done.length ? <FinishedShelf books={v.done} onEdit={setEditing} /> : null}
 
       <AddBookSheet open={adding} onClose={() => setAdding(false)} hasReading={!!v.reading.length} />
@@ -135,8 +148,11 @@ export function ReadTab({ active }: { active: boolean }) {
   );
 }
 
-/** A book in hand: cover, where he is, the pace, and the sitting (start it, or log it after the fact). */
-function BookCard({ book: b, lit, onEdit }: { book: Book & { pace: Pace }; lit: boolean; onEdit: () => void }) {
+/**
+ * The book in hand: cover, where he is and how far through, then the sitting. Pages read log in one tap (+5 to +30,
+ * or to the end), timed by the PC at his own pages a minute, with Undo; the timer and the exact page are there too.
+ */
+function NowReading({ book: b, onEdit }: { book: Book & { pace: Pace }; onEdit: () => void }) {
   const a = useAspect();
   const nav = useNav();
   const [busy, setBusy] = useState<string | null>(null);
@@ -144,26 +160,51 @@ function BookCard({ book: b, lit, onEdit }: { book: Book & { pace: Pace }; lit: 
     setBusy(key);
     try { await fn(); if (done) a.notice(done); } catch (e) { a.notice((e as Error).message); } finally { setBusy(null); }
   };
-  const pace = paceLine(b.pace);
+  const left = b.pages ? Math.max(0, b.pages - b.page) : null;
+  const pct = b.pages ? Math.min(100, Math.round((b.page / b.pages) * 100)) : null;
+  const steps = [5, 10, 20, 30].filter((n) => left == null || n < left);
+  const toEnd = left != null && left > 0 && left <= 30;
+  /** n more pages (or the rest) as a sitting. The PC times it from his own pace and finishes the book at the end. */
+  const log = (n: number | 'end') => run(`log${n}`, async () => {
+    const was = b.page;
+    const to = n === 'end' ? b.pages ?? was : Math.min(b.pages ?? Infinity, was + n);
+    if (to <= was) return;
+    const r = await call<{ session?: { id: string } }>('/mod/mind/read/sitting', { book: b.id, to_page: to });
+    invalidate('/mod/mind/');
+    void collection('mind', 'sessions').refresh();
+    haptic.success();
+    const sid = r.session?.id;
+    undoable(n === 'end' ? `Finished ${b.title}` : `Page ${to}, ${to - was} pages`, async () => {
+      try {
+        if (sid) await collection('mind', 'sessions').remove(sid);
+        await call('/mod/mind/read/edit', { book: b.id, page: was, status: 'reading' });
+        invalidate('/mod/mind/');
+      } catch (e) { a.notice((e as Error).message); }
+    });
+  });
   return (
-    <Group pad>
+    <Lead>
       <Press label={`${b.title}: pages, on hold, finished or remove`} onPress={onEdit} scale={0.98} feel="tick" style={s.bookHead}>
-        <Cover book={b} w={64} />
+        <Cover book={b} w={72} />
         <View style={s.bookText}>
-          <Text style={t.headline} numberOfLines={3}>{b.title}</Text>
+          <Text style={[t.footnote, { color: a.color }]}>{b.sitting_since ? 'Reading now' : 'Reading'}</Text>
+          <Text style={t.title3} numberOfLines={3}>{b.title}</Text>
           {b.author ? <Text style={t.footnote} numberOfLines={1}>{b.author}</Text> : null}
-          <View style={s.gap8}>
-            <Text style={[t.subhead, t.num]}>{b.pages ? `Page ${b.page} of ${b.pages}` : `Page ${b.page}`}</Text>
-            {b.pages ? <Bar progress={b.page / b.pages} height={6} color={a.color} /> : <Text style={t.footnote}>Add the page count for a finish date</Text>}
-          </View>
         </View>
       </Press>
-      {pace ? <Text style={[t.footnote, t.num]}>{pace}</Text> : null}
+      <View style={s.gap8}>
+        <View style={s.between}>
+          <Text style={[t.headline, t.num]}>{b.pages ? `Page ${b.page} of ${b.pages}` : `Page ${b.page}`}</Text>
+          {pct != null ? <Text style={[t.subhead, t.num, { color: a.color }]}>{`${pct}%`}</Text> : null}
+        </View>
+        {b.pages ? <Bar progress={b.page / b.pages} height={6} color={a.color} />
+          : <Press label="Add the page count" onPress={onEdit} feel="tick"><Text style={[t.footnote, { color: a.color }]}>Add the page count for a finish date</Text></Press>}
+      </View>
       {b.sitting_since ? (
         <>
           <View style={s.liveRow}>
             <View style={[s.liveDot, { backgroundColor: a.color }]} />
-            <Text style={[t.subhead, { color: a.color }]}>Reading now</Text>
+            <Text style={[t.subhead, { color: a.color }]}>Timer running</Text>
             <Elapsed since={b.sitting_since} style={s.liveTime} />
           </View>
           <View style={s.buttons}>
@@ -173,18 +214,70 @@ function BookCard({ book: b, lit, onEdit }: { book: Book & { pace: Pace }; lit: 
           </View>
         </>
       ) : (
-        <View style={s.buttons}>
-          <Button label="Start reading" kind={lit ? 'accent' : 'soft'} busy={busy === 'start'} wrap={s.flex}
-            icon={<Icon name="clock" size={18} color={lit ? '#14161C' : a.color} />}
-            onPress={() => { haptic.medium(); void run('start', () => startReading(b.id)); }} />
-          <Button label="Log pages" kind="quiet" onPress={() => nav.logSitting(b.id)} />
-        </View>
+        <>
+          {steps.length || toEnd ? (
+            <View style={s.gap8}>
+              <Text style={t.footnote}>Read some? Log the pages in one tap.</Text>
+              <View style={s.steps}>
+                {steps.map((n) => <Step key={n} text={`+${n}`} label={`Log ${n} pages read`} busy={busy === `log${n}`} off={!!busy} onPress={() => { void log(n); }} />)}
+                {toEnd ? <Step text="To the end" label={`Log the last ${left} pages and finish the book`} busy={busy === 'logend'} off={!!busy} wide onPress={() => { void log('end'); }} /> : null}
+              </View>
+            </View>
+          ) : null}
+          <View style={s.buttons}>
+            <Button label="Start reading" kind="accent" busy={busy === 'start'} wrap={s.flex}
+              icon={<Icon name="clock" size={18} color="#14161C" />}
+              onPress={() => { haptic.medium(); void run('start', () => startReading(b.id)); }} />
+            <Button label="Exact page" kind="quiet" onPress={() => nav.logSitting(b.id)} />
+          </View>
+        </>
       )}
+    </Lead>
+  );
+}
+
+/** One step of the page log: "+10" on a soft capsule, a spinner while it saves. */
+function Step({ text, label, busy, off, wide, onPress }: { text: string; label: string; busy: boolean; off: boolean; wide?: boolean; onPress: () => void }) {
+  const a = useAspect();
+  return (
+    <Press label={label} onPress={onPress} disabled={off} feel="tick" wrap={wide ? s.stepWide : s.flex} style={[s.step, { backgroundColor: tint(a.color, 0.16) }]}>
+      {busy ? <ActivityIndicator color={a.color} /> : <Text numberOfLines={1} style={[t.headline, t.num, { color: a.color }]}>{text}</Text>}
+    </Press>
+  );
+}
+
+type ReadSession = Doc & { kind?: string; date?: string | null };
+
+/** His reading week: pages left, pages a day and the finish date for the book in hand, and the last seven days read. */
+function ReadingWeek({ book: b }: { book: Book & { pace: Pace } }) {
+  const a = useAspect();
+  const sessions = useCollection<ReadSession>('mind', 'sessions');
+  const today = myDay();
+  const week = lastDays(7, today);
+  const read = new Set((sessions.items ?? []).filter((x) => x.kind === 'reading' && x.date && x.date >= week[0]).map((x) => x.date as string));
+  const n = week.filter((d) => read.has(d)).length;
+  const left = b.pages ? Math.max(0, b.pages - b.page) : null;
+  const why = !b.pace.finish && b.pace.why ? b.pace.why : null;
+  return (
+    <Group pad>
+      <Metrics>
+        <Metric value={left != null ? String(left) : 'Not set'} label="Pages left" size="s" />
+        <Metric value={b.pace.ppd ? String(Math.max(1, Math.round(b.pace.ppd))) : 'Not yet'} label="Pages a day" size="s" />
+        <Metric value={b.pace.finish ? shortDay(b.pace.finish) : 'Not yet'} label="Done around" size="s" />
+      </Metrics>
+      {why ? <Text style={t.footnote}>{why}</Text> : null}
+      <View style={s.gap8}>
+        <WeekStrip size={32} color={a.color} days={week.map((d) => ({
+          day: d, today: d === today, mark: read.has(d) ? 'done' : 'none',
+          label: `${dayLabel(d, today)}, ${read.has(d) ? 'read' : d === today ? 'not yet' : 'no reading'}`,
+        }))} />
+        {sessions.items ? <Text style={[t.footnote, t.num]}>{n ? `Read on ${n === 1 ? 'one day' : `${n} days`} of the last seven.` : 'No reading in the last seven days.'}</Text> : null}
+      </View>
     </Group>
   );
 }
 
-function NextUp({ books, onEdit }: { books: Book[]; onEdit: (b: Book) => void }) {
+function NextUp({ books, onEdit, onAdd }: { books: Book[]; onEdit: (b: Book) => void; onAdd?: () => void }) {
   const a = useAspect();
   const [busy, setBusy] = useState<string | null>(null);
   const start = async (b: Book) => {
@@ -199,14 +292,20 @@ function NextUp({ books, onEdit }: { books: Book[]; onEdit: (b: Book) => void })
     } catch (e) { a.notice((e as Error).message); } finally { setBusy(null); }
   };
   return (
-    <Block title="Next up">
-      <Group inset={64}>
-        {books.slice(0, 6).map((b) => (
-          <Item key={b.id} title={b.title} sub={b.status === 'paused' ? `On hold at page ${b.page}` : b.author} onPress={() => onEdit(b)}
-            label={`${b.title}: pages, start or remove`} left={<Cover book={b} w={32} />}
-            action={<Button label={b.status === 'paused' ? 'Pick up' : 'Start'} kind="quiet" small busy={busy === b.id} onPress={() => { void start(b); }} />} />
-        ))}
-      </Group>
+    <Block title="Next up" action={onAdd ? 'Add a book' : undefined} onAction={onAdd}>
+      {books.length ? (
+        <Group inset={64}>
+          {books.slice(0, 6).map((b) => (
+            <Item key={b.id} title={b.title} sub={b.status === 'paused' ? `On hold at page ${b.page}` : b.author} onPress={() => onEdit(b)}
+              label={`${b.title}: pages, start or remove`} left={<Cover book={b} w={32} />}
+              action={<Button label={b.status === 'paused' ? 'Pick up' : 'Start'} kind="quiet" small busy={busy === b.id} onPress={() => { void start(b); }} />} />
+          ))}
+        </Group>
+      ) : (
+        <Group pad>
+          <Text style={t.footnote}>Nothing lined up. Add the next book you want to read, so it is here when this one ends.</Text>
+        </Group>
+      )}
     </Block>
   );
 }
@@ -449,7 +548,7 @@ export function SittingSheet({ bookId, onClose, onSay }: { bookId: string | null
   const g = useGet<ReadView>(bookId ? READ : null);
   const found = bookId ? g.data?.reading.find((x) => x.id === bookId) ?? [...(g.data?.paused ?? []), ...(g.data?.next ?? [])].find((x) => x.id === bookId) ?? null : null;
   const b = useLast(found);
-  const [minutes, setMinutes] = useState(20);
+  const [typed, setMinutes] = useState<number | null>(null);   // null: the timer's count, else 20
   const [page, setPage] = useState(0);
   const [line, setLine] = useState('');
   const [keys, setKeys] = useState<'page' | 'minutes' | null>(null);
@@ -460,20 +559,22 @@ export function SittingSheet({ bookId, onClose, onSay }: { bookId: string | null
   if (prev !== key) {
     setPrev(key);
     if (found) {
-      const timed = found.sitting_since ? Math.max(1, Math.round((Date.now() - Date.parse(found.sitting_since)) / 60000)) : null;
       const ppd = 'pace' in found ? (found as Book & { pace: Pace }).pace.ppd : 0;
-      setMinutes(timed ?? 20); setLine(''); setSaved(null);
+      setMinutes(null); setLine(''); setSaved(null);
       setPage(Math.min(found.pages ?? Infinity, found.page + Math.max(5, Math.round(ppd || 10))));
     }
   }
   const timed = !!found?.sitting_since;
+  const now = useNow(15000, !!bookId && timed && typed == null);
+  const minutes = typed ?? (found?.sitting_since ? Math.max(1, Math.round((now - Date.parse(found.sitting_since)) / 60000)) : 20);
   const max = b?.pages ?? 5000;
   const save = async () => {
     if (!b) return;
     setSaving(true);
     const was = b.page;
     try {
-      const r = await call<{ takeaway: { id: string; text: string } | null; session?: { id: string } }>('/mod/mind/read/sitting', { book: b.id, minutes, to_page: page, takeaway: line.trim() || undefined });
+      // left on the timer, the PC counts the minutes to the second it saves
+      const r = await call<{ takeaway: { id: string; text: string } | null; session?: { id: string } }>('/mod/mind/read/sitting', { book: b.id, minutes: typed == null && timed ? undefined : minutes, to_page: page, takeaway: line.trim() || undefined });
       invalidate('/mod/mind/');
       haptic.success();
       if (r.takeaway) { setSaved(r.takeaway); return; }
@@ -554,6 +655,10 @@ const s = StyleSheet.create({
   gap16: { gap: 16 },
   buttons: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  between: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 },
+  steps: { flexDirection: 'row', gap: 8 },
+  step: { height: 44, borderRadius: 22, borderCurve: 'continuous', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
+  stepWide: { flex: 2, minWidth: 0 },
   cover: { backgroundColor: SURF.raised, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
   bookHead: { flexDirection: 'row', gap: 16 },
   bookText: { flex: 1, gap: 6 },

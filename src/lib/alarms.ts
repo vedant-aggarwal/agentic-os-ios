@@ -1,11 +1,16 @@
 import { requireOptionalNativeModule } from 'expo';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
+import { api, currentToken, onAuth } from './api';
 import { openLink } from './links';
 
 // Alarms that ring through silent mode and Focus (modules/alarms: AlarmKit on iOS 26; a notification at that time on
 // older iOS or before AlarmKit is allowed). Pages call setAlarm; the PC sets them with POST /api/v1/phone/alarm
 // (server/phone-alarm.ts), whose silent push is scheduled natively even when the app is closed.
 // An alarm with a url gets an Open button that opens the app on that link; one without gets Snooze.
+// The PC's alarms are confirmed back (POST /phone/alarm/ack) once they're set here: when its silent push sets one (if
+// the app's code is running then) and whenever the app comes to the front or signs in. One the PC hasn't heard about
+// by its time also comes as a visible, time-sensitive notification. Confirming from the native module itself, with the
+// app closed, needs a new build; until then an alarm set while the app was closed may ring and notify both.
 
 export type Alarm = {
   id: string;
@@ -28,6 +33,7 @@ type Native = {
   list(): Promise<Alarm[]>;
   takeOpened(): Promise<{ id: string; url: string }[]>;
   addListener(event: string, fn: (e: Record<string, unknown>) => void): Sub;
+  // events: onOpen (an alarm's Open button), onScheduled ({ id, at, title, kit, from, url? } when the PC's push set one)
 };
 const native = Platform.OS === 'ios' ? requireOptionalNativeModule<Native>('AosAlarms') : null;
 
@@ -68,10 +74,28 @@ async function openTapped() {
   } catch {}
 }
 
-/** Mounted once by the root layout: an alarm's Open button opens its link. Returns the cleanup. */
+const confirmed = new Set<string>(); // the PC alarms this launch has confirmed
+/** Tells the PC which of its alarms are set on this phone, so it doesn't also notify at their time. */
+async function confirmPc(list?: Pick<Alarm, 'id' | 'at' | 'from'>[]) {
+  if (!currentToken()) return;
+  const now = Date.now();
+  const ids = (list ?? await listAlarms()).filter((a) => a.from === 'pc' && a.at > now && !confirmed.has(a.id)).map((a) => a.id);
+  if (!ids.length) return;
+  for (const id of ids) confirmed.add(id);
+  try { await api('/phone/alarm/ack', { method: 'POST', body: { ids } }); }
+  catch { for (const id of ids) confirmed.delete(id); } // the next time the app comes to the front
+}
+
+/** Mounted once by the root layout: an alarm's Open button opens its link, and the PC's alarms are confirmed. Returns the cleanup. */
 export function startAlarms(): () => void {
   if (!native) return () => {};
   const sub = native.addListener('onOpen', () => { openTapped(); });
+  const set = native.addListener('onScheduled', (e) => {
+    if (e.from === 'pc' && typeof e.id === 'string' && typeof e.at === 'number') void confirmPc([{ id: e.id, at: e.at, from: 'pc' }]);
+  });
+  const app = AppState.addEventListener('change', (s) => { if (s === 'active') void confirmPc(); });
+  const auth = onAuth((on) => { if (on) void confirmPc(); });
   openTapped();
-  return () => sub.remove();
+  void confirmPc();
+  return () => { sub.remove(); set.remove(); app.remove(); auth(); };
 }

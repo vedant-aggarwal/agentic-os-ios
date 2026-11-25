@@ -77,6 +77,7 @@
         }
       ],
       "./modules/alarms/app.plugin.js",
+      "./modules/calls/app.plugin.js",
       [
         "./modules/app-icon/app.plugin.js",
         {
@@ -89,7 +90,7 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "Agentic OS uses the microphone for your calls with Nora, and when you hold the mic in GPT mode to dictate on your PC.",
+          "microphonePermission": "Agentic OS uses the microphone for your calls with Nora, the calls you take over from her phone line, and when you hold the mic in GPT mode to dictate on your PC.",
           "recordAudioAndroid": false,
           "enableBackgroundRecording": true
         }

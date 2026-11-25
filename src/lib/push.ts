@@ -46,6 +46,10 @@ export function linkFor(payload: Record<string, unknown> | null | undefined): st
   const aos = obj(p.aos), data = obj(p.data);
   const url = str(aos?.url) ?? str(data?.url) ?? str(data?.link) ?? str(p.url) ?? str(p.link);
   if (url && /^agenticos:\/\//i.test(url)) return modern(url);
+  // Nora's phone line (nora-line contract §4): a transfer, a decision or a summary opens that call
+  const lineId = str(p.callId) ?? str(data?.callId);
+  const category = str(obj(p.aps)?.category) ?? '';
+  if (lineId && (lineId.startsWith('ln_') || category.startsWith('LINE_'))) return `agenticos://line/${encodeURIComponent(lineId)}`;
   // Nora's own pushes (server/nora.ts push): a call she's making, a message, an agent's question.
   if (p.kind === 'call') return str(p.incomingId) ? `agenticos://nora/call?id=${encodeURIComponent(String(p.incomingId))}` : 'agenticos://nora/call';
   if (str(p.ask)) return `agenticos://nora/chat?ask=${encodeURIComponent(String(p.ask))}`;
@@ -62,7 +66,8 @@ export function openTapped(url: string) {
 const seen = new Set<string>();
 function handleResponse(r: Response | null) {
   if (!r || !N) return;
-  // Only a tap on the notification itself; no action buttons are registered.
+  // Only a tap on the notification itself. The line's buttons (Take over, Listen, a decision's options) are handled
+  // natively, app in the background or not (modules/calls/ios/LineNative.swift).
   if (r.actionIdentifier !== N.DEFAULT_ACTION_IDENTIFIER) return;
   const req = r.notification.request;
   const key = `${req.identifier}:${r.notification.date}`;

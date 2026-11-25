@@ -1,7 +1,7 @@
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { useEffect, useRef, useState } from 'react';
-import { type GestureResponderEvent, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { type GestureResponderEvent, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Animated, {
   ReduceMotion, useAnimatedProps, useAnimatedStyle, useSharedValue, withDelay, withSpring, type SharedValue,
 } from 'react-native-reanimated';
@@ -15,6 +15,7 @@ import { Capture } from '@/capture/Capture';
 import { NoraOver, NoraUnder } from '@/nora/NoraHost';
 import { Ball, useTurn } from '@/nora/Sphere';
 import { noraUi, useNora } from '@/nora/state';
+import { useLineCounts } from '@/lib/line';
 import type { AspectProgress } from '@/lib/today';
 import { ASPECT_COLOR, C, F, FAMILY_LABEL, type AspectKey, type FamilyKey } from '@/theme';
 
@@ -303,9 +304,10 @@ function Round({ label, onPress, children }: { label: string; onPress: () => voi
   );
 }
 
-/** A floating orb beside the pill: the same glass, detached, a true circle, holding one page. */
-function SideOrb({ label, side, onPress, on = false, children }: {
-  label: string; side: 'left' | 'right'; onPress: () => void; on?: boolean; children: React.ReactNode;
+/** A floating orb beside the pill: the same glass, detached, a true circle, holding one page. `badge` counts what
+ *  waits on him behind it (Home: the calls on Nora's line that need him). */
+function SideOrb({ label, side, onPress, on = false, badge = 0, children }: {
+  label: string; side: 'left' | 'right'; onPress: () => void; on?: boolean; badge?: number; children: React.ReactNode;
 }) {
   const p = useScale(0.92);
   return (
@@ -318,6 +320,9 @@ function SideOrb({ label, side, onPress, on = false, children }: {
           {pressed ? <View style={[StyleSheet.absoluteFill, s.sidePressed]} /> : null}
           {/* own view, so the icon stacks above the glass on web too */}
           <View>{children}</View>
+          {badge > 0 ? (
+            <View pointerEvents="none" style={s.badge}><Text style={s.badgeText}>{badge > 9 ? '9+' : badge}</Text></View>
+          ) : null}
         </Animated.View>
       )}
     </Pressable>
@@ -370,6 +375,7 @@ export function Dock({ bottom, width, aspects, onNotBuilt, onAspect, onHome, hid
   // gesture bookkeeping, read and written only inside the touch handlers
   const g = useRef({ ox: 0, oy: 0, x0: 0, y0: 0, t0: 0, ts: 0, moved: false, pick: -1 });
   const fan = useWorkOrb({ onTap: () => router.push('/work') });
+  const needsYou = useLineCounts().needsYou ?? 0;
 
   const release = () => {
     const st = g.current;
@@ -426,7 +432,8 @@ export function Dock({ bottom, width, aspects, onNotBuilt, onAspect, onHome, hid
       <NoraUnder home={homeAt} />
       <DialLayer cx={cx} cy={cy} open={open} pick={pick} aspects={aspects} />
       <Animated.View pointerEvents={hidden ? 'none' : 'box-none'} style={[s.wrap, { width: total, bottom: lift }, awayStyle]}>
-        <SideOrb label={onHome ? 'Home: back to Today' : ui.home ? 'Close Home' : 'Home: what Nora has ready for you'} side="left" on={!onHome && ui.home}
+        <SideOrb label={`${onHome ? 'Home: back to Today' : ui.home ? 'Close Home' : 'Home: what Nora has ready for you'}${needsYou ? `. ${needsYou === 1 ? '1 call needs' : `${needsYou} calls need`} you` : ''}`}
+          side="left" on={!onHome && ui.home} badge={ui.home ? 0 : needsYou}
           onPress={() => (onHome ? onHome() : noraUi.toggleHome())}><Sym name="house.fill" size={22} fallback={<Home />} /></SideOrb>
         <View style={[s.bar, { width: w, paddingHorizontal: Math.max(0, G - (48 - ICON) / 2) }]}>
           <Glass radius={BAR_H / 2} />
@@ -477,6 +484,11 @@ const s = StyleSheet.create({
   },
   sidePressed: { borderRadius: SIDE / 2, backgroundColor: 'rgba(255,255,255,0.1)' },
   sideOn: { borderRadius: SIDE / 2, backgroundColor: 'rgba(255,255,255,0.16)' }, // Home is open
+  badge: {
+    position: 'absolute', top: 2, right: 2, minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 5,
+    alignItems: 'center', justifyContent: 'center', backgroundColor: '#F0457A', borderWidth: 2, borderColor: C.scene,
+  },
+  badgeText: { fontFamily: F.semibold, fontSize: 11, lineHeight: 13, color: '#fff', fontVariant: ['tabular-nums'] },
   orbWrap: { position: 'absolute', top: ORB_TOP, width: ORB, height: ORB, alignItems: 'center', justifyContent: 'center' },
   ball: {
     width: ORB_R * 2, height: ORB_R * 2, borderRadius: ORB_R, backgroundColor: '#F0457A',

@@ -15,7 +15,8 @@ export type SystemCallEvent =
   | { type: 'mute'; muted: boolean }
   | { type: 'audio'; active: boolean };
 
-type Answer = { id: string; uuid: string; reason: string; voice: string };
+/** `line`: a transfer on Nora's phone line he answered (the call is already taken over natively). */
+type Answer = { id: string; uuid: string; reason: string; voice: string; line?: string };
 type Sub = { remove(): void };
 type Calls = {
   getToken(): Promise<string | null>;
@@ -88,6 +89,7 @@ async function openAnswered() {
   try {
     const a = await native?.takePending();
     if (!a) return;
+    if (a.line) { openLink(`agenticos://line/${encodeURIComponent(a.line)}`); return; }
     openLink(a.id ? `agenticos://nora/call?id=${encodeURIComponent(a.id)}` : 'agenticos://nora/call');
   } catch {}
 }

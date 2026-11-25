@@ -9,6 +9,7 @@ import { haptic, SURF, t, tint } from '@/aspects/kit/tokens';
 import { Chip, Toast } from '@/capture/parts';
 import { ASPECT_KEYS, ASPECT_NAME, aspectOfArea } from '@/lib/aspects';
 import { DEMO } from '@/lib/demo';
+import { LineEntry } from '@/line/HomeEntry';
 import { markSeen, nora as noraApi, type FeedItem, type NoraHome } from '@/lib/nora';
 import type { Task } from '@/lib/today';
 import { Ball, useTurn } from '@/nora/Sphere';
@@ -333,6 +334,8 @@ function HomePage({ d, say, hide, onNora }: { d: HomeData; say: Say; hide: () =>
         contentContainerStyle={[st.content, { paddingTop: insets.top + 8, paddingBottom: dockClear(insets.bottom) + 24 }]}
         refreshControl={<RefreshControl refreshing={d.refreshing} onRefresh={() => void d.load(false)} tintColor={C.muted} />}>
         <Header h={d.home} tags={d.tags} />
+        {/* Nora's phone line: the call on now and the calls waiting on him (src/line) */}
+        <LineEntry />
 
         <View>
           <View style={st.headRow}>

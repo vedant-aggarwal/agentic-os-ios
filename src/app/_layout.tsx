@@ -8,6 +8,7 @@ import { FileViewer } from '@/components/FileViewer';
 import { DeskFrame } from '@/desk/DeskFrame';
 import { startAlarms } from '@/lib/alarms';
 import { startCalls } from '@/lib/calls';
+import { startLine } from '@/lib/line';
 import '@/lib/log'; // sends phone-side errors to the PC log
 import { missingNative } from '@/lib/native';
 import { startOutbox } from '@/lib/outbox';
@@ -29,8 +30,9 @@ export default function RootLayout() {
   useEffect(() => { if (loaded || error) SplashScreen.hideAsync().catch(() => {}); }, [loaded, error]);
   // Notification taps, Nora's calls on the system call screen, alarms' Open button and the home screen widgets.
   // Each is a no-op on the web and on a build without its native module. The outbox sends writes kept on the phone.
+  // startLine: Nora's phone line (the needs-you count, call blocking, Live Activity tokens, its buttons' links).
   useEffect(() => {
-    const stops = [startPush(), startCalls(), startAlarms(), startWidgets(), startOutbox()];
+    const stops = [startPush(), startCalls(), startAlarms(), startWidgets(), startOutbox(), startLine()];
     return () => stops.forEach((stop) => stop());
   }, []);
   if (!loaded && !error) return null;

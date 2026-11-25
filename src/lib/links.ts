@@ -25,6 +25,9 @@
 //   work[/jobs|/ideas|/<project>|/job/<id>|/orca/<id>|/resolved/<id>]  the Projects hub or one of its pages (a route)
 //   term/<id>            an agent terminal's "needs you" / "finished" push: the Projects hub (no terminal view yet)
 //   nora[/chat|/call]    Nora: chat, or a call (?id=<call id> to join one that is ringing)
+//   line[/<call id>|/setup]  Nora's phone line (routes, src/line): the call log, one call (live while it's on, its page
+//                        after; ?take=1 takes it over, ?listen=1 starts listening), forwarding setup. The PC's pushes
+//                        and the Live Activity send line/<call id>
 //   tasks                Home, his task list (src/nora/NoraHost.tsx)
 //   task/<id>            that task's view, over any screen (src/work/sheets/WorkSheets.tsx)
 //   voice                the Voices page on Today
@@ -82,6 +85,12 @@ export function routeFor(link: Link): string | null {
     case 'job': return a ? `/work/job/${enc(a)}` : '/work';
     case 'orca': return a ? `/work/orca/${enc(a)}` : '/work';
     case 'term': return '/work';
+    case 'line': {
+      if (!a) return '/line';
+      if (a.toLowerCase() === 'setup') return '/line/setup';
+      const q = link.query.take === '1' ? '?take=1' : link.query.listen === '1' ? '?listen=1' : '';
+      return `/line/${enc(a)}${q}`;
+    }
     case 'work':
       if (!a || HUB_WORDS.has(a.toLowerCase())) return '/work';
       if ((a === 'job' || a === 'orca' || a === 'resolved') && b) return `/work/${a}/${enc(b)}`;
